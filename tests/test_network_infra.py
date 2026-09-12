@@ -9,6 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from core.network import (
+    RpcNode,
     _CircuitBreaker,
     _effective_rpc_rate,
     _is_retryable_error,
@@ -16,6 +17,60 @@ from core.network import (
     _RPCRateLimiter,
     _TTLCache,
 )
+
+
+class TestRpcNode(unittest.TestCase):
+    def test_initial_state_pessimistic(self):
+        n = RpcNode("https://rpc.example")
+        self.assertAlmostEqual(n.latency_ms, 500.0)
+        self.assertFalse(n.is_dead)
+        self.assertLess(n.score, float("inf"))
+
+    def test_success_lowers_score(self):
+        n = RpcNode("https://rpc.example")
+        n.record(100.0, success=True)
+        self.assertLess(n.latency_ms, 500.0)
+        self.assertFalse(n.is_dead)
+
+    def test_ema_smooths_spikes(self):
+        n = RpcNode("https://rpc.example")
+        n.record(1000.0, success=True)  # всплеск
+        first = n.latency_ms
+        n.record(50.0, success=True)  # стабилизация
+        self.assertLess(n.latency_ms, first)
+        # 70% старого, 30% нового
+        self.assertAlmostEqual(n.latency_ms, first * 0.7 + 50.0 * 0.3)
+
+    def test_errors_penalize_score(self):
+        n = RpcNode("https://rpc.example")
+        before = n.score
+        n.record(100.0, success=False)
+        after = n.score
+        self.assertGreaterEqual(after, before)  # штраф за ошибку
+
+    def test_three_errors_marks_dead(self):
+        n = RpcNode("https://rpc.example")
+        for _ in range(4):
+            n.record(2500.0, success=False)
+        self.assertTrue(n.is_dead)
+        self.assertEqual(n.score, float("inf"))
+
+    def test_zombie_resurrection(self):
+        n = RpcNode("https://rpc.example")
+        for _ in range(4):
+            n.record(2500.0, success=False)
+        self.assertTrue(n.is_dead)
+        # Один успешный пинг — нода снова в строю.
+        n.record(150.0, success=True)
+        self.assertFalse(n.is_dead)
+        self.assertLess(n.score, float("inf"))
+
+    def test_score_orders_by_latency(self):
+        fast = RpcNode("https://a")
+        slow = RpcNode("https://b")
+        fast.record(50.0, success=True)
+        slow.record(1500.0, success=True)
+        self.assertLess(fast.score, slow.score)
 
 
 class TestRetryableClassification(unittest.TestCase):
@@ -287,6 +342,131 @@ class TestSwitchRpc(unittest.TestCase):
                 net = NetworkManager(cfg, MagicMock())
                 await net._switch_rpc()  # не должен менять state и не падать
                 self.assertEqual(net.rpc_url, "https://only.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+
+class TestRpcRotation(unittest.TestCase):
+    _CONFIG = {
+        "network": {
+            "rpc_url": ["https://a.example.com/rpc", "https://b.example.com/rpc"],
+            "chain_id": 288,
+        }
+    }
+
+    def _make(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        def _connect(self, url):
+            return MagicMock()
+
+        return patch.object(NetworkManager, "_connect_rpc", _connect), NetworkManager
+
+    def test_best_rpc_prefers_low_score(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                net._nodes[0].record(50.0, success=True)  # a — быстрая
+                net._nodes[1].record(1500.0, success=True)  # b — тормозит
+                self.assertEqual(net.best_rpc_url(), "https://a.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_best_rpc_skips_dead_node(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[1].record(1500.0, success=True)
+                # a — мертва (4 ошибки), b живая несмотря на задержку.
+                for _ in range(4):
+                    net._nodes[0].record(2500.0, success=False)
+                self.assertTrue(net._nodes[0].is_dead)
+                self.assertEqual(net.best_rpc_url(), "https://b.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_all_dead_falls_back_to_least_bad(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                for n in net._nodes:
+                    for _ in range(5):
+                        n.record(2500.0, success=False)
+                self.assertTrue(all(n.is_dead for n in net._nodes))
+                # Best = наименее «плохой» (все мёртвы → scory одинаково inf,
+                # берём первого из списка) — контракт: не падать, вернуть URL.
+                url = net.best_rpc_url()
+                self.assertIn(url, "https://a.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_monitor_switches_to_best_alive(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                net._nodes[0].record(50.0, success=True)
+                # Начинаем на a, но a деградирует: b жив, a — мёртв.
+                for _ in range(4):
+                    net._nodes[0].record(2500.0, success=False)
+                net._nodes[1].record(120.0, success=True)
+                # Прямой вызов приватного _record_latency имитирует цикл монитора.
+                net._record_latency("https://b.example.com/rpc", 0.12)
+                net._record_latency("https://a.example.com/rpc", None)
+                best = net.best_rpc_url()
+                self.assertEqual(best, "https://b.example.com/rpc")
+                await net._switch_to(best)
+                self.assertEqual(net.rpc_url, "https://b.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_node_health_redacts_url(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                cfg = {
+                    "network": {
+                        "rpc_url": ["https://user:pass@a.example.com/rpc"],
+                        "chain_id": 288,
+                    }
+                }
+                net = NetworkManager(cfg, MagicMock())
+                h = net.node_health()
+                self.assertEqual(len(h), 1)
+                self.assertNotIn("user", h[0]["url"])
+                self.assertNotIn("pass", h[0]["url"])
                 await net.close()
 
         asyncio.run(scenario())

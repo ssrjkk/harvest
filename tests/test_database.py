@@ -278,6 +278,17 @@ class TestRedactRpcUrl(unittest.TestCase):
         self.assertEqual(_redact_rpc_url(""), "")
         self.assertIsNone(_redact_rpc_url(None))
 
+    def test_list_redacted_elementwise(self):
+        urls = [
+            "https://user:pass@rpc.example/x?api_key=abc",
+            "http://127.0.0.1:8545",
+        ]
+        out = _redact_rpc_url(urls)
+        assert isinstance(out, list)
+        self.assertEqual(out, ["https://rpc.example/x", "http://127.0.0.1:8545"])
+        self.assertNotIn("abc", " ".join(out))
+        self.assertNotIn("user", " ".join(out))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

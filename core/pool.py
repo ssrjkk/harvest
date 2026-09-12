@@ -314,6 +314,9 @@ class FarmerPool:
 
         # Один воркер-пул на весь прогон: живёт между чанками, монитор
         # подстраивает число воркеров под здоровье RPC во время работы.
+        # Фоновый монитор RPC (пинг нод) тоже начинается здесь: health_fn
+        # (concurrency_factor) и ротация на лучшую ноду работают сразу.
+        self.network.start_monitor()
         worker_pool = WorkerPool(
             max_workers=self.max_workers,
             worker_func=self._run_one,

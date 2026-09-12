@@ -68,6 +68,9 @@ logger = logging.getLogger(__name__)
 
 _RPC_RETRIES = 3
 
+_RPC_MONITOR_INTERVAL = 30.0
+_PING_TIMEOUT_MS = 2500.0
+
 _T = TypeVar("_T")
 
 # Транспортные/инфраструктурные ошибки web3: ретрая почти всегда помогает.
@@ -408,6 +411,48 @@ class _CircuitBreaker:
             logger.info(f"Circuit breaker: state={self._state}, failures={self._failure_count}")
 
 
+class RpcNode:
+    """Оценка одного RPC-эндпоинта EMA-задержкой и долей ошибок.
+
+    Хорошая нода — низкий score. Ошибки штрафуются множителем, серия из более
+    трёх провалов помечает ноду мёртвой (исключается из ротации). Один успешный
+    пинг снимает флаг (zombie-воскрешение) — нода прозрачно возвращается.
+    """
+
+    __slots__ = ("url", "latency_ms", "errors", "successes", "is_dead")
+
+    _ZOMBIE_THRESHOLD = 3
+
+    def __init__(self, url: str) -> None:
+        self.url = url
+        self.latency_ms: float = 500.0  # пессимистичный старт до первого замера
+        self.errors: int = 0
+        self.successes: int = 1
+        self.is_dead: bool = False
+
+    @property
+    def score(self) -> float:
+        if self.is_dead:
+            return float("inf")
+        error_rate = self.errors / max(1, self.errors + self.successes)
+        return self.latency_ms * (1.0 + error_rate * 5.0)
+
+    def record(self, latency_ms: float, success: bool) -> None:
+        # EMA сглаживает спайки: 70% истории + 30% свежий замер.
+        self.latency_ms = self.latency_ms * 0.7 + latency_ms * 0.3
+        if success:
+            self.successes = min(100, self.successes + 1)
+            self.errors = max(0, self.errors - 1)
+            # Zombie-воскрешение: один успешный пинг возвращает ноду в ротацию,
+            # счётчик ошибок «прощается» (деградация была временной).
+            self.is_dead = False
+        else:
+            self.errors = min(100, self.errors + 1)
+            self.successes = max(0, self.successes - 1)
+            if self.errors > self._ZOMBIE_THRESHOLD:
+                self.is_dead = True
+
+
 class NetworkManager:
     def __init__(self, config: dict, db: Database) -> None:
         net = config["network"]
@@ -420,6 +465,10 @@ class NetworkManager:
         self.rpc_url = self._rpc_urls[0]
         self.chain_id = net["chain_id"]
         self._rpc_index = 0
+        # Оценка каждой ноды (EMA): используется для выбора лучшего эндпоинта
+        # и урезания параллелизма (concurrency_factor) при деградации.
+        self._nodes: list[RpcNode] = [RpcNode(url) for url in self._rpc_urls]
+        self._monitor_task: asyncio.Task | None = None
         self.w3 = self._connect_rpc(self.rpc_url)
         # Переиспользуемый провайдер для latency-замеров: HTTPProvider дорог в создании
         # и не закрывается в волюнтарном цикле, поэтому создаём один на эндпоинт.
@@ -493,6 +542,13 @@ class NetworkManager:
         self._circuit_breaker.log_status()
 
     async def close(self) -> None:
+        if self._monitor_task is not None:
+            self._monitor_task.cancel()
+            try:
+                await self._monitor_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._monitor_task = None
         # Закрываем все HTTP-провайдеры (TCP-сокеты): probe + основной RPC.
         for w3 in list(self._probe_w3.values()):
             await self._close_w3_provider(w3)
@@ -527,6 +583,77 @@ class NetworkManager:
         results = await asyncio.gather(*[self.latency_probe(url) for url in urls], return_exceptions=True)
         return [(url, r if isinstance(r, float) else None) for url, r in zip(urls, results, strict=True)]
 
+    # ---------------- оценка нод и выбор лучшего RPC ----------------
+
+    def _record_latency(self, url: str, latency_sec: float | None) -> None:
+        """Пишет свежий замер в EMA-оценку ноды (None = сбой/таймаут)."""
+        for node in self._nodes:
+            if node.url == url:
+                if latency_sec is None:
+                    node.record(_PING_TIMEOUT_MS, success=False)
+                else:
+                    node.record(latency_sec * 1000.0, success=True)
+                return
+
+    def best_rpc_url(self) -> str:
+        """URL лучшей живой ноды по скору. Если все мертвы — «наименее лагавший»."""
+        alive = [n for n in self._nodes if not n.is_dead]
+        pool = alive if alive else self._nodes
+        best = min(pool, key=lambda n: n.score)
+        return best.url
+
+    def node_health(self) -> list[dict]:
+        """Состояние всех эндпоинтов: адрес, задержка, скор, жив/мёртв (для UI)."""
+        return [
+            {
+                "url": _redact_rpc_url(n.url) or n.url,
+                "latency_ms": round(n.latency_ms, 1),
+                "score": None if n.is_dead else round(n.score, 1),
+                "dead": n.is_dead,
+                "errors": n.errors,
+            }
+            for n in self._nodes
+        ]
+
+    async def _monitor_rpc(self) -> None:
+        """Фоновый пинг всех нод; худшая выбывает из ротации, лучшая выбирается.
+
+        Пинг `eth_blockNumber` (лёгкий) раз в _RPC_MONITOR_INTERVAL сек. Мёртвая
+        нода получает шанс воскреснуть при первом успехе; EMT-оценка не даёт
+        ротатору дёргать URL из-за единичного таймаута.
+        """
+        while True:
+            try:
+                if self._nodes:
+                    probes = await self.probe_all()
+                    for url, latency in probes:
+                        self._record_latency(url, latency)
+                    best = self.best_rpc_url()
+                    if best != self.rpc_url and len(self._rpc_urls) > 1:
+                        logger.warning(
+                            "RPC ротация по здоровью: %s -> %s",
+                            _redact_rpc_url(self.rpc_url) or self.rpc_url,
+                            _redact_rpc_url(best) or best,
+                        )
+                        try:
+                            await self._switch_to(best)
+                        except Exception as e:
+                            logger.error(f"Ротация на лучший RPC не удалась: {e}")
+            except asyncio.CancelledError:
+                return
+            except Exception as e:
+                logger.error(f"Монитор RPC: {e}")
+            await asyncio.sleep(_RPC_MONITOR_INTERVAL)
+
+    def monitor_started(self) -> bool:
+        return self._monitor_task is not None and not self._monitor_task.done()
+
+    def start_monitor(self) -> None:
+        """Запускает фоновый монитор здоровья RPC (идемпотентно)."""
+        if self.monitor_started():
+            return
+        self._monitor_task = asyncio.create_task(self._monitor_rpc())
+
     def diagnostics(self, latency: list[float | None] | None = None) -> dict:
         """Сводка состояния RPC/метрик для экрана диагностики."""
         m = getattr(self, "_metrics", None)
@@ -540,6 +667,7 @@ class NetworkManager:
             "rpc_urls": self._rpc_urls,
             "active": self.rpc_url,
             "latency": latency,
+            "nodes": self.node_health(),
             "avg_ms": (total / max(calls, 1)) * 1000 if calls else None,
             "errors": errors,
             "calls": calls,
@@ -577,8 +705,20 @@ class NetworkManager:
 
         Когда узел деградирует, молотить его сотней воркеров контрпродуктивно
         (куча параллельных ретраев только усугубляет перегрузку). Пул читает
-        этот множитель каждый чанк и размер семерфора выбирает динамически.
+        этот множитель каждый чанк и размер воркер-пула выбирает динамически.
+        Учитываем и EMA-оценку нод: мёртвые/заторможенные эндпоинты режут
+        параллелизм, пока не подтянется metric (или не воскреснет нода).
         """
+        # Нода-победитель по EMA: её задержка — реальный потолок сегодня.
+        if self._nodes:
+            best = min(self._nodes, key=lambda n: (n.is_dead, n.score))
+            node_ms = best.latency_ms if not best.is_dead else float("inf")
+            if node_ms >= 2000:
+                return 0.3
+            if node_ms >= 1000:
+                return 0.5
+            if best.errors >= 3 or best.is_dead:
+                return 0.5
         h = self._metrics.health()
         if h["samples"] == 0 or h["samples"] < 5:
             return 1.0
@@ -611,17 +751,12 @@ class NetworkManager:
             except Exception as e:
                 logger.warning(f"Закрытие RPC-сессии не удалось: {e}")
 
-    async def _switch_rpc(self) -> None:
-        """Переключается на следующий RPC-эндпоинт (если доступен)."""
+    async def _switch_to(self, new_url: str) -> None:
+        """Переключается на конкретный RPC-эндпоинт (общая логика failover/ротации)."""
         if self._rpc_lock is None:
             self._rpc_lock = asyncio.Lock()
         async with self._rpc_lock:
-            if len(self._rpc_urls) <= 1:
-                return
-            self._rpc_index = (self._rpc_index + 1) % len(self._rpc_urls)
-            new_url = self._rpc_urls[self._rpc_index]
-            old_url = self.rpc_url
-            if new_url == old_url:
+            if new_url == self.rpc_url:
                 return
             # Сначала подключаемся к новому эндпоинту: если он не живой, старый
             # остаётся в рабочем состоянии, а состояние не «расщепляется».
@@ -632,12 +767,16 @@ class NetworkManager:
                 raise
             logger.warning(
                 "RPC failover: %s -> %s",
-                _redact_rpc_url(old_url) or old_url,
+                _redact_rpc_url(self.rpc_url) or self.rpc_url,
                 _redact_rpc_url(new_url) or new_url,
             )
             old_w3 = self.w3
             self.rpc_url = new_url
             self.w3 = new_w3
+            try:
+                self._rpc_index = self._rpc_urls.index(new_url)
+            except ValueError:
+                pass
             await self._close_w3_provider(old_w3)
             self._nonce_cache = _TTLCache(self._nonce_ttl)
             self._balance_cache = _TTLCache(self._balance_ttl)
@@ -647,6 +786,15 @@ class NetworkManager:
             self._rate_limiter = _RPCRateLimiter(self._rpc_rate)
             self._rate_limiter.recover_tokens(old_limiter)
             self._applied_rate = self._rpc_rate
+
+    async def _switch_rpc(self) -> None:
+        """Переключается на следующий RPC-эндпоинт (аварийный failover)."""
+        if len(self._rpc_urls) <= 1:
+            return
+        next_url = self._rpc_urls[(self._rpc_index + 1) % len(self._rpc_urls)]
+        if next_url == self.rpc_url:
+            return
+        await self._switch_to(next_url)
 
     async def run_retry(self, fn: Callable[..., _T], *args: Any) -> _T:
         """Запускает синхронный fn через executor с ретраями, failover и circuit breaker.
@@ -668,6 +816,9 @@ class NetworkManager:
                 last_err = e
                 if not _is_retryable_error(e):
                     raise
+                # Реальная ошибка текущего эндпоинта: штрафуем EMA-оценку ноды,
+                # чтобы ротатор по здоровью увидел деградацию раньше следующего пинга.
+                self._record_latency(self.rpc_url, None)
                 self._circuit_breaker.record_failure()
                 await self._switch_rpc()
                 if attempt < _RPC_RETRIES - 1:

@@ -9,6 +9,7 @@ import os
 import shutil
 import sqlite3
 from pathlib import Path
+from typing import overload
 
 import aiosqlite
 
@@ -34,13 +35,7 @@ def _restrict_backup_dir(directory: Path) -> None:
 _PRAGMAS = "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA cache_size=-64000; PRAGMA busy_timeout=5000;"
 
 
-def _redact_rpc_url(url: str | None) -> str | None:
-    """Очищает RPC URL от credentials и query-string перед хранением/выводом.
-
-    Публичные RPC-эндпоинты часто получают ключ через query (?api_key=...);
-    персистить или выводить такой URL (CLI --history, веб cycle-history) нельзя.
-    Схема и хоста достаточно для диагностики.
-    """
+def _redact_one(url: str) -> str:
     if not url:
         return url
     try:
@@ -51,6 +46,27 @@ def _redact_rpc_url(url: str | None) -> str | None:
         return url.split("?", 1)[0]
     netloc = parts.netloc.rsplit("@", 1)[-1]
     return urlunsplit((parts.scheme, netloc, parts.path, "", ""))
+
+
+@overload
+def _redact_rpc_url(url: list[str]) -> list[str]: ...
+
+
+@overload
+def _redact_rpc_url(url: str | None) -> str | None: ...
+
+
+def _redact_rpc_url(url: str | list[str] | None) -> str | list[str] | None:
+    """Очищает RPC URL от credentials и query-string перед хранением/выводом.
+
+    Публичные RPC-эндпоинты часто получают ключ через query (?api_key=...);
+        перситить или выводить такой URL (CLI --history, веб cycle-history) нельзя.
+        Схемы и хостов достаточно для диагностики. Список rpc_url обрабатывается
+        поэлементно (конфиг сети допускает несколько эндпоинтов).
+    """
+    if isinstance(url, list):
+        return [_redact_one(u) for u in url]
+    return _redact_one(url) if url is not None else None
 
 
 class Database:
