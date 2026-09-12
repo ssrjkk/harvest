@@ -26,6 +26,7 @@ from core.network import NetworkManager
 from core.performance import effective_chunk_size, effective_max_workers
 from core.utils import restrict_file_permissions
 from core.vibevibe import VibeVibeInterface
+from core.workpool import WorkerPool
 
 logger = logging.getLogger(__name__)
 
@@ -209,44 +210,64 @@ class FarmerPool:
         self,
         wallet: dict,
         all_addresses: list,
-        sem: asyncio.Semaphore,
         cycle_number: int = 0,
     ) -> tuple[str, int]:
         address = wallet["address"]
-        async with sem:
-            # «Отдых» по профилю: кошелёк пропускает несколько циклов подряд.
-            if cycle_number > 0 and cycle_number <= self._rest_until.get(address, 0):
-                logger.debug(f"  {address[:10]} отдыхает (профиль)")
-                return address, 0
-            profile = self._profile(address)
-            if not profile.neutral and profile.rest_prob > 0 and random.random() < profile.rest_prob:
-                n = random.randint(*profile.rest_cycles)
-                self._rest_until[address] = cycle_number + n
-                logger.info(f"  {address[:10]} ушёл на отдых ({n} цикл(ов), профиль)")
-                return address, 0
-            farmer = Farmer(
-                wallet,
-                self.config,
-                self.network,
-                self.executor,
-                self.faucet,
-                all_addresses,
-                profile=profile,
-            )
-            addr = address[:10]
-            try:
-                result = await asyncio.wait_for(farmer.run_cycle(), timeout=self.timeout)
-                if result > 0:
-                    logger.info(f"  {addr} +{result} действий")
-                return address, result
-            except TimeoutError:
-                logger.error(f"Таймаут для кошелька {addr}")
-                self.error_count += 1
-                return address, 0
-            except Exception as e:
-                logger.error(f"Ошибка в кошельке {addr}: {e}")
-                self.error_count += 1
-                return address, 0
+        # «Отдых» по профилю: кошелёк пропускает несколько циклов подряд.
+        if cycle_number > 0 and cycle_number <= self._rest_until.get(address, 0):
+            logger.debug(f"  {address[:10]} отдыхает (профиль)")
+            return address, 0
+        profile = self._profile(address)
+        if not profile.neutral and profile.rest_prob > 0 and random.random() < profile.rest_prob:
+            n = random.randint(*profile.rest_cycles)
+            self._rest_until[address] = cycle_number + n
+            logger.info(f"  {address[:10]} ушёл на отдых ({n} цикл(ов), профиль)")
+            return address, 0
+        # Staggered-вход: профиль задаёт задержку старта кошелька, чтобы pool
+        # «расползался вширь», а не стартовал всем фронтом и не ломал ноду.
+        if profile.start_delay > 0:
+            await asyncio.sleep(profile.start_delay)
+        farmer = Farmer(
+            wallet,
+            self.config,
+            self.network,
+            self.executor,
+            self.faucet,
+            all_addresses,
+            profile=profile,
+        )
+        addr = address[:10]
+        try:
+            result = await asyncio.wait_for(farmer.run_cycle(), timeout=self.timeout)
+            if result > 0:
+                logger.info(f"  {addr} +{result} действий")
+            return address, result
+        except TimeoutError:
+            logger.error(f"Таймаут для кошелька {addr}")
+            self.error_count += 1
+            return address, 0
+        except Exception as e:
+            logger.error(f"Ошибка в кошельке {addr}: {e}")
+            self.error_count += 1
+            return address, 0
+
+    async def _run_chunk_with_pool(
+        self,
+        worker_pool: WorkerPool,
+        chunk: list[dict],
+        all_addresses: list,
+        cycle_number: int,
+    ) -> dict[str, int]:
+        """Один чанк кошельков уходит в очередь воркер-пула целиком.
+
+        Воркеры вытягивают их по одному со staggered-стартом (спят start_delay
+        из профиля перед обработкой) и динамическим масштабированием по здоровью
+        RPC. Ждём полного исчерпания очереди и возвращаем {address: done_actions}.
+        """
+        for wallet in chunk:
+            await worker_pool.submit(wallet, all_addresses, cycle_number)
+        await worker_pool.join()
+        return {w["address"]: worker_pool.results.get(w["address"], 0) for w in chunk}
 
     async def run_once(
         self,
@@ -291,6 +312,15 @@ class FarmerPool:
         self._state.started_at = time.time()
         completed = True
 
+        # Один воркер-пул на весь прогон: живёт между чанками, монитор
+        # подстраивает число воркеров под здоровье RPC во время работы.
+        worker_pool = WorkerPool(
+            max_workers=self.max_workers,
+            worker_func=self._run_one,
+            health_fn=self.network.concurrency_factor,
+        )
+        await worker_pool.start()
+
         try:
             for chunk_start in range(0, len(wallets), self.chunk_size):
                 if stop_event is not None and stop_event.is_set():
@@ -305,27 +335,23 @@ class FarmerPool:
                     completed = False
                     break
                 chunk = wallets[chunk_start : chunk_start + self.chunk_size]
-                # Умная конкуренция: активный размер воркеров зависит от
-                # здоровья RPC прямо сейчас (нейрон ноде, а не молот).
-                self._health_factor = self.network.concurrency_factor()
-                self._last_workers = max(1, int(self.max_workers * self._health_factor))
-                sem = asyncio.Semaphore(self._last_workers)
-                tasks = [self._run_one(w, all_addresses, sem, effective_cycle) for w in chunk]
-                results = await asyncio.gather(*tasks, return_exceptions=True)
+                # Воркер-пул: кошельки идут в очередь, воркеры вытягивают их по
+                # одному. Вход плавный (staggered start из профиля), приоритеты
+                # (кран/send срочнее) поддерживаются, число воркеров подстраивается
+                # под здоровье RPC — вместо дружного старта всего чанка сразу.
+                results = await self._run_chunk_with_pool(worker_pool, chunk, all_addresses, effective_cycle)
+                self._health_factor = worker_pool.last_health
+                self._last_workers = worker_pool.current_workers
                 marked_this_chunk = 0
-                for i, r in enumerate(results):
-                    if isinstance(r, BaseException):
-                        logger.error(f"Wallet {chunk[i]['address'][:10]} exception: {r}")
-                        self.error_count += 1
-                        final.append((chunk[i]["address"], 0))
-                    else:
-                        final.append(r)
-                        self.action_count += r[1]
-                        # Crash recovery: отмечаем только адреса, реально прошедшие цикл.
-                        # Неуспех (0 действий) — кошелёк может восстановиться, не вычёркиваем его навсегда.
-                        if r[1] > 0:
-                            await self._state.mark_done(chunk[i]["address"])
-                            marked_this_chunk += 1
+                for w in chunk:
+                    r = results.get(w["address"], 0)
+                    final.append((w["address"], r))
+                    self.action_count += r
+                    # Crash recovery: отмечаем только адреса, реально прошедшие цикл.
+                    # Неуспех (0 действий) — кошелёк может восстановиться.
+                    if r > 0:
+                        await self._state.mark_done(w["address"])
+                        marked_this_chunk += 1
                     self.processed_count += 1
                 # Чанковая точка crash-state: закрывает окно между автосейвами
                 # mark_done (каждые 50) — при жёстком убийстве процесса теряется
@@ -351,6 +377,14 @@ class FarmerPool:
             except Exception as e:
                 logger.warning(f"Не удалось сбросить журнал действий при прерывании: {e}")
             raise
+        finally:
+            # Останавливаем воркер-пул: текущие задачи докручиваются (nonce не рвём),
+            # простаивающие воркеры завершаются. Никогда не маскируем оригинальную
+            # причину (исключение/отмену) ошибкой стопа.
+            try:
+                await worker_pool.stop()
+            except Exception as e:
+                logger.warning(f"Стоп воркер-пула: {e}")
 
         # Сохраняем финальное (или прерванное остановкой) состояние
         await self._state.save()

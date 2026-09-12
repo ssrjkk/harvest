@@ -109,5 +109,34 @@ class TestActionMultipliers(unittest.TestCase):
         self.assertEqual(p.action_multipliers, {})
 
 
+class TestStartDelay(unittest.TestCase):
+    def test_delay_clamped_low(self):
+        p = profile_for(ADDR_A, _cfg(start_delay=[-1.0, 2.0]))
+        self.assertGreaterEqual(p.start_delay, 0.0)
+        self.assertLessEqual(p.start_delay, 2.0)
+
+    def test_delay_clamped_high(self):
+        p = profile_for(ADDR_A, _cfg(start_delay=[0.0, 999.0]))
+        self.assertLessEqual(p.start_delay, 30.0)
+
+    def test_delay_deterministic(self):
+        p1 = profile_for(ADDR_A, _cfg(start_delay=[1.0, 5.0]))
+        p2 = profile_for(ADDR_A, _cfg(start_delay=[1.0, 5.0]))
+        self.assertEqual(p1.start_delay, p2.start_delay)
+
+    def test_delay_default_within_range(self):
+        p = profile_for(ADDR_A, _cfg())
+        self.assertGreaterEqual(p.start_delay, 0.0)
+        self.assertLessEqual(p.start_delay, 3.0)
+
+    def test_delay_invalid_falls_back_zero(self):
+        p = profile_for(ADDR_A, _cfg(start_delay="owo"))
+        self.assertEqual(p.start_delay, 0.0)
+
+    def test_delay_disabled_neutral(self):
+        p = profile_for(ADDR_A, _cfg(enabled=False, start_delay=[50.0, 70.0]))
+        self.assertEqual(p.start_delay, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -50,6 +50,7 @@ class WalletProfile:
     daily_window_strength: float = 0.0
     burst_prob: float = 0.0
     burst_mult: float = 1.5
+    start_delay: float = 0.0
     neutral: bool = False
 
 
@@ -107,6 +108,14 @@ def profile_for(address: str, config: dict) -> WalletProfile:
     burst_mult = max(1.0, min(5.0, float(_cfg(config, "burst_multiplier", 1.6))))
     rest_prob = max(0.0, min(1.0, float(_cfg(config, "rest_probability", 0.05))))
 
+    # Staggered start: детерминированный стартовый сдвиг кошелька (анти-сибил).
+    # Воркер-пул не стартует все кошельки одновременно — каждый входит плавно.
+    sd_range = _cfg(config, "start_delay", (0.0, 3.0))
+    if isinstance(sd_range, (list, tuple)) and len(sd_range) == 2:
+        start_delay = max(0.0, min(30.0, rng.uniform(float(sd_range[0]), float(sd_range[1]))))
+    else:
+        start_delay = 0.0
+
     return WalletProfile(
         activity=activity,
         rest_prob=rest_prob,
@@ -124,6 +133,7 @@ def profile_for(address: str, config: dict) -> WalletProfile:
         daily_window_strength=daily_window_strength,
         burst_prob=burst_prob,
         burst_mult=burst_mult,
+        start_delay=start_delay,
     )
 
 
