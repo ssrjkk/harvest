@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>HARVEST PORTAL</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="logo"><span class="badge">H</span><span>HARVEST PORTAL</span></div>
+      <div class="side">
+        <span id="who" class="muted"></span>
+        <button class="btn ghost" id="btnOut">Выйти</button>
+      </div>
+    </div>
+
+    <div class="status-row">
+      <span class="dot on" id="dot"></span>
+      <span id="statusText">—</span>
+      <span class="muted" id="healthText"></span>
+    </div>
+
+    <div class="tabs">
+      <button class="btn primary" id="btnStart">▶ Старт</button>
+      <button class="btn danger" id="btnStop">⏹ Стоп</button>
+      <button class="btn" id="btnPause">⏸ Пауза</button>
+      <button class="btn" id="btnResume">▶ Резюм</button>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div class="k">Действий</div><div class="v acc" id="cActions">0</div></div>
+      <div class="card"><div class="k">Ошибок</div><div class="v red" id="cErrors">0</div></div>
+      <div class="card"><div class="k">Обработано</div><div class="v grn" id="cProcessed">0</div></div>
+      <div class="card"><div class="k">Циклов</div><div class="v ylw" id="cCycles">0</div></div>
+      <div class="card"><div class="k">Воркеры</div><div class="v" id="cWorkers">—</div></div>
+    </div>
+
+    <div class="panel">
+      <h2>Пропускная способность (действий с течением времени)</h2>
+      <canvas class="spark" id="chart"></canvas>
+    </div>
+
+    <div class="panel" id="panelHistory">
+      <h2>История циклов</h2>
+      <table>
+        <thead><tr><th>#</th><th>Действий</th><th>Ошибок</th><th>Время, с</th><th>Кошельков</th></tr></thead>
+        <tbody id="tHistory"><tr><td colspan="5" class="muted">загрузка…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel" id="panelWallets">
+      <h2>Топ кошельков</h2>
+      <table>
+        <thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead>
+        <tbody id="tWallets"><tr><td colspan="3" class="muted">загрузка…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2 id="linksTitle">Ссылки</h2>
+      <div id="links"></div>
+    </div>
+
+    <footer>HARVEST PORTAL · единый пульт фермы · 2026</footer>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

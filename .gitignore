@@ -1,0 +1,48 @@
+# Базы данных и ключи
+*.db
+*.db-wal
+*.db-shm
+master.key
+master*.key
+*.license_cache
+
+# Экспорт кошельков (крипто-секреты)
+wallets_export*
+*/wallets_export*
+wallets_*.json
+wallets.json
+
+# Артефакты сборки PyInstaller и кэши
+build/
+dist/
+
+# Crash-рекавери state
+state.json
+
+# Логи
+*.log
+logs/
+
+# Кэши
+__pycache__/
+*.pyc
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.benchmarks/
+
+# Бэкапы БД оператора и временные выводы pytest
+.backup/
+pytest_*.txt
+
+# Живые конфиги и локальные артефакты (могут содержать RPC-ключи/URL)
+# Шаблоны, которые отслеживаются: config.example.yaml
+config.yaml
+config_*.yaml
+portal_config.yaml
+
+# Локальное состояние портала
+revoked_sessions.json
+license.json

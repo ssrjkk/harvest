@@ -1,0 +1,64 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {"internalType": "bytes32", "name": "taskType", "type": "bytes32"},
+        {"internalType": "uint256", "name": "difficulty", "type": "uint256"},
+        {"internalType": "bytes", "name": "inputData", "type": "bytes"}
+      ],
+      "name": "submitTask",
+      "outputs": [{"internalType": "bytes32", "name": "taskId", "type": "bytes32"}],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "bytes32", "name": "taskId", "type": "bytes32"},
+        {"internalType": "bool", "name": "isValid", "type": "bool"},
+        {"internalType": "bytes", "name": "proof", "type": "bytes"}
+      ],
+      "name": "validateTask",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
+      "name": "stake",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "uint256", "name": "amount", "type": "uint256"}],
+      "name": "unstake",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "address", "name": "agent", "type": "address"}],
+      "name": "registerAgent",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "agent", "type": "address"},
+        {"internalType": "uint256", "name": "computeUnits", "type": "uint256"}
+      ],
+      "name": "allocateCompute",
+      "outputs": [],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [{"internalType": "bytes32", "name": "taskType", "type": "bytes32"}],
+      "name": "getTaskReward",
+      "outputs": [{"internalType": "uint256", "name": "reward", "type": "uint256"}],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

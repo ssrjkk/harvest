@@ -1,0 +1,63 @@
+{
+  "abi": [
+    {
+      "inputs": [
+        {"internalType": "string", "name": "name", "type": "string"},
+        {"internalType": "string", "name": "symbol", "type": "string"},
+        {"internalType": "uint256", "name": "initialSupply", "type": "uint256"},
+        {"internalType": "uint256", "name": "initialLiquidity", "type": "uint256"}
+      ],
+      "name": "launchToken",
+      "outputs": [{"internalType": "address", "name": "tokenAddress", "type": "address"}],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "tokenIn", "type": "address"},
+        {"internalType": "address", "name": "tokenOut", "type": "address"},
+        {"internalType": "uint256", "name": "amountIn", "type": "uint256"},
+        {"internalType": "uint256", "name": "minAmountOut", "type": "uint256"}
+      ],
+      "name": "swap",
+      "outputs": [{"internalType": "uint256", "name": "amountOut", "type": "uint256"}],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "tokenA", "type": "address"},
+        {"internalType": "address", "name": "tokenB", "type": "address"},
+        {"internalType": "uint256", "name": "amountA", "type": "uint256"},
+        {"internalType": "uint256", "name": "amountB", "type": "uint256"}
+      ],
+      "name": "addLiquidity",
+      "outputs": [{"internalType": "uint256", "name": "lpTokens", "type": "uint256"}],
+      "stateMutability": "payable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "tokenA", "type": "address"},
+        {"internalType": "address", "name": "tokenB", "type": "address"},
+        {"internalType": "uint256", "name": "lpAmount", "type": "uint256"}
+      ],
+      "name": "removeLiquidity",
+      "outputs": [
+        {"internalType": "uint256", "name": "amountA", "type": "uint256"},
+        {"internalType": "uint256", "name": "amountB", "type": "uint256"}
+      ],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {"internalType": "address", "name": "token", "type": "address"}
+      ],
+      "name": "getTokenPrice",
+      "outputs": [{"internalType": "uint256", "name": "price", "type": "uint256"}],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ]
+}

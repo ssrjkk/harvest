@@ -1,0 +1,8 @@
+{
+  "title": "Наши ссылки",
+  "items": [
+    { "label": "Ссылка 1", "url": "https://example.com/1" },
+    { "label": "Ссылка 2", "url": "https://example.com/2" },
+    { "label": "Ссылка 3", "url": "https://example.com/3" }
+  ]
+}
