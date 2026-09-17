@@ -112,20 +112,24 @@ class VibeVibeInterface:
 
             args = (amount_wei,) if amount_wei is not None else ()
             nonce = await self.network.claim_nonce(from_addr)
-            gas_price = int(await self.network.get_gas_price() * gas_mult)
+            legacy_gas_price = int(await self.network.get_gas_price() * gas_mult)
+            # EIP-1559: dict с maxFeePerGas/maxPriorityFeePerGas при поддержке сетью,
+            # иначе None → legacy gasPrice ровно как раньше (graceful fallback, nonce не трогает)
+            fee_1559 = await self.network.get_fee_basis(gas_mult)
 
             def _build_tx() -> dict:
                 # Контракт берём свежим на каждой попытке: после RPC-failover
                 # self.w3 меняется, и закэшированный ранее contract укажет на старый провайдер
                 contract = self._get_contract(contract_address)
                 fn = getattr(contract.functions, method)
+                fee_fields = fee_1559 if fee_1559 else {"gasPrice": legacy_gas_price}
                 tx = fn(*args).build_transaction(
                     {
                         "from": from_addr,
                         "nonce": nonce,
-                        "gasPrice": gas_price,
                         "value": 0,
                         "chainId": self.network.chain_id,
+                        **fee_fields,
                     }
                 )
                 # оценка газа через estimateGas с ограничением configured gas_limit
@@ -146,15 +150,18 @@ class VibeVibeInterface:
             tx_hash = await self.network.send_raw_transaction(signed.raw_transaction)
             sent = True
             receipt = await self.network.wait_for_receipt(tx_hash)
-            if receipt is not None and receipt.get("status") == 1:
+            if receipt is None:
+                # Не дождались ресипта в пределах бюджета: tx принят в mempool,
+                # nonce занят — откатывать нельзя (может уйти в сеть позже).
+                logger.warning(f"Метод {method} unconfirmed: tx={tx_hash.hex()} (в mempool)")
+                return None
+            if receipt.get("status") != 1:
+                logger.warning(f"Метод {method} reverted: tx={tx_hash.hex()}, status={receipt.get('status')}")
                 self.network.invalidate_balance(from_addr)
-                return tx_hash.hex()
-            logger.warning(
-                f"Метод {method} reverted: tx={tx_hash.hex()}, status={receipt.get('status') if receipt else 'unknown'}"
-            )
+                await self.network.release_nonce(from_addr, nonce)
+                return None
             self.network.invalidate_balance(from_addr)
-            await self.network.release_nonce(from_addr, nonce)
-            return None
+            return tx_hash.hex()
         except Exception as e:
             logger.error(f"Контрактный вызов {method} ошибка: {e}")
             # Откатываем nonce только если транзакция гарантированно не ушла в сеть

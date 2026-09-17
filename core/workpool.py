@@ -15,6 +15,7 @@
 
 import asyncio
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
@@ -23,6 +24,9 @@ _GET_TIMEOUT = 0.05
 _MONITOR_INTERVAL = 5.0
 _HEALTH_MIN = 0.15
 _HEALTH_MAX = 1.0
+# Пауза перед воскрешением упавшего воркера; при серии подряд падений растёт
+# геометрически, чтобы устойчивый сбой не плодил шторм перезапусков.
+_WORKER_RESPAWN_DELAY = 1.0
 
 
 class WorkerPool:
@@ -65,6 +69,11 @@ class WorkerPool:
         # Последнее применённое здоровье и достигнутое число воркеров (для live_stats).
         self.last_health: float = _HEALTH_MAX
         self.current_workers: int = 0
+        # Автохил: статус воскрешения упавших воркеров.
+        self._respawn_pending = False
+        self._respawn_task: asyncio.Task | None = None
+        self._respawn_backoff = _WORKER_RESPAWN_DELAY
+        self._last_respawn_ts = 0.0
 
     # ---------------- очередь/задачи ----------------
 
@@ -146,9 +155,69 @@ class WorkerPool:
             await asyncio.sleep(self.monitor_interval)
 
     def _on_worker_done(self, task: asyncio.Task) -> None:
-        """Убирает завершившийся воркер из учёта (и из пенсионеров)."""
+        """Убирает завершившийся воркер из учёта; упавший — воскрешает.
+
+        Retire/stop-завершения (CancelledError или чистый выход) слот не занимают:
+        монитор сам сведёт число к target при скейлинге. Аварийное падение
+        с исключением — автохил: планируем респawn, пул не теряет мощность.
+        """
         self._workers.discard(task)
         self._retire.discard(task)
+        if task.cancelled():
+            self._drain_exception(task)
+            return
+        exc = task.exception()
+        if exc is not None:
+            logger.error(f"Воркер упал с ошибкой: {exc!r}")
+            self._schedule_respawn()
+
+    def _drain_exception(self, task: asyncio.Task) -> None:
+        """Извлекает исключение завершившейся задачи (гигиена asyncio).
+
+        Отменённый воркер (retire-остановка) поднимает CancelledError —
+        извлекаем его здесь, чтобы не копить «Task exception was never
+        retrieved» и не сжигать слоты отладочного вывода asyncio.
+        """
+        try:
+            task.exception()
+        except (asyncio.CancelledError, Exception):
+            pass
+
+    def _schedule_respawn(self) -> None:
+        """Планирует воскрешение слота после аварийного падения воркера.
+
+        Пауза — backoff: при серии подряд падений растёт до 4x
+        мониторингового интервала, после спокойного периода сбрасывается.
+        Не дублируем респawn, пока предыдущий уже запланирован.
+        """
+        if self._stopping or self._respawn_pending:
+            return
+        self._respawn_pending = True
+        now = time.monotonic()
+        if now - self._last_respawn_ts < self.monitor_interval:
+            self._respawn_backoff = min(self._respawn_backoff * 2, self.monitor_interval * 4)
+        else:
+            self._respawn_backoff = _WORKER_RESPAWN_DELAY
+        self._last_respawn_ts = now
+
+        async def _do_respawn() -> None:
+            try:
+                await asyncio.sleep(self._respawn_backoff)
+                if self._stopping:
+                    return
+                target = max(1, int(self.max_workers * self.last_health))
+                if len(self._workers) >= target:
+                    return
+                task = asyncio.create_task(self._worker_loop())
+                task.add_done_callback(self._on_worker_done)
+                self._workers.add(task)
+                logger.info("Автохил: воскрешён упавший воркер (пул снова у target)")
+            finally:
+                # Отменили во время паузы (stop) — слот не восстанавливаем,
+                # но и «зависшее» pending не оставляем.
+                self._respawn_pending = False
+
+        self._respawn_task = asyncio.get_running_loop().create_task(_do_respawn())
 
     async def start(self) -> None:
         """Запускает монитор (он сам создаёт и масштабирует воркеров)."""
@@ -171,6 +240,14 @@ class WorkerPool:
             except asyncio.CancelledError:
                 pass
             self._monitor_task = None
+        # Гасим запланированное воскрешение (стоп = не воскрешаем).
+        if self._respawn_task is not None:
+            self._respawn_task.cancel()
+            try:
+                await self._respawn_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._respawn_task = None
         # Простаивающие (на queue.get) завершаются по _stopping сразу; занятые —
         # докручивают текущий кошелёк и выходят после task_done.
         if self._workers:

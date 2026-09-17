@@ -46,3 +46,6 @@ portal_config.yaml
 # Локальное состояние портала
 revoked_sessions.json
 license.json
+
+# Артефакты покрытия
+.coverage

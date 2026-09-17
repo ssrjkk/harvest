@@ -1,6 +1,7 @@
 """Тесты пула: сохранение crash-state при отмене и восстановление прогресса."""
 
 import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -97,6 +98,47 @@ class TestPoolCrashRecovery(unittest.IsolatedAsyncioTestCase):
         finally:
             await pool.close()
             await db.close()
+
+
+class TestCycleStateSaveDebounce(unittest.IsolatedAsyncioTestCase):
+    """mark_done не переписывает state-файл O(n) на каждом 50-м адресе."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.dir = Path(self.td.name)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    async def test_save_debounced_by_time_and_batch(self):
+        from core.pool import _CycleState
+
+        clock = {"t": 0.0}
+        state = _CycleState(str(self.dir / "state.json"))
+        state._now = lambda: clock["t"]
+
+        for i in range(50):
+            await state.mark_done(f"0x{i + 1:040x}")
+        self.assertFalse(
+            (self.dir / "state.json").exists(),
+            "50 адресов за <2с — автосейв не дёргаем",
+        )
+
+        # Батч ≥50 И прошло ≥2с — только тогда пишем в файл.
+        clock["t"] += 3.0
+        await state.mark_done(f"0x{51:040x}")
+        path = self.dir / "state.json"
+        self.assertTrue(path.exists(), "батч ≥50 и ≥2с — сейв выполнен")
+        first = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(len(first["processed_addresses"]), 51)
+
+        # После свежего save счётчик обнулён: один адрес без батча не трогает файл,
+        # даже если время прошло.
+        clock["t"] += 5.0
+        await state.mark_done(f"0x{52:040x}")
+        second = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(len(second["processed_addresses"]), 51)
+        self.assertEqual(len(state.processed_addresses), 52, "память свежее файла")
 
 
 if __name__ == "__main__":

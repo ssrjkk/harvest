@@ -246,6 +246,15 @@ class TestCircuitBreaker(unittest.TestCase):
         cb.record_success()
         self.assertEqual(cb._failure_count, 0)
 
+    def test_reset_reopens(self):
+        cb = _CircuitBreaker(failure_threshold=2, recovery_timeout=30)
+        cb.record_failure()
+        cb.record_failure()
+        self.assertFalse(cb.allow_request())  # OPEN блокирует
+        cb.reset()
+        self.assertEqual(cb._state, "CLOSED")
+        self.assertTrue(cb.allow_request())
+
 
 class TestRPCMetrics(unittest.TestCase):
     def test_snapshot_resets(self):
@@ -342,6 +351,49 @@ class TestSwitchRpc(unittest.TestCase):
                 net = NetworkManager(cfg, MagicMock())
                 await net._switch_rpc()  # не должен менять state и не падать
                 self.assertEqual(net.rpc_url, "https://only.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_switch_resets_circuit_breaker(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        def _connect(self, url):
+            return MagicMock()
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", _connect):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                # Доводим CB до OPEN (как серия транспортных сбоев на a.example)
+                for _ in range(net._circuit_breaker._failure_threshold):
+                    net._circuit_breaker.record_failure()
+                self.assertFalse(net._circuit_breaker.allow_request())
+                # Failover на свежий эндпоинт: окно ошибок обнуляется —
+                # иначе здоровый узел b остался бы заблокированным до recovery.
+                await net._switch_rpc()
+                self.assertEqual(net.rpc_url, "https://b.example.com/rpc")
+                self.assertTrue(net._circuit_breaker.allow_request())
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_close_idempotent(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        def _connect(self, url):
+            return MagicMock()
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", _connect):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                await net.close()
+                await net.close()  # повторный close — no-op, не падает
+                self.assertTrue(net._closed)
+                # ресурсы можно освобождать и после закрытия
                 await net.close()
 
         asyncio.run(scenario())
@@ -470,6 +522,279 @@ class TestRpcRotation(unittest.TestCase):
                 await net.close()
 
         asyncio.run(scenario())
+
+    def test_diagnostics_redacts_urls(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                cfg = {
+                    "network": {
+                        "rpc_url": ["https://user:pass@a.example.com/rpc?api_key=sekret"],
+                        "chain_id": 288,
+                    }
+                }
+                net = NetworkManager(cfg, MagicMock())
+                d = net.diagnostics()
+                self.assertNotIn("user", d["active"])
+                self.assertNotIn("api_key", d["active"])
+                self.assertNotIn("sekret", d["rpc_urls"][0])
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_monitor_skipped_single_endpoint(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                cfg = {"network": {"rpc_url": ["https://only.example.com/rpc"], "chain_id": 288}}
+                net = NetworkManager(cfg, MagicMock())
+                # С одной нодой выбирать не из кого: фоновый монитор не нужен,
+                # здоровье питается от реальных вызовов (run_in_executor).
+                net.start_monitor()
+                self.assertFalse(net.monitor_started())
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_monitor_started_multi_endpoint(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                net.start_monitor()
+                self.assertTrue(net.monitor_started())
+                await net.close()  # close отменяет задачу монитора
+
+        asyncio.run(scenario())
+
+    def test_latency_probe_skips_rate_limiter_and_metrics(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                # Почти пустой бакет: бизнес-вызов взял бы токен, проба — нет.
+                net._rate_limiter._tokens = 1.0
+                calls_on_entry = net._metrics.snapshot()["calls"]
+                await net.latency_probe("https://a.example.com/rpc")
+                self.assertEqual(net._metrics.snapshot()["calls"], calls_on_entry)
+                self.assertEqual(net._rate_limiter.tokens, 1.0)
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_business_call_records_ema_and_resurrects(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                node = net._nodes[0]
+                for _ in range(4):
+                    node.record(2500.0, success=False)
+                self.assertTrue(node.is_dead)
+                # Успешный бизнес-вызов (run_in_executor) пишет EMA и воскрешает
+                # ноду даже без фонового монитора — единственный живой сигнал при
+                # single-endpoint конфигах.
+                result = await net.run_in_executor(lambda: 42)
+                self.assertEqual(result, 42)
+                self.assertFalse(node.is_dead)
+                self.assertLess(node.latency_ms, 2000.0)
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_wait_for_receipt_failover_on_poll_errors(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                calls = {"n": 0, "switch": 0}
+
+                async def flaky_poll(fn):
+                    calls["n"] += 1
+                    if calls["n"] <= 3:
+                        raise ConnectionError("node went silent")
+                    return {"status": 1}
+
+                async def fake_switch():
+                    calls["switch"] += 1
+
+                net.run_in_executor = flaky_poll  # подмена через instance-атрибут
+                net._switch_rpc = fake_switch
+                receipt = await net.wait_for_receipt("0x" + "ab" * 32, timeout=5)
+                self.assertIsNotNone(receipt)
+                self.assertEqual(calls["switch"], 1, "после серии ошибок поллинга делаем failover")
+                self.assertGreaterEqual(calls["n"], 4)
+                self.assertTrue(net._nodes[0].errors > 0, "ошибки поллинга штрафуют EMA ноды")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_wait_for_receipt_single_node_no_failover(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                cfg = {"network": {"rpc_url": ["https://only.example.com/rpc"], "chain_id": 288}}
+                net = NetworkManager(cfg, MagicMock())
+                calls = {"n": 0}
+
+                async def flaky_poll(fn):
+                    calls["n"] += 1
+                    if calls["n"] <= 3:
+                        raise ConnectionError("boom")
+                    return {"status": 1}
+
+                net.run_in_executor = flaky_poll
+                # Один эндпоинт: реальный _switch_rpc ничего не переключает,
+                # поллинг жив и дожидается ресипта на той же ноде.
+                receipt = await net.wait_for_receipt("0x" + "cd" * 32, timeout=5)
+                self.assertIsNotNone(receipt)
+                self.assertEqual(net.rpc_url, "https://only.example.com/rpc")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_wait_for_receipt_returns_none_on_budget(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                calls = {"n": 0}
+
+                async def not_mined_yet(fn):
+                    calls["n"] += 1
+                    return None  # ресипта нет — поллим, пока не кончится бюджет
+
+                net.run_in_executor = not_mined_yet
+                receipt = await net.wait_for_receipt(bytes.fromhex("ef" * 32), timeout=0.3)
+                # По истечении бюджета — None (не TimeoutError): воркер не стоит в ступоре.
+                self.assertIsNone(receipt)
+                self.assertGreaterEqual(calls["n"], 1)
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_receipt_timeout_default_and_config(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                self.assertEqual(net._receipt_timeout, 30.0)
+                await net.close()
+                cfg = {
+                    "network": {"rpc_url": ["https://a.example.com/rpc"], "chain_id": 288},
+                    "advanced": {"receipt_timeout": 12},
+                }
+                net2 = NetworkManager(cfg, MagicMock())
+                self.assertEqual(net2._receipt_timeout, 12.0)
+                await net2.close()
+
+        asyncio.run(scenario())
+
+
+class TestRpcMonitorWatchdog(unittest.IsolatedAsyncioTestCase):
+    """Сторож монитора RPC: неожиданный крах -> перезапуск, отмена -> нет."""
+
+    _CONFIG = {
+        "network": {
+            "rpc_url": ["https://a.example.com/rpc", "https://b.example.com/rpc"],
+            "chain_id": 288,
+        }
+    }
+
+    async def test_crashed_monitor_is_revived(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+            net = NetworkManager(self._CONFIG, MagicMock())
+            calls = {"n": 0}
+            orig_loop = NetworkManager._monitor_rpc
+
+            async def crash_first(self):
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    raise RuntimeError("simulated crash outside try")
+                await orig_loop(self)
+
+            async def quiet_probe():
+                return []
+
+            net.probe_all = quiet_probe
+            net._monitor_rpc = crash_first.__get__(net, type(net))
+            net.start_monitor()
+            # Первый прогон крашится, сторожа перезапускает с backoff=1с.
+            await asyncio.sleep(1.3)
+            self.assertEqual(calls["n"], 2, "после краха монитор перезапущен")
+            self.assertTrue(net.monitor_started())
+            # Стоп: вложенная задача гасится, повторных запусков нет.
+            net._monitor_task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await net._monitor_task
+            self.assertEqual(calls["n"], 2, "после стопа рестартов нет")
+            del net._monitor_rpc
+            del net.probe_all
+            net._monitor_task = None
+            await net.close()
+
+    async def test_cancel_does_not_restart(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+            net = NetworkManager(self._CONFIG, MagicMock())
+            calls = {"n": 0}
+            real_loop = NetworkManager._monitor_rpc
+
+            async def counting(self):
+                calls["n"] += 1
+                await real_loop(self)
+
+            async def quiet_probe():
+                return []
+
+            net.probe_all = quiet_probe
+            net._monitor_rpc = counting.__get__(net, type(net))
+            net.start_monitor()
+            await asyncio.sleep(0.05)
+            self.assertGreaterEqual(calls["n"], 1, "монитор запущен")
+            net._monitor_task.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await net._monitor_task
+            # Если бы сторожа перезапускал задачу после отмены, было бы >= 2.
+            self.assertEqual(calls["n"], 1, "отмена монитора — не повод для рестарта")
+            del net._monitor_rpc
+            del net.probe_all
+            net._monitor_task = None
+            await net.close()
 
 
 if __name__ == "__main__":

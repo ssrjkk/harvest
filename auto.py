@@ -13,6 +13,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import random
 import signal
 import sys
@@ -46,7 +47,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cycles", type=int, default=0, help="Циклов фарма (0=бесконечно)")
     p.add_argument(
         "--config",
-        default="config.yaml",
+        default=os.environ.get("FARMER_CONFIG", "config.yaml"),
         help="Конфиг (config_robinhood.yaml / config_flop.yaml / config_arc.yaml)",
     )
     p.add_argument("--skip-faucet", action="store_true", help="Пропустить кран (уже есть баланс)")

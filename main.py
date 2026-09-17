@@ -486,7 +486,7 @@ async def screen_rpc_diag(u: ui.UI, config: dict, db: Database) -> None:
             ["Эндпоинт", "Задержка", "Статус"],
             [
                 [
-                    url,
+                    _redact_rpc_url(url) or url,
                     f"{ms:.0f} мс" if ms is not None else "—",
                     f"{u.dot(ms)} {'OK' if ms is not None else 'FAIL'}",
                 ]

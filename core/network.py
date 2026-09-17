@@ -70,6 +70,9 @@ _RPC_RETRIES = 3
 
 _RPC_MONITOR_INTERVAL = 30.0
 _PING_TIMEOUT_MS = 2500.0
+# Серия ошибок поллинга ресипта, после которой нода считается упавшей:
+# переключаемся на другой эндпоинт и продолжаем ждать (поллинг идемпотентен).
+_RPC_POLL_FAILOVER_THRESHOLD = 3
 
 _T = TypeVar("_T")
 
@@ -406,6 +409,17 @@ class _CircuitBreaker:
             return False
         return True
 
+    def reset(self) -> None:
+        """Возвращает breaker в CLOSED (используется при смене RPC-эндпоинта).
+
+        Счётчик ошибок относится к текущему эндпоинту: после failover новый
+        узел не должен наследовать OPEN-состояние старого (иначе здоровый
+        эндпоинт остаётся заблокированным до recovery_timeout).
+        """
+        self._state = "CLOSED"
+        self._failure_count = 0
+        self._half_open_attempted = False
+
     def log_status(self) -> None:
         if self._state != "CLOSED":
             logger.info(f"Circuit breaker: state={self._state}, failures={self._failure_count}")
@@ -487,6 +501,14 @@ class NetworkManager:
         self._gas_price_cache = _TTLCache(self._gas_ttl)
         self._balance_cache = _TTLCache(self._balance_ttl)
         self._nonce_cache = _TTLCache(self._nonce_ttl)
+        # EIP-1559: capability probe один раз, fee из feeHistory кэшируем как cash-бasis.
+        # None → ещё не пробовали; True/False → поддержка сети (не rescan кэша).
+        # Рубильник advanced.eip1559 (по умолчанию True): если на конкретной ноде
+        # нестандартный gas-market даёт сбои 1559-полей — выключаем одной настройкой,
+        # не правкой кода. False → ровно legacy-поведение, nonce не трогает.
+        self._eip1559_capability: bool | None = None
+        self._eip1559_enabled = bool(config.get("advanced", {}).get("eip1559", True))
+        self._gas_priority_cache = _TTLCache(self._gas_ttl * 4)
         # Rate limiter, метрики и circuit breaker
         self._rpc_rate = config.get("cache", {}).get("rpc_rate_limit", 50)
         self._rate_limiter = _RPCRateLimiter(self._rpc_rate)
@@ -498,6 +520,9 @@ class NetworkManager:
             failure_threshold=cb_conf.get("cb_failure_threshold", 5),
             recovery_timeout=cb_conf.get("cb_recovery_timeout", 30),
         )
+        # Бюджет ожидания ресипта: воркер не должен висеть до 120с на медленной
+        # сети/мёртвой трансляции — превышение = tx «в mempool», статус не сбой.
+        self._receipt_timeout = float(config.get("advanced", {}).get("receipt_timeout", 30))
 
     def _connect_rpc(self, url: str) -> Web3:
         if url.startswith("http://"):
@@ -542,6 +567,11 @@ class NetworkManager:
         self._circuit_breaker.log_status()
 
     async def close(self) -> None:
+        # Владельцев ресурса несколько (пул, экраны, doctor): close идемпотентен,
+        # повторный вызов ничего не делает (executor нельзя shutdown дважды).
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         if self._monitor_task is not None:
             self._monitor_task.cancel()
             try:
@@ -564,7 +594,11 @@ class NetworkManager:
             await asyncio.get_running_loop().run_in_executor(None, _join_threads_bounded, threads, limit)
 
     async def latency_probe(self, url: str | None = None) -> float | None:
-        """Замеряет задержку (сек) до RPC-эндпоинта. None при недоступности."""
+        """Замеряет задержку (сек) до RPC-эндпоинта. None при недоступности.
+
+        Проба — диагностика, а не бизнес-трафик: идёт мимо rate-limiter и
+        метрик (не тратит токены, не искажает calls/avg_ms в diagnostics).
+        """
         target = url or self.rpc_url
         try:
             w3 = self._probe_w3.get(target)
@@ -572,7 +606,7 @@ class NetworkManager:
                 w3 = Web3(Web3.HTTPProvider(target, request_kwargs={"timeout": 10}))
                 self._probe_w3[target] = w3
             t0 = time.monotonic()
-            await self.run_in_executor(lambda: w3.eth.block_number)
+            await asyncio.get_running_loop().run_in_executor(self._executor, lambda: w3.eth.block_number)
             return time.monotonic() - t0
         except Exception:
             return None
@@ -615,6 +649,22 @@ class NetworkManager:
             for n in self._nodes
         ]
 
+    def _node_poll_degraded(self) -> bool:
+        """EMA-здоровье активной ноды для регулировки частоты поллинга.
+
+        True, если текущая нода мертва, накопила лишние ошибки подряд или
+        лагает сверх пинг-таймаута — тогда wait_for_receipt опрашивает её
+        реже (экономит RPC-лимит и не досыпает спрос на больную ноду).
+        """
+        for node in self._nodes:
+            if node.url == self.rpc_url:
+                if node.is_dead:
+                    return True
+                if node.errors >= _RPC_POLL_FAILOVER_THRESHOLD:
+                    return True
+                return node.latency_ms > _PING_TIMEOUT_MS
+        return False
+
     async def _monitor_rpc(self) -> None:
         """Фоновый пинг всех нод; худшая выбывает из ротации, лучшая выбирается.
 
@@ -640,22 +690,57 @@ class NetworkManager:
                         except Exception as e:
                             logger.error(f"Ротация на лучший RPC не удалась: {e}")
             except asyncio.CancelledError:
-                return
+                raise
             except Exception as e:
                 logger.error(f"Монитор RPC: {e}")
             await asyncio.sleep(_RPC_MONITOR_INTERVAL)
+
+    async def _monitor_supervisor(self) -> None:
+        """Сторож фонового монитора RPC.
+
+        Если _monitor_rpc внезапно завершится (баг вне его try-блока, будущий
+        рефакторинг, неожиданный возврат) — перезапускаем с экспоненциальным
+        backoff, чтобы ротация по здоровью и накопление задержек не вымерли
+        сами по себе. Отмена (close) прокидывается наверх без перезапуска,
+        вложенная задача гасится, чтобы не остаться сиротой.
+        """
+        backoff = 1.0
+        while True:
+            task = asyncio.create_task(self._monitor_rpc())
+            try:
+                await task
+                logger.critical(f"Монитор RPC неожиданно завершился; перезапуск через {backoff:.1f}с")
+            except asyncio.CancelledError:
+                task.cancel()
+                raise
+            except Exception as e:
+                logger.critical(f"Монитор RPC умер ({e}); перезапуск через {backoff:.1f}с")
+            await asyncio.sleep(backoff)
+            backoff = min(backoff * 2, _RPC_MONITOR_INTERVAL)
 
     def monitor_started(self) -> bool:
         return self._monitor_task is not None and not self._monitor_task.done()
 
     def start_monitor(self) -> None:
-        """Запускает фоновый монитор здоровья RPC (идемпотентно)."""
+        """Запускает фоновый монитор здоровья RPC (идемпотентно).
+
+        С одним эндпоинтом монитор бессмыслен (не из кого выбирать) — не жжём
+        RPC-лимит пингами; деградацию единственной ноды всё равно ловят
+        метрики через concurrency_factor (адаптивная ставка/параллелизм).
+        """
+        if len(self._rpc_urls) <= 1:
+            return
         if self.monitor_started():
             return
-        self._monitor_task = asyncio.create_task(self._monitor_rpc())
+        self._monitor_task = asyncio.create_task(self._monitor_supervisor())
 
     def diagnostics(self, latency: list[float | None] | None = None) -> dict:
-        """Сводка состояния RPC/метрик для экрана диагностики."""
+        """Сводка состояния RPC/метрик для экрана диагностики.
+
+        URL-ы отдаются redacted (без credentials/query-token): этот словарь
+        печатается в UI и может уйти в логи/панели — сырой URL с API-ключом
+        не должен покидать менеджер.
+        """
         m = getattr(self, "_metrics", None)
         cb = getattr(self, "_circuit_breaker", None)
         state = getattr(cb, "_state", "CLOSED")
@@ -664,8 +749,8 @@ class NetworkManager:
         errors = getattr(m, "errors", 0) if m else 0
         total = getattr(m, "total_time", 0.0) if m else 0.0
         return {
-            "rpc_urls": self._rpc_urls,
-            "active": self.rpc_url,
+            "rpc_urls": [_redact_rpc_url(u) or u for u in self._rpc_urls],
+            "active": _redact_rpc_url(self.rpc_url) or self.rpc_url,
             "latency": latency,
             "nodes": self.node_health(),
             "avg_ms": (total / max(calls, 1)) * 1000 if calls else None,
@@ -690,7 +775,12 @@ class NetworkManager:
         t0 = time.monotonic()
         try:
             result = await asyncio.get_running_loop().run_in_executor(self._executor, fn, *args)
-            self._metrics.record(time.monotonic() - t0)
+            elapsed = time.monotonic() - t0
+            self._metrics.record(elapsed)
+            # Успешный вызов — свежий сигнал здоровья активной ноды: обновляет
+            # EMA-латентность и «воскрешает» мёртвую ноду первым же успехом
+            # (работает даже без фонового монитора, напр. с одним эндпоинтом).
+            self._record_latency(self.rpc_url, elapsed)
             return result
         except Exception:
             self._metrics.record(time.monotonic() - t0, error=True)
@@ -777,6 +867,10 @@ class NetworkManager:
                 self._rpc_index = self._rpc_urls.index(new_url)
             except ValueError:
                 pass
+            # Circuit breaker считает ошибки ТЕКУЩЕГО эндпоинта: новый узел
+            # стартует с чистого окна (иначе OPEN старого узла блокировал бы
+            # и здоровый новый до recovery_timeout).
+            self._circuit_breaker.reset()
             await self._close_w3_provider(old_w3)
             self._nonce_cache = _TTLCache(self._nonce_ttl)
             self._balance_cache = _TTLCache(self._balance_ttl)
@@ -806,6 +900,17 @@ class NetworkManager:
         last_err: BaseException | None = None
         for attempt in range(_RPC_RETRIES):
             if not self._circuit_breaker.allow_request():
+                # Breaker OPEN: текущая нода стабильно падает. Если есть запасной
+                # эндпоинт — сразу failover (а не стоим recovery_timeout впустую
+                # и не режем каждый кошелёк цикла до результата 0).
+                # _switch_to сбрасывает breaker — следующий круг потенциально
+                # разрешён. Гарантируем прогресс: только когда реально сменили
+                # эндпоинт (иначе best==current и крутимся бесконечно).
+                if len(self._rpc_urls) > 1:
+                    best = self.best_rpc_url()
+                    if best != self.rpc_url:
+                        await self._switch_to(best)
+                        continue
                 logger.warning("Circuit breaker OPEN, skipping RPC call")
                 raise last_err or ConnectionError("Circuit breaker OPEN")
             try:
@@ -916,29 +1021,197 @@ class NetworkManager:
         self._gas_price_cache.set("gas_price", price)
         return price
 
-    async def wait_for_receipt(self, tx_hash, timeout: int = 120) -> dict | None:
-        """Ждёт ресипт с адаптивным поллингом и поддержкой отмены."""
+    # ---------------- EIP-1559 fee market (авто-детект с graceful fallback) ----------------
+
+    async def get_fee_basis(
+        self, gas_price_mult: float, priority_mult: float = 1.0
+    ) -> dict | None:
+        """Возвращает 1559-поля для tx: maxFeePerGas/maxPriorityFeePerGas.
+
+        Авто-детект: при первом вызове пробуем eth_feeHistory + baseFeePerGas.
+        Если сеть поддерживает 1559 — отдаём (max_fee, max_priority) с EMA-истории;
+        иначе None → caller использует legacy gasPrice (ровно прежнее поведение).
+        Capability кэшируется, чтобы probe не повторился на каждый tx.
+        Nonce не затрагивается: меняются только поля газа.
+
+        gas_price_mult — множитель к market fee (аналог gas_price_mult legacy).
+        priority_mult — множитель к maxPriorityFeePerGas.
+        """
+        if not self._eip1559_enabled:
+            # Рубильник advanced.eip1559=False → не пробуем 1559 вовсе,
+            # legacy gasPrice ровно как раньше (nonce не трогает).
+            return None
+        if self._eip1559_capability is False:
+            return None
+        if self._gas_priority_cache.get("fee_basis") is not None:
+            cached = self._gas_priority_cache.get("fee_basis")
+            if cached is not None:
+                max_fee, max_priority = cached
+                return self._build_1559_fields(max_fee, max_priority, gas_price_mult, priority_mult)
+
+        try:
+            # Запрашиваем последние 2 блока — хватает для base_fee и priority
+            fee_history = await self.run_retry(
+                lambda: self.w3.eth.fee_history(2, "latest", [50.0])
+            )
+            base_fees = fee_history.get("baseFeePerGas", [])
+            if not base_fees:
+                raise ValueError("feeHistory не вернул baseFeePerGas")
+            base_fee = int(max(base_fees))
+            # Приоритет-плата: максимальная из истории (rewards) либо 1 gwei
+            rewards = fee_history.get("reward", [])
+            flat = [float(r[0]) for r in rewards if r and r[0] is not None] if rewards else []
+            max_priority = int(max(flat)) if flat else Web3.to_wei(1, "gwei")
+            max_priority = max(max_priority, Web3.to_wei(1, "gwei"))
+            self._eip1559_capability = True
+            self._gas_priority_cache.set("fee_basis", (base_fee, max_priority))
+            return self._build_1559_fields(base_fee, max_priority, gas_price_mult, priority_mult)
+        except Exception as e:
+            logger.debug(f"EIP-1559 недоступен (legacy fallback): {e}")
+            self._eip1559_capability = False
+            return None
+
+    def _build_1559_fields(
+        self, base_fee: int, max_priority: int, gas_price_mult: float, priority_mult: float
+    ) -> dict:
+        max_fee = int((base_fee + max_priority) * gas_price_mult) + max_priority
+        return {
+            "maxFeePerGas": max_fee,
+            "maxPriorityFeePerGas": int(max_priority * priority_mult),
+        }
+
+    def _secondary_live_node(self) -> RpcNode | None:
+        """Лучшая ЖИВАЯ неактивная нода для read-only кросс-чека (None если одна)."""
+        if len(self._rpc_urls) <= 1:
+            return None
+        others = [n for n in self._nodes if n.url != self.rpc_url and not n.is_dead]
+        if not others:
+            return None
+        return min(others, key=lambda n: n.score)
+
+    async def _crosscheck_receipt_status(
+        self, tx_hash, primary_status: int
+    ) -> int:
+        """Пере-спрашивает ресипт на независимой вторичной ноде (read-only).
+
+        Вызывается ТОЛЬКО на «дорогом» решении — когда primary вернула
+        не-success (revert) или сама деградировала. Одна лживая/форкнутая нода
+        не должна решать судьбу заявки: читаем статус с живой второй ноды.
+        Не консенсус на happy-path — здоровый ресипт (status=1) не тратит
+        второй RPC-вызов и не штрафует EMA.
+
+        Возвращает консервативный итог: revert любой из нод перевешивает
+        успех (дыра хуже редкого ложного отрицания). Nonce/бронь не
+        затрагиваются — это чистое чтение из блокчейна.
+        """
+        secondary = self._secondary_live_node()
+        if secondary is None:
+            # Один эндпоинт — кросс-чек невозможен, доверяем тому, что есть
+            # (ровно прежнее поведение, failover тут ни при чём).
+            return primary_status
+        try:
+            t0 = time.monotonic()
+            sec_w3 = self._connect_rpc(secondary.url)
+            try:
+                raw = await self.run_in_executor(
+                    lambda: sec_w3.eth.get_transaction_receipt(tx_hash)
+                )
+            finally:
+                await self._close_w3_provider(sec_w3)
+            if raw is None:
+                # Переголосовавшая нода ресипт ещё не видит — не доверяем
+                # её «нет» на неопределённость: revert primary остаётся.
+                self._record_latency(secondary.url, None)
+                return primary_status
+            sec_status = raw.get("status")
+            latency = time.monotonic() - t0
+            self._record_latency(secondary.url, latency)
+            if sec_status == primary_status:
+                return primary_status
+            # Расхождение: одна из нод врёт/форкнута. Консервативно —
+            # revert перевешивает успех. Штрафуем то, что не согласовалось
+            # с мажоритарным прочтением.
+            logger.warning(
+                f"Кросс-чек ресипта: status расходятся (primary={primary_status}, "
+                f"secondary={sec_status}, tx={tx_hash.hex()[:10]}) — консервативно revert"
+            )
+            if sec_status == 0:
+                self._record_latency(self.rpc_url, None)
+                return 0
+            # primary показывает revert, secondary — успех: доверяем вторичной,
+            # но первичную штрафуем (она могла показать несуществующий реверт).
+            self._record_latency(self.rpc_url, None)
+            return sec_status
+        except Exception as e:
+            logger.debug(f"Кросс-чек ресипта не удался (вторичная): {e}")
+            return primary_status
+
+    async def wait_for_receipt(
+        self, tx_hash: bytes, timeout: float | None = None
+    ) -> dict | None:
+        """Ждёт ресипт с адаптивным поллингом и поддержкой отмены.
+
+        timeout=None → advanced.receipt_timeout (по умолчанию 30с). По
+        истечении бюджета возвращает None вместо TimeoutError — транзакция
+        принята в mempool, ресипт просто ещё не пришёл (медленная сеть):
+        воркер не должен простаивать в 120-сек ступоре. Ресипт со status=0
+        (reverted) вернётся как есть — разбор в send_transfer.
+        """
+        budget = timeout if timeout is not None else self._receipt_timeout
         start = time.monotonic()
-        deadline = start + timeout
+        deadline = start + budget
         # Ресипт обычно приходит в первые секунды — поллим часто, а после
         # длительного ожидания снижаем частоту, чтобы не жечь RPC-лимит.
-        poll_interval = 0.3
+        poll_interval = 0.5
         warned_once = False
+        consecutive_poll_errors = 0
         try:
             while True:
                 try:
                     receipt = await self.run_in_executor(lambda: self.w3.eth.get_transaction_receipt(tx_hash))
                     if receipt is not None:
                         return receipt
+                    consecutive_poll_errors = 0
                 except Exception as e:
+                    # Штрафуем EMA ноды: пусть ротатор/адаптивная ставка увидят
+                    # деградацию раньше следующего пинга монитора (30с).
+                    self._record_latency(self.rpc_url, None)
+                    consecutive_poll_errors += 1
                     if not warned_once:
                         logger.warning(f"wait_for_receipt: ошибка RPC при поллинге (продолжаю): {e}")
                         warned_once = True
+                    # Автохил: нода молчит на поллинге — переключаемся на другую.
+                    # Иначе кошелёк простаивает до полного таймаута (120с), а
+                    # поллинг get_transaction_receipt идемпотентен (повтор любого
+                    # эндпоинта безопасен — ресипт читается из блокчейна, не из ноды).
+                    if consecutive_poll_errors >= _RPC_POLL_FAILOVER_THRESHOLD:
+                        if len(self._rpc_urls) > 1:
+                            logger.warning(
+                                "wait_for_receipt: %s ошибок поллинга подряд — RPC failover",
+                                consecutive_poll_errors,
+                            )
+                        consecutive_poll_errors = 0
+                        try:
+                            await self._switch_rpc()
+                        except Exception as switch_err:  # noqa: BLE001
+                            logger.warning(f"wait_for_receipt: не удалось переключить RPC: {switch_err}")
                 if time.monotonic() >= deadline:
-                    raise TimeoutError(f"wait_for_receipt timeout ({timeout}s) for tx")
+                    logger.warning(
+                        f"wait_for_receipt: ресипт не пришёл за {budget:.0f}с (tx={tx_hash.hex()[:10]}) — "
+                        "считаем принятым в mempool"
+                    )
+                    return None
                 await asyncio.sleep(poll_interval)
                 elapsed = time.monotonic() - start
-                if elapsed > 60:
+                # EMA-здоровье ноды правит ЖАДНОСТЬ поллинга: больная нода
+                # опрашивается реже (экономит RPC-лимит, не досыпает спрос), а
+                # здоровая — часто (ресипт приходит в первые секунды). Это
+                # замыкает общий с наградой бюджет: тот. же EMA видит и старая
+                # latency-призма, но здесь мы тратим не паралеллизм, а частоту.
+                if self._node_poll_degraded():
+                    # Сливают EMA-штраф мгновенно: не ждём elapsed>60, как раньше
+                    poll_interval = max(poll_interval, 5.0)
+                elif elapsed > 60:
                     poll_interval = 5.0
                 elif elapsed > 30:
                     poll_interval = 2.0
@@ -966,27 +1239,43 @@ class NetworkManager:
             account = self.get_account(private_key)
             to_address = Web3.to_checksum_address(to_address)
             nonce = await self.claim_nonce(account.address)
-            gas_price = int(await self.get_gas_price() * gas_price_mult)
+            legacy_gas = int(await self.get_gas_price() * gas_price_mult)
+            # EIP-1559: dict с maxFeePerGas/maxPriorityFeePerGas при поддержке сетью,
+            # иначе None → legacy gasPrice ровно как раньше (graceful fallback, nonce не трогает)
+            fee_1559 = await self.get_fee_basis(gas_price_mult)
+            fee_fields = fee_1559 if fee_1559 else {"gasPrice": legacy_gas}
             tx = {
                 "nonce": nonce,
                 "to": to_address,
                 "value": self.w3.to_wei(amount_eth, "ether"),
                 "gas": gas_limit,
-                "gasPrice": gas_price,
                 "chainId": self.chain_id,
+                **fee_fields,
             }
             signed = account.sign_transaction(tx)
             raw = signed.raw_transaction
             tx_hash = await self.send_raw_transaction(raw)
             sent = True
-            receipt = await self.wait_for_receipt(tx_hash)
-            if receipt is not None and receipt.get("status") == 1:
+            receipt = await self.wait_for_receipt(tx_hash, timeout=self._receipt_timeout)
+            if receipt is None:
+                # Не дождались ресипта в пределах бюджета: tx принят в mempool,
+                # nonce занят (не откатываем — он может уйти в сеть позже).
+                logger.warning(f"Transfer unconfirmed: tx={tx_hash.hex()} (в mempool, нет ресипта)")
+                return None
+            # Дорогой исход: первичная нода говорит «реверт». Одно подозрительное
+            # показание не должно решать судьбу заявки — пере-спрашиваем ресипт
+            # на независимой вторичной ноде (read-only). Если вторичная видит
+            # успех — консервативно доверяем ей: чужая/форкнутая первичка не
+            # имеет права зарезать заявку на ровном месте. Nonce не трогаем.
+            primary_status = int(receipt.get("status", 0))
+            final_status = await self._crosscheck_receipt_status(tx_hash, primary_status)
+            if final_status != 1:
+                logger.warning(f"Transfer reverted: tx={tx_hash.hex()}")
                 self.invalidate_balance(account.address)
-                return tx_hash.hex()
-            logger.warning(f"Transfer reverted: tx={tx_hash.hex()}")
+                await self.release_nonce(account.address, nonce)
+                return None
             self.invalidate_balance(account.address)
-            await self.release_nonce(account.address, nonce)
-            return None
+            return tx_hash.hex()
         except Exception as e:
             logger.error(f"Transfer error: {e}")
             # Гарантированно не отправлена — возвращаем nonce, чтобы не жечь дыры.

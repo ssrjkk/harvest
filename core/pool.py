@@ -46,6 +46,10 @@ class _CycleState:
         # запись всегда содержит самое свежее состояние (иначе старая перезапишет
         # новую и при крэше потеряются только что отмеченные адреса).
         self._save_lock = asyncio.Lock()
+        # Дебаунс автосейва: для тестов и контроля карманная кастомная стрелка.
+        self._now = time.time  # точка инъекции тестов (стрелка времени)
+        self._last_save_ts = 0.0
+        self._last_saved_count = 0
 
     async def load(self) -> bool:
         """Загружает состояние из файла. Возвращает True если есть saved state."""
@@ -88,12 +92,25 @@ class _CycleState:
                 await asyncio.to_thread(_write)
             except OSError as e:
                 logger.warning(f"Crash state save failed: {e}")
+                return
+            # Точка учёта «что уже на диске» — save() зовётся и напрямую
+            # (чанк/пауза/финал), поэтому дебаунс-счётчики обновляем здесь,
+            # а не в mark_done.
+            self._last_save_ts = self._now()
+            self._last_saved_count = len(self.processed_addresses)
 
     async def mark_done(self, address: str) -> None:
-        """Отмечает адрес как обработанный."""
+        """Отмечает адрес как обработанный.
+
+        Автосейв с дебаунсом: пишем не «каждые 50 адресов» (на большом цикле
+        это сотни переписываний файла O(n)), а не чаще раза в 2с при накопившемся
+        батче ≥50 новых. Точка чанка в run_chunk всё равно сохраняет состояние
+        после каждого чанка, так что mid-chunk отставание ограничено одним чанком
+        и не дырявит crash recovery.
+        """
         self.processed_addresses.add(address)
-        # Автосохранение каждые 50 адресов
-        if len(self.processed_addresses) % 50 == 0:
+        new_since_save = len(self.processed_addresses) - self._last_saved_count
+        if new_since_save >= 50 and self._now() - self._last_save_ts >= 2.0:
             await self.save()
 
     async def clear(self) -> None:
@@ -322,9 +339,11 @@ class FarmerPool:
             worker_func=self._run_one,
             health_fn=self.network.concurrency_factor,
         )
-        await worker_pool.start()
 
         try:
+            # start() внутри try: даже при его сбое finally гарантированно
+            # вызвает stop() и не оставит полузапущенный монитор/воркеров.
+            await worker_pool.start()
             for chunk_start in range(0, len(wallets), self.chunk_size):
                 if stop_event is not None and stop_event.is_set():
                     logger.info("Остановка по запросу — прерываю обработку")

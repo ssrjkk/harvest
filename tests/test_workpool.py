@@ -177,5 +177,88 @@ class TestWorkerPoolContract(unittest.IsolatedAsyncioTestCase):
             await pool.stop()
 
 
+class TestWorkerPoolRespawn(unittest.IsolatedAsyncioTestCase):
+    """Автохил: аварийное падение воркера не оставляет пул без мощности.
+
+    Воркер умирает только от ошибки ВНЕ внутреннего try (инфраструктурной);
+    restore должен вернуть слот и докачать очередь.
+    """
+
+    async def test_crashed_worker_is_respawned_and_queue_drains(self):
+        import types
+        from unittest.mock import patch
+
+        from core import workpool as wp
+
+        wallets = _wallets(2)
+        addrs = _addrs(wallets)
+        state = {"crashes": 0}
+        original = wp.WorkerPool._worker_loop
+
+        async def flaky_loop(self):
+            if state["crashes"] < 1:
+                state["crashes"] += 1
+                raise RuntimeError("simulated infra crash")
+            return await original(self)
+
+        async def worker(wallet, all_addresses, cycle_number):
+            await asyncio.sleep(0)
+            return wallet["address"], 1
+
+        pool = WorkerPool(max_workers=1, worker_func=worker, monitor_interval=10.0)
+        # Подменяем метод экземпляра: первый вызов падает, остальные — реальные.
+        pool._worker_loop = types.MethodType(flaky_loop, pool)
+        try:
+            await pool.submit(wallets[0], addrs, 1)
+            await pool.submit(wallets[1], addrs, 1)
+            with patch("core.workpool._WORKER_RESPAWN_DELAY", 0.02):
+                first = asyncio.create_task(pool._worker_loop())
+                first.add_done_callback(pool._on_worker_done)
+                pool._workers.add(first)
+                out = await pool.join()
+            self.assertEqual(set(out), set(addrs))
+            self.assertEqual(out[wallets[0]["address"]], 1)
+            self.assertEqual(out[wallets[1]["address"]], 1)
+            self.assertEqual(state["crashes"], 1, "ровно один воркер упал")
+            self.assertEqual(len(pool._workers), 1, "слот восстановлен")
+        finally:
+            await pool.stop()
+
+    async def test_no_respawn_during_stop(self):
+        """После stop нет воскрешений (воркеры уходят штатно, слот не растёт)."""
+        import types
+
+        from core import workpool as wp
+
+        state = {"crashes": 0}
+        original = wp.WorkerPool._worker_loop
+
+        async def flaky_loop(self):
+            if state["crashes"] < 1:
+                state["crashes"] += 1
+                raise RuntimeError("boom")
+            return await original(self)
+
+        async def worker(wallet, all_addresses, cycle_number):
+            await asyncio.sleep(0)
+            return wallet["address"], 1
+
+        pool = WorkerPool(max_workers=2, worker_func=worker, monitor_interval=10.0)
+        pool._worker_loop = types.MethodType(flaky_loop, pool)
+        try:
+            await pool.submit(_wallet(1), ["0x1"], 1)
+            first = asyncio.create_task(pool._worker_loop())
+            first.add_done_callback(pool._on_worker_done)
+            pool._workers.add(first)
+            # Упадём и остановимся: респawn не должен ничего создать.
+            await asyncio.sleep(0.05)
+            self.assertTrue(pool._respawn_pending or pool._respawn_task is not None)
+            await pool.stop()
+            self.assertIsNone(pool._respawn_task)
+            self.assertFalse(pool._respawn_pending)
+        finally:
+            await pool.stop()
+
+
 if __name__ == "__main__":
     unittest.main()
