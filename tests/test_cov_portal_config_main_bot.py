@@ -390,6 +390,20 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
         runner.cleanup.assert_awaited_once()
         daemon.close.assert_awaited_once()
 
+    async def test_graceful_shutdown_cancels_guard_task(self):
+        runner = mock.Mock()
+        runner.cleanup = mock.AsyncMock()
+        daemon = mock.Mock()
+        daemon.close = mock.AsyncMock()
+        bot_task = asyncio.create_task(asyncio.sleep(60))
+        guard_task = asyncio.create_task(asyncio.sleep(60))
+        await asyncio.sleep(0)
+        await _graceful_shutdown(runner, daemon, bot_task, guard_task)
+        self.assertTrue(bot_task.cancelled())
+        self.assertTrue(guard_task.cancelled())
+        runner.cleanup.assert_awaited_once()
+        daemon.close.assert_awaited_once()
+
 
 class TestMainGuard(unittest.TestCase):
     def _exec_main_source(self):

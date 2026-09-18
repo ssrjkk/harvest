@@ -40,7 +40,10 @@ ssh -L 8080:127.0.0.1:8080 user@host   # затем открой http://localhos
 #      TELEGRAM_ALLOW_IDS=<ваш числовой user_id>  (default-deny: бот отвечает только им)
 docker compose up -d --build   # перезапуск с ботом
 ```
-Бот работает на long-polling и НЕ требует публичного URL. Команды: `/start`, `/stats`, `/start`, `/stop`, `/pause`, `/resume`, `/links`.
+Бот работает на long-polling и НЕ требует публичного URL. Команды: `/start`, `/stats`, `/start`, `/stop`, `/pause`, `/resume`, `/links`, `/doctor`, `/history`.
+
+Сторожевой монитор шлёт вам push при проблемах: «сеть деградировала», «ферма стоит», «всплеск ошибок», «ферма остановилась» (+ восстановление). Настройки:
+`PORTAL_WATCH_INTERVAL_S` (по умолчанию 300 c) и `PORTAL_HEARTBEAT_HOURS` (периодический «пульс», 0 = выкл) в `deploy/.env`.
 
 ## 3. Переключение сети фермера
 

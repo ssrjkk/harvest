@@ -67,11 +67,18 @@ def _log_bot_crash(bot_task: asyncio.Task, cfg: PortalConfig | None = None) -> N
                 logger.warning("Не удалось сформировать алерт о сбое бота", exc_info=True)
 
 
-async def _graceful_shutdown(runner: web.AppRunner, daemon: FarmDaemon, bot_task: asyncio.Task | None) -> None:
+async def _graceful_shutdown(
+    runner: web.AppRunner,
+    daemon: FarmDaemon,
+    bot_task: asyncio.Task | None,
+    guard_task: asyncio.Task | None = None,
+) -> None:
     logger.info("Останавливаю портал…")
-    if bot_task is not None:
-        bot_task.cancel()
-        await asyncio.gather(bot_task, return_exceptions=True)
+    tasks = [t for t in (bot_task, guard_task) if t is not None]
+    for task in tasks:
+        task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
     await runner.cleanup()
     await daemon.close()
     logger.info("Портал остановлен")
@@ -155,11 +162,23 @@ async def main() -> None:
     logger.info("Веб/API: http://%s:%s", cfg.host, cfg.port)
 
     bot_task: asyncio.Task | None = None
+    guard_task: asyncio.Task | None = None
     if cfg.telegram_enabled():
         from portal.bot_telegram import run_bot
+        from portal.guard import Watchdog
 
         bot_task = asyncio.create_task(run_bot(cfg, daemon))
         bot_task.add_done_callback(lambda t: _log_bot_crash(t, cfg))
+        guard_interval = float(os.environ.get("PORTAL_WATCH_INTERVAL_S", "300"))
+        guard_heartbeat = float(os.environ.get("PORTAL_HEARTBEAT_HOURS", "0"))
+        guard_task = asyncio.create_task(
+            Watchdog(
+                daemon,
+                functools.partial(_acute_alert, cfg),
+                interval_s=guard_interval,
+                heartbeat_hours=guard_heartbeat,
+            ).run()
+        )
     else:
         logger.warning("TELEGRAM_BOT_TOKEN не задан — бот выключен")
 
@@ -175,7 +194,7 @@ async def main() -> None:
             pass
 
     await keep_alive.wait()
-    await _graceful_shutdown(runner, daemon, bot_task)
+    await _graceful_shutdown(runner, daemon, bot_task, guard_task)
 
 
 if __name__ == "__main__":
