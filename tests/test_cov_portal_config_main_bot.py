@@ -14,11 +14,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from portal import config
-from portal.__main__ import _graceful_shutdown, main as portal_main
-from portal.config import PortalConfig, load_links
-
 import portal.__main__ as pm
+from portal import config
+from portal.__main__ import _graceful_shutdown
+from portal.__main__ import main as portal_main
+from portal.config import PortalConfig, load_links
 
 try:
     from portal import bot_telegram

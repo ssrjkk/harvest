@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - run: ruff check .
+
+  test-linux:
+    name: Tests (Ubuntu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-portal.txt pytest pytest-asyncio
+      - run: python -m pytest tests -q
+
+  build-windows:
+    name: Tests + coverage 100% + exe (Windows)
+    runs-on: windows-latest
+    if: github.ref == 'refs/heads/master'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-portal.txt pytest pytest-asyncio coverage pyinstaller
+      # Coverage-гейт именно на Windows: единственная непокрываемая на Linux
+      # ветка — os.name == "nt"-предупреждение в portal/__main__.py.
+      - name: Test (coverage, gate 100%)
+        run: |
+          python -m coverage run --source=portal -m pytest tests -q
+          python -m coverage report --fail-under=100 -m
+      - name: Build harvest.exe
+        run: pyinstaller harvest.spec --noconfirm --clean
+      - uses: actions/upload-artifact@v4
+        with:
+          name: harvest-windows
+          path: dist/harvest/
+          if-no-files-found: error

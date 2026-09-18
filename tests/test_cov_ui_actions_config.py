@@ -1,10 +1,5 @@
 """Coverage tests for core/config.py, core/actions.py, core/ui.py"""
 
-import asyncio
-import io
-import sys
-import time
-from collections import deque
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

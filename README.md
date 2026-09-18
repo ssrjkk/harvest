@@ -1,5 +1,7 @@
 # HARVEST v2.3.0
 
+[![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
+
 Автоматический фермер тестнет-сетей (EVM): массовая генерация кошельков,
 получение токенов через краны, асинхронный фарминг транзакций по профилям
 «человеческого» поведения (анти-сибил), веб-портал с Telegram-ботом.

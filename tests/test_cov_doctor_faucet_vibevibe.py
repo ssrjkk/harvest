@@ -76,12 +76,12 @@ class TestDoctor(unittest.TestCase):
     def _run_doctor(self, ui, cfg, dm, *, db_class_side=None):
         from core.doctor import doctor
         # Patch all local imports inside doctor()
-        with patch("core.config_validate.validate_config", side_effect=dm["validate_config"]) as vc, \
-             patch("core.crypto.resolve_master_key", side_effect=dm["resolve_master_key"]) as rmk, \
-             patch("core.performance.summarize", return_value=dm["summarize"]) as perf, \
+        with patch("core.config_validate.validate_config", side_effect=dm["validate_config"]), \
+             patch("core.crypto.resolve_master_key", side_effect=dm["resolve_master_key"]), \
+             patch("core.performance.summarize", return_value=dm["summarize"]), \
              patch("core.license.LicenseManager") as lm_cls, \
              patch("core.database.Database", side_effect=db_class_side) as db_cls, \
-             patch("core.database._redact_rpc_url", return_value="http://x") as redact, \
+             patch("core.database._redact_rpc_url", return_value="http://x"), \
              patch("core.faucet.Faucet") as fa_cls, \
              patch("core.network.NetworkManager") as nm_cls, \
              patch("core.ui._safe", side_effect=lambda s: s):
@@ -506,6 +506,7 @@ class TestFaucetRequestStrategy(unittest.TestCase):
 
     def test_client_error(self):
         import aiohttp
+
         from core.faucet import Faucet
         f = Faucet({"faucet": {}, "proxy": {}})
         session = AsyncMock()
@@ -717,7 +718,7 @@ class TestVibeVibeABI(unittest.TestCase):
         self.assertEqual(vi.abi, [{"name": "swap"}])
 
     def test_load_abi_not_found(self):
-        from core.vibevibe import VibeVibeInterface, _PLACEHOLDER_ABI
+        from core.vibevibe import _PLACEHOLDER_ABI, VibeVibeInterface
         net = MagicMock()
         with patch("core.vibevibe.resolve_bundled", return_value=Path("missing.json")), \
              patch("builtins.open", side_effect=FileNotFoundError):
