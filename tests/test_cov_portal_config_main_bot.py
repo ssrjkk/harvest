@@ -458,12 +458,14 @@ if HAS_BOT:
 
         def test_menu_kb_rows(self):
             self.cfg.public_base_url = ""
-            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 3)
+            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 4)
             self.cfg.public_base_url = "https://app.example"
             kb = bot_telegram._menu_kb(self.cfg)
-            self.assertEqual(len(kb.inline_keyboard), 4)
+            self.assertEqual(len(kb.inline_keyboard), 5)
             self.assertIn("🚀 Открыть Mini App", kb.inline_keyboard[0][0].text)
             self.assertIsNotNone(kb.inline_keyboard[0][0].web_app)
+            row_last = kb.inline_keyboard[-1]
+            self.assertEqual([b.callback_data for b in row_last], ["doctor", "history"])
 
         async def test_start_handler_denies_unknown_user(self):
             cfg = _make_cfg()
@@ -499,6 +501,41 @@ if HAS_BOT:
             m4 = _TgMessage(user_id=123, text="hello")
             await dp.message.handlers[1].callback(m4)
             self.assertEqual(m4.answers, [])
+
+        async def test_doctor_text_command(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.statistics = _async_result(
+                {
+                    "running": True,
+                    "health_factor": 0.9,
+                    "pool": {"cycles": 10, "actions": 100, "errors": 2, "processed": 80, "dyn_workers": 4},
+                    "db": {"cycles": 7},
+                }
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123, text="/doctor")
+            await dp.message.handlers[1].callback(msg)
+            text = msg.answers[0][0][0]
+            self.assertIn("диагностика", text)
+            self.assertIn("подключено", text)
+            self.assertIn("✅ Всё штатно.", text)
+
+        async def test_history_text_command(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.cycle_history = _async_result(
+                [{"id": 5, "started_at": "2026-09-18T10:00:00", "duration_s": 42, "wallets": 3, "wallets_ok": 3, "actions_ok": 9, "errors": 0}]
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123, text="/history")
+            await dp.message.handlers[1].callback(msg)
+            text = msg.answers[0][0][0]
+            self.assertIn("История циклов", text)
+            self.assertIn("#5", text)
+            self.assertIn("✅", text)
 
         async def test_callback_denied_unknown_user(self):
             cfg = _make_cfg()
@@ -552,6 +589,101 @@ if HAS_BOT:
                 text = msg.edits[0][0][0]
                 self.assertIn("Мои ссылки", text)
                 self.assertIn("… и ещё 2", text)
+
+        def test_fmt_doctor_stopped_core_down(self):
+            text = bot_telegram._fmt_doctor({"running": False})
+            self.assertIn("⏹ остановлена", text)
+            self.assertIn("НЕ ПОДКЛЮЧЕНО", text)
+            self.assertIn("ферма не запущена", text)
+
+        async def test_callback_doctor_degraded(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.statistics = _async_result(
+                {
+                    "running": True,
+                    "health_factor": 0.2,
+                    "pool": {"cycles": 5, "actions": 10, "errors": 500, "processed": 6, "dyn_workers": 1},
+                    "db": {"cycles": 3},
+                }
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123)
+            call = _TgCallback(user_id=123, data="doctor", message=msg)
+            await dp.callback_query.handlers[0].callback(call)
+            text = msg.edits[0][0][0]
+            self.assertIn("диагностика", text)
+            self.assertIn("сеть деградировала", text)
+            self.assertIn("много ошибок", text)
+
+        async def test_callback_history_empty(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.cycle_history = _async_result([])
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123)
+            call = _TgCallback(user_id=123, data="history", message=msg)
+            await dp.callback_query.handlers[0].callback(call)
+            self.assertIn("Пусто", msg.edits[0][0][0])
+
+        async def test_callback_history_with_row_flagging_errors(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.cycle_history = _async_result(
+                [{"id": 1, "started_at": "2026-09-18T10:00:00", "duration_s": 3, "wallets": 2, "wallets_ok": 1, "actions_ok": 1, "errors": 4}]
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123)
+            call = _TgCallback(user_id=123, data="history", message=msg)
+            await dp.callback_query.handlers[0].callback(call)
+            text = msg.edits[0][0][0]
+            self.assertIn("⚠️", text)
+            self.assertIn("ошибок 4", text)
+
+        async def test_notify_owner_noop_without_token(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = ""
+            cfg.telegram_allow_ids = [123]
+            with mock.patch.object(bot_telegram, "Bot") as m_bot:
+                await bot_telegram.notify_owner(cfg, "alarm")
+            m_bot.assert_not_called()
+
+        async def test_notify_owner_noop_without_allow_ids(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = "tk"
+            cfg.telegram_allow_ids = []
+            with mock.patch.object(bot_telegram, "Bot") as m_bot:
+                await bot_telegram.notify_owner(cfg, "alarm")
+            m_bot.assert_not_called()
+
+        async def test_notify_owner_sends_plain_text_to_each_id(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = "tk-123"
+            cfg.telegram_allow_ids = [111, 222]
+            with mock.patch.object(bot_telegram, "Bot") as m_bot:
+                bot = mock.AsyncMock()
+                m_bot.return_value = bot
+                await bot_telegram.notify_owner(cfg, "⚠️ alarm & more")
+            self.assertEqual(m_bot.call_args.kwargs["token"], "tk-123")
+            self.assertEqual(bot.send_message.await_count, 2)
+            for i, tg_id in enumerate([111, 222]):
+                self.assertEqual(bot.send_message.await_args_list[i].kwargs["chat_id"], tg_id)
+                self.assertEqual(bot.send_message.await_args_list[i].kwargs["parse_mode"], None)
+
+        async def test_notify_owner_send_failure_logged(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = "tk-123"
+            cfg.telegram_allow_ids = [111, 222]
+            with mock.patch.object(bot_telegram, "Bot") as m_bot:
+                bot = mock.AsyncMock()
+                bot.send_message = mock.AsyncMock(side_effect=RuntimeError("telegraph down"))
+                m_bot.return_value = bot
+                with self.assertLogs("portal.bot_telegram", level="WARNING"):
+                    await bot_telegram.notify_owner(cfg, "alarm")
+            self.assertEqual(bot.send_message.await_count, 2)
 
         async def test_callback_farm_actions(self):
             cfg = _make_cfg()

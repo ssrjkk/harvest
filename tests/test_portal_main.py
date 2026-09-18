@@ -1,8 +1,10 @@
 import asyncio
 import logging
+import types
 import unittest
+from unittest import mock
 
-from portal.__main__ import _log_bot_crash
+from portal.__main__ import _acute_alert, _log_bot_crash
 
 
 class _SpyHandler(logging.Handler):
@@ -58,6 +60,63 @@ class TestBotCrashHandling(unittest.IsolatedAsyncioTestCase):
         _log_bot_crash(task)  # ещё не завершена — ничего не делаем
         task.cancel()
         await asyncio.sleep(0.01)
+
+    async def test_crashed_bot_task_alerts_owner(self):
+        async def _boom() -> None:
+            raise RuntimeError("polling died")
+
+        task = asyncio.create_task(_boom())
+        await asyncio.sleep(0.01)
+        self.assertTrue(task.done())
+        cfg = types.SimpleNamespace(telegram_token="tk-1")
+        calls = []
+        _orig_create = asyncio.create_task
+
+        async def _dummy(_cfg, _text) -> None:
+            return None
+
+        def _spy_create(coro, *args, **kwargs):
+            calls.append(coro)
+            coro.close()
+            return _orig_create(asyncio.sleep(0), *args, **kwargs)
+
+        with mock.patch("asyncio.create_task", new=_spy_create), mock.patch(
+            "portal.bot_telegram.notify_owner", new=_dummy
+        ):
+            _log_bot_crash(task, cfg)
+        self.assertTrue(calls)
+
+    async def test_crashed_bot_task_alert_setup_failure_logged(self):
+        async def _boom() -> None:
+            raise RuntimeError("polling died")
+
+        task = asyncio.create_task(_boom())
+        await asyncio.sleep(0.01)
+        cfg = types.SimpleNamespace(telegram_token="tk-1")
+
+        async def _dummy(_cfg, _text) -> None:
+            return None
+
+        def _boom_task(coro, *args, **kwargs):
+            coro.close()
+            raise RuntimeError("loop down")
+
+        with mock.patch("asyncio.create_task", side_effect=_boom_task), mock.patch(
+            "portal.bot_telegram.notify_owner", new=_dummy
+        ), self.assertLogs("portal", level="WARNING") as cm:
+            _log_bot_crash(task, cfg)
+        self.assertTrue(any("алерт" in m for m in cm.output))
+
+    async def test_acute_alert_forwards_to_notify_owner(self):
+        cfg = types.SimpleNamespace(farm="cfg")
+        sent = []
+
+        async def _fake_notify(_cfg, text) -> None:
+            sent.append((_cfg, text))
+
+        with mock.patch("portal.bot_telegram.notify_owner", new=_fake_notify):
+            await _acute_alert(cfg, "hello")
+        self.assertEqual(sent, [(cfg, "hello")])
 
 
 if __name__ == "__main__":

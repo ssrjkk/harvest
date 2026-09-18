@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import os
 import signal
@@ -20,6 +21,13 @@ from portal.farm import FarmDaemon
 logger = logging.getLogger("portal")
 
 
+async def _acute_alert(cfg: PortalConfig, text: str) -> None:
+    """Пуш-алерт владельцу через Telegram-бота (колбэк демона фермы)."""
+    from portal.bot_telegram import notify_owner
+
+    await notify_owner(cfg, text)
+
+
 def _is_loopback_address(host: str) -> bool:
     """127.0.0.0/8, ::1, localhost — петлевые адреса."""
     try:
@@ -30,10 +38,11 @@ def _is_loopback_address(host: str) -> bool:
         return host.strip().lower() in {"localhost", "::1", "[::1]"}
 
 
-def _log_bot_crash(bot_task: asyncio.Task) -> None:
+def _log_bot_crash(bot_task: asyncio.Task, cfg: PortalConfig | None = None) -> None:
     """Телеграм-бот упал — пишем крупно в журнал, но портал НЕ роняем.
 
     Тихий выход бота оставил бы владельца без пульта при работающем сервере.
+    Владельцу дополнительно шлётся пуш-алерт (если бот/токен настроены).
     """
     if not bot_task.done():
         return
@@ -41,8 +50,21 @@ def _log_bot_crash(bot_task: asyncio.Task) -> None:
         bot_task.result()
     except asyncio.CancelledError:
         pass
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001
         logger.exception("Telegram-бот остановился с ошибкой — веб/API продолжают работать")
+        if cfg is not None and cfg.telegram_token:
+            try:
+                from portal.bot_telegram import notify_owner
+
+                asyncio.create_task(
+                    notify_owner(
+                        cfg,
+                        f"⚠️ Telegram-бот упал: {type(exc).__name__}: {str(exc)[:200]}\n"
+                        "Веб/API продолжают работать. /doctor — диагностика",
+                    )
+                )
+            except Exception:  # noqa: BLE001
+                logger.warning("Не удалось сформировать алерт о сбое бота", exc_info=True)
 
 
 async def _graceful_shutdown(runner: web.AppRunner, daemon: FarmDaemon, bot_task: asyncio.Task | None) -> None:
@@ -113,7 +135,12 @@ async def main() -> None:
     else:
         logger.warning("Нет ни Google, ни пароля — вход в веб не настроен")
 
-    daemon = FarmDaemon(cfg.farm_config, cfg.db_path, cfg.master_key or None)
+    daemon = FarmDaemon(
+        cfg.farm_config,
+        cfg.db_path,
+        cfg.master_key or None,
+        alert=functools.partial(_acute_alert, cfg),
+    )
     try:
         await daemon.connect()
     except Exception as exc:  # noqa: BLE001
@@ -132,7 +159,7 @@ async def main() -> None:
         from portal.bot_telegram import run_bot
 
         bot_task = asyncio.create_task(run_bot(cfg, daemon))
-        bot_task.add_done_callback(_log_bot_crash)
+        bot_task.add_done_callback(lambda t: _log_bot_crash(t, cfg))
     else:
         logger.warning("TELEGRAM_BOT_TOKEN не задан — бот выключен")
 

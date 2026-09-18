@@ -47,5 +47,9 @@ portal_config.yaml
 revoked_sessions.json
 license.json
 
+# Деплой: секреты окружения (docker compose env_file)
+.env
+deploy/.env
+
 # Артефакты покрытия
 .coverage

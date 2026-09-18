@@ -76,6 +76,80 @@ class TestFarmDaemonSingleInstance(unittest.TestCase):
         reacquire.release()
 
 
+class _RaisingPool:
+    """Пул, чей цикл падает — для проверки алерта владельцу при краше."""
+
+    _closed = False
+    paused = False
+
+    async def run_forever(self, stop_event) -> None:
+        raise RuntimeError("rpc exploded")
+
+    async def close(self) -> None:
+        self._closed = True
+
+
+class TestFarmDaemonAlerts(unittest.TestCase):
+    """Алерты владельцу: краш фермы и отказ запуска из-за чужого SingleInstance-лока."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.db_path = str(Path(self._tmp.name) / "farm.sqlite")
+
+    @staticmethod
+    def _run_until_done(daemon):
+        async def scenario():
+            ok = await daemon.start()
+            assert ok
+            if daemon._task is not None and not daemon._task.done():
+                await daemon._task
+
+        asyncio.run(scenario())
+
+    def test_crash_alerts_owner_and_closes_pool(self):
+        seen = []
+
+        async def alert(text: str) -> None:
+            seen.append(text)
+
+        daemon = FarmDaemon("config.yaml", self.db_path, alert=alert)
+        daemon.pool = _RaisingPool()  # type: ignore[assignment]
+        pool = daemon.pool
+        self._run_until_done(daemon)
+        self.assertTrue(any("Ферма упала" in s and "rpc exploded" in s for s in seen))
+        self.assertTrue(pool._closed)
+        self.assertIsNone(daemon.pool)
+
+    def test_alert_callback_exception_swallowed(self):
+        async def bad_alert(text: str) -> None:
+            raise RuntimeError("telegraph down")
+
+        daemon = FarmDaemon("config.yaml", self.db_path, alert=bad_alert)
+        daemon.pool = _RaisingPool()  # type: ignore[assignment]
+        pool = daemon.pool
+        # Сбой алерта не должен просочиться наружу — демон дочищает пул и выходит.
+        self._run_until_done(daemon)
+        self.assertTrue(pool._closed)
+
+    def test_start_blocked_alerts_owner(self):
+        lock = SingleInstance(default_lock_path(self.db_path))
+        self.assertTrue(lock.acquire())
+        seen = []
+
+        async def alert(text: str) -> None:
+            seen.append(text)
+
+        daemon = FarmDaemon("config.yaml", self.db_path, alert=alert)
+        daemon.pool = _FakePool()  # type: ignore[assignment]
+        try:
+            ok = asyncio.run(daemon.start())
+            self.assertFalse(ok)
+        finally:
+            lock.release()
+        self.assertTrue(any("другой экземпляр" in s for s in seen))
+
+
 class TestDbMasterKey(unittest.TestCase):
     """Ключ БД демона фермы: PIN-пароль портала не должен ломать расшифровку.
 

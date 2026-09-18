@@ -1,0 +1,34 @@
+# Deploy-артефакты
+.git
+.coverage
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+*.pyc
+build/
+dist/
+
+# Секреты и локальные данные (не попадают в образ)
+.env
+*.db
+*.db-wal
+*.db-shm
+master.key
+master*.key
+*.license_cache
+portal_secret.key
+state.json
+revoked_sessions.json
+license.json
+wallets.json
+wallets_export*
+pytest_*.txt
+
+# Боевой конфиг (в образ кладутся только шаблоны config_*.yaml)
+config.yaml
+portal_config.yaml
+
+# Логи
+logs/
+*.log

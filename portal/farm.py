@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 from core.config import load_config
 from core.crypto import resolve_master_key
@@ -49,10 +50,17 @@ def _db_master_key(override: str | None, config: dict) -> bytes:
 
 
 class FarmDaemon:
-    def __init__(self, farm_config: str, db_path: str, master_key: str | None = None) -> None:
+    def __init__(
+        self,
+        farm_config: str,
+        db_path: str,
+        master_key: str | None = None,
+        alert: Callable[[str], Awaitable[None]] | None = None,
+    ) -> None:
         self.farm_config = farm_config
         self.db_path = db_path
         self.override_master_key = master_key or None
+        self.alert_cb = alert
         self.config: dict | None = None
         self.db: Database | None = None
         self.pool: FarmerPool | None = None
@@ -61,6 +69,15 @@ class FarmDaemon:
         # SingleInstance-лок на время фарма: одна ферма на одной БД. Дашборд/
         # статистика работают и без лока — он нужен только пока крутится run_forever.
         self._guard: SingleInstance | None = None
+
+    async def _alert(self, text: str) -> None:
+        """Пуш владельцу (Telegram). No-op без колбэка; сбой алерта не роняет демона."""
+        if self.alert_cb is None:
+            return
+        try:
+            await self.alert_cb(text)
+        except Exception:  # noqa: BLE001
+            logger.warning("Не удалось отправить алерт владельцу", exc_info=True)
 
     async def connect(self) -> None:
         """Инициализация БД и пула. Идемпотентна: повторный вызов безопасен."""
@@ -102,6 +119,7 @@ class FarmDaemon:
                 "Другой экземпляр фармера уже работает на этой БД (%s) — фарм не запущен",
                 self.db_path,
             )
+            await self._alert("⚠️ Ферма не запустилась: другой экземпляр уже работает на этой БД.")
             return False
         self._guard = guard
         self._stop = asyncio.Event()
@@ -116,8 +134,11 @@ class FarmDaemon:
             logger.info("Демон фермы отменён — закрываю пул")
             await self._shutdown_pool()
             raise
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
             logger.exception("Демон фермы упал — закрываю пул")
+            await self._alert(
+                f"⚠️ Ферма упала: {type(exc).__name__}: {str(exc)[:200]}\n/doctor — диагностика"
+            )
             await self._shutdown_pool()
         else:
             # Штатное завершение (stop_event): run_forever сам закрыл пул.

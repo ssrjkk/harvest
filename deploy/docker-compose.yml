@@ -1,0 +1,37 @@
+# HARVEST PORTAL — docker compose (Linux VPS).
+# Запуск из этого каталога:  docker compose up -d --build
+# Конфигурация secret'ов — ./.env (копия .env.example).
+name: harvest
+
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: harvest-portal:latest
+    container_name: harvest-portal
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORTAL_HOST: "0.0.0.0"
+      PORTAL_PORT: "8080"
+      PORTAL_SECRET_FILE: /app/data/portal_secret.key
+      PORTAL_DB: /app/data/farming_state.db
+      PORTAL_FARM_CONFIG: /app/config_robinhood.yaml
+      PORTAL_LINKS: /app/portal/links.json
+      PORTAL_REVOKED_FILE: /app/data/revoked_sessions.json
+    # Публикуем ТОЛЬКО на localhost (доступ — через SSH-tunnel).
+    # Для публичного веба включите Caddy (§4 в deploy/README.md).
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - portal-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  portal-data:

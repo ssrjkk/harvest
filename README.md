@@ -87,3 +87,10 @@ python -m pytest tests -q
 362 теста, 26 файлов — полный зелёный прогон (включая контуры `wait_for_receipt`:
 EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
 `None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
+
+## Развёртывание (VPS / Docker)
+
+Готовый deploy-кит для Linux-сервера (Docker + compose, Telegram-бот на long-polling
+без публичного URL, Caddy для домена+HTTPS позже) — в каталоге [`deploy/`](deploy/README.md):
+`.env`-шаблон секретов, healthcheck, volume для данных, инструкция по добавлению бота
+и переходу на публичный HTTPS.
