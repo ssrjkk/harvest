@@ -541,7 +541,10 @@ if HAS_BOT:
             cfg.telegram_allow_ids = [123]
             daemon = mock.Mock()
             daemon.cycle_history = _async_result(
-                [{"id": 5, "started_at": "2026-09-18T10:00:00", "duration_s": 42, "wallets": 3, "wallets_ok": 3, "actions_ok": 9, "errors": 0}]
+                [
+                    {"id": 5, "started_at": "2026-09-18T10:00:00", "duration_s": 42, "wallets": 3,
+                     "wallets_ok": 3, "actions_ok": 9, "errors": 0}
+                ]
             )
             dp = bot_telegram.build_dispatcher(cfg, daemon)
             msg = _TgMessage(user_id=123, text="/history")
@@ -647,7 +650,10 @@ if HAS_BOT:
             cfg.telegram_allow_ids = [123]
             daemon = mock.Mock()
             daemon.cycle_history = _async_result(
-                [{"id": 1, "started_at": "2026-09-18T10:00:00", "duration_s": 3, "wallets": 2, "wallets_ok": 1, "actions_ok": 1, "errors": 4}]
+                [
+                    {"id": 1, "started_at": "2026-09-18T10:00:00", "duration_s": 3, "wallets": 2,
+                     "wallets_ok": 1, "actions_ok": 1, "errors": 4}
+                ]
             )
             dp = bot_telegram.build_dispatcher(cfg, daemon)
             msg = _TgMessage(user_id=123)

@@ -133,9 +133,32 @@ class TestStartDelay(unittest.TestCase):
         p = profile_for(ADDR_A, _cfg(start_delay="owo"))
         self.assertEqual(p.start_delay, 0.0)
 
+    def test_delay_scalar_fixed_value(self):
+        # Скаляр вместо диапазона (activity/rest_cycles/delay_scale/start_delay)
+        # трактуется как фиксированное значение — раньше это ломало rng.uniform.
+        p = profile_for(ADDR_A, _cfg(start_delay=2.0))
+        self.assertAlmostEqual(p.start_delay, 2.0)
+
     def test_delay_disabled_neutral(self):
         p = profile_for(ADDR_A, _cfg(enabled=False, start_delay=[50.0, 70.0]))
         self.assertEqual(p.start_delay, 0.0)
+
+
+class TestScalarRanges(unittest.TestCase):
+    """Скалярные значения диапазонов поведения не должны ломать профиль."""
+
+    def test_activity_scalar(self):
+        p = profile_for(ADDR_A, _cfg(activity=1.3))
+        self.assertAlmostEqual(p.activity, 1.3)
+
+    def test_rest_cycles_scalar(self):
+        p = profile_for(ADDR_A, _cfg(rest_cycles=2))
+        self.assertGreaterEqual(p.rest_cycles[0], 1)
+
+    def test_delay_scale_scalar(self):
+        p = profile_for(ADDR_A, _cfg(action_delay_scale=1.0, cycle_delay_scale=1.0))
+        self.assertAlmostEqual(p.delay_actions_scale, 1.0)
+        self.assertAlmostEqual(p.delay_cycles_scale, 1.0)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 async def doctor(ui, config: dict) -> bool:
-    from core.config_validate import validate_config
+    from core.config_validate import config_warnings, validate_config
     from core.crypto import MasterKeyError, resolve_master_key
     from core.database import Database, _redact_rpc_url
     from core.faucet import Faucet
@@ -29,6 +29,18 @@ async def doctor(ui, config: dict) -> bool:
         else:
             print(text)
 
+    def warn(label: str, detail: str = "") -> None:
+        """Жёлтое замечание (не ошибка): незаполненные заглушки конфига."""
+        from core.ui import _safe
+
+        mark = _safe("!")
+        tail = f" — {detail}" if detail else ""
+        text = f"  {mark} {label}{tail}"
+        if ui is not None:
+            ui.print(text, style="yellow")
+        else:
+            print(text)
+
     all_ok = True
 
     # 1. Конфиг
@@ -38,6 +50,14 @@ async def doctor(ui, config: dict) -> bool:
     except Exception as e:
         all_ok = False
         emit("Конфиг", False, str(e))
+
+    # 1б. Заглушки (0x0-contracts, chain_id-маркер) — жёлтые замечания,
+    # не ошибки: фарм на transfers возможен, но реальная сеть требует адресов.
+    try:
+        for note in config_warnings(config):
+            warn("Замечание", note)
+    except Exception:
+        logger.warning("Doctor: не удалось оценить замечания конфига", exc_info=True)
 
     # 1а. Производительность (информационно): пиковое использование ядер
     try:

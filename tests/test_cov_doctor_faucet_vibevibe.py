@@ -1,7 +1,9 @@
 """Coverage-тесты: doctor.py, faucet.py, vibevibe.py → 100 % stmts."""
 
 import asyncio
+import contextlib
 import json
+import os
 import sys
 import unittest
 from pathlib import Path
@@ -73,7 +75,7 @@ class TestDoctor(unittest.TestCase):
         d.update(overrides)
         return d
 
-    def _run_doctor(self, ui, cfg, dm, *, db_class_side=None):
+    def _run_doctor(self, ui, cfg, dm, *, db_class_side=None, faucet_cls_side=None):
         from core.doctor import doctor
         # Patch all local imports inside doctor()
         with patch("core.config_validate.validate_config", side_effect=dm["validate_config"]), \
@@ -96,6 +98,13 @@ class TestDoctor(unittest.TestCase):
                 db_inst.close = AsyncMock(side_effect=dm["db_close"])
             # else: db_cls side_effect set to raise
 
+            if faucet_cls_side is not None:
+                fa_cls.side_effect = faucet_cls_side
+            else:
+                fa_inst = fa_cls.return_value
+                fa_inst.validate = AsyncMock(return_value=dm["faucet_validate"])
+                fa_inst.close = AsyncMock(side_effect=dm["faucet_close"])
+
             net_inst = nm_cls.return_value
             net_inst.latency_probe = AsyncMock(return_value=dm["latency"])
             if dm["chain_id"] is None:
@@ -104,10 +113,6 @@ class TestDoctor(unittest.TestCase):
                 net_inst.run_in_executor = AsyncMock(return_value=dm["chain_id"])
             net_inst.w3 = MagicMock()
             net_inst.close = AsyncMock(side_effect=dm["net_close"])
-
-            fa_inst = fa_cls.return_value
-            fa_inst.validate = AsyncMock(return_value=dm["faucet_validate"])
-            fa_inst.close = AsyncMock(side_effect=dm["faucet_close"])
 
             result = _run(doctor(ui, cfg))
         return result
@@ -179,6 +184,59 @@ class TestDoctor(unittest.TestCase):
     def test_rpc_exception(self):
         self.assertFalse(self._run_doctor(None, _config(),
             self._base_mocks(), db_class_side=RuntimeError("fail")))
+
+    def test_config_warnings_emit_yellow(self):
+        """config_warnings возвращает замечания → warn() выводит жёлтым."""
+        cfg = _config()
+        ui = MagicMock()
+        with patch("core.config_validate.config_warnings", return_value=["тестовое замечание"]):
+            self._run_doctor(ui, cfg, self._base_mocks())
+        # ui.print должен быть вызван для вывода предупреждения
+        self.assertTrue(ui.print.called)
+
+    def test_config_warnings_print_without_ui(self):
+        """config_warnings без ui → print() вместо ui.print()."""
+        cfg = _config()
+        with patch("core.config_validate.config_warnings", return_value=["тестовое замечание"]), \
+             patch("builtins.print") as mock_print:
+            self._run_doctor(None, cfg, self._base_mocks())
+        # print должен быть вызван для вывода предупреждения
+        self.assertTrue(mock_print.called)
+
+    def test_config_warnings_exception_logged(self):
+        """config_warnings падает → логируем, но не прерываем doctor."""
+        with patch("core.config_validate.config_warnings", side_effect=RuntimeError("warn err")), \
+                self.assertLogs("core.doctor", level="WARNING"):
+            self._run_doctor(None, _config(), self._base_mocks())
+
+    def test_db_fail_uses_in_memory_fallback(self):
+        """Основная БД упала → RPC-проверки идут через in-memory БД."""
+        call_log = []
+        def db_side(path, **kw):
+            call_log.append(path)
+            if path == ":memory:":
+                inst = MagicMock()
+                inst.init = AsyncMock()
+                inst.close = AsyncMock()
+                return inst
+            raise RuntimeError("main db fail")
+        self.assertFalse(self._run_doctor(None, _config(),
+            self._base_mocks(), db_class_side=db_side))
+        self.assertIn(":memory:", call_log)
+
+    def test_faucet_constructor_raises(self):
+        """Faucet(config) падает → Кран: ошибка, all_ok=False."""
+        self.assertFalse(self._run_doctor(None, _config(), self._base_mocks(),
+                                          faucet_cls_side=RuntimeError("faucet init fail")))
+
+    def test_closer_raises_are_logged(self):
+        """close() падает → логируем, но не прерываем (ресурсы освобождаются независимо)."""
+        cfg = _config()
+        with self.assertLogs("core.doctor", level="WARNING"):
+            self._run_doctor(None, cfg, self._base_mocks(
+                db_close=RuntimeError("db close fail"),
+                net_close=RuntimeError("net close fail"),
+            ))
 
 
 # ─── faucet.py ────────────────────────────────────────────────────────
@@ -333,6 +391,18 @@ class TestFaucetSession(unittest.TestCase):
         f = Faucet({"faucet": {}, "proxy": {}})
         _run(f.close())
 
+    def test_close_releases_connector(self):
+        """Connector живёт дольше session: без явного close() сокеты пачки не освобождаются."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {}, "proxy": {}})
+        connector = MagicMock()
+        connector.closed = False
+        connector.close = AsyncMock()
+        f._connector = connector
+        _run(f.close())
+        connector.close.assert_awaited_once()
+        self.assertIsNone(f._connector)
+
 
 class TestFaucetValidate(unittest.TestCase):
 
@@ -377,6 +447,58 @@ class TestFaucetValidate(unittest.TestCase):
         with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=mock_session):
             result = _run(f.validate())
         self.assertEqual(result, 0)
+
+    def _validate_status(self, status):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "web", "url": "http://x.test"}]}, "proxy": {}})
+        resp = AsyncMock()
+        resp.__aenter__ = AsyncMock(return_value=resp)
+        resp.__aexit__ = AsyncMock(return_value=False)
+        resp.status = status
+        session = AsyncMock()
+        session.get = MagicMock(return_value=resp)
+        with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+            live = _run(f.validate())
+        return live, f._reachable
+
+    def test_validate_404_endpoint_gone(self):
+        """404 на URL крана — стратегия мертва (раньше считалась живым ответом)."""
+        self.assertEqual(self._validate_status(404), (0, [False]))
+
+    def test_validate_410_endpoint_gone(self):
+        self.assertEqual(self._validate_status(410), (0, [False]))
+
+    def test_validate_405_counts_alive(self):
+        """405 = GET не поддерживается, POST-эндпоинт жив."""
+        self.assertEqual(self._validate_status(405), (1, [True]))
+
+    def test_validate_429_counts_alive(self):
+        self.assertEqual(self._validate_status(429), (1, [True]))
+
+    def test_validate_chainstack_without_key_excluded(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        server = _McpServer()
+        with _chainstack_key(None), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=_McpSession(server)
+        ):
+            self.assertEqual(_run(f.validate()), 0)
+        self.assertEqual(server.handshakes, 0)
+
+    def test_validate_chainstack_probe_is_functional(self):
+        """Проба = handshake MCP (без запроса пополнения): стратегия жива, квота не потрачена."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        server = _McpServer()
+        with _chainstack_key("cs-key-1"), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=_McpSession(server)
+        ):
+            self.assertEqual(_run(f.validate()), 1)
+        self.assertEqual(server.handshakes, 1)
+        self.assertEqual(server.tool_calls, [])
+        self.assertEqual(f._mcp_sids, {"https://mcp.test/mcp": "sid1"})
 
     def test_validate_multiple_mixed(self):
         from core.faucet import Faucet
@@ -425,6 +547,18 @@ class TestFaucetValidate(unittest.TestCase):
             result = _run(f.validate())
         self.assertEqual(result, 0)
 
+    def test_validate_dead_strategy_without_type_names_url(self):
+        """У стратегии без type в логе должен быть URL, а не пустое имя."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"url": "http://dead.test/claim"}]}, "proxy": {}})
+        session = AsyncMock()
+        session.get = MagicMock(side_effect=RuntimeError("conn err"))
+        with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session), \
+                self.assertLogs("core.faucet", level="WARNING") as logs:
+            self.assertEqual(_run(f.validate()), 0)
+        # Логируем предупреждение о недоступной стратегии (URL или type)
+        self.assertTrue(any("стратегия" in msg and "недоступна" in msg for msg in logs.output))
+
 
 class TestFaucetLiveStrategies(unittest.TestCase):
 
@@ -448,19 +582,14 @@ class TestFaucetRequestStrategy(unittest.TestCase):
         session = AsyncMock()
         self.assertFalse(_run(f._request_strategy(session, {"type": "web"}, None, _ADDR)))
 
-    def test_chainstack_payload(self):
+    def test_chainstack_routes_to_mcp(self):
         from core.faucet import Faucet
         f = Faucet({"faucet": {}, "proxy": {}})
-        mock_resp = AsyncMock()
-        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
-        mock_resp.__aexit__ = AsyncMock(return_value=False)
-        mock_resp.status = 200
         session = AsyncMock()
-        session.post = MagicMock(return_value=mock_resp)
-        strategy = {"type": "chainstack", "url": "http://cs.test", "network_param": "eth"}
-        self.assertTrue(_run(f._request_strategy(session, strategy, None, _ADDR)))
-        call_kwargs = session.post.call_args
-        self.assertEqual(call_kwargs[1]["json"]["network"], "eth")
+        with patch.object(f, "_chainstack_request", new_callable=AsyncMock, return_value=True) as m:
+            self.assertTrue(_run(f._request_strategy(session, {"type": "chainstack", "url": "http://cs/mcp"},
+                                                      "http://proxy", _ADDR)))
+        m.assert_awaited_once_with(session, {"type": "chainstack", "url": "http://cs/mcp"}, "http://proxy", _ADDR)
 
     def test_regular_payload(self):
         from core.faucet import Faucet
@@ -521,6 +650,259 @@ class TestFaucetRequestStrategy(unittest.TestCase):
         self.assertFalse(_run(f._request_strategy(session, {"type": "w", "url": "http://x"}, None, _ADDR)))
 
 
+# ─── Chainstack MCP: граница I/O повторяет правила живого сервера ──────
+
+
+class _McpResp:
+    """Ответ MCP-сервера в форме, совместной с aiohttp (async context manager)."""
+
+    def __init__(self, status, msg=None, sid=None, sse=True):
+        self.status = status
+        self.headers = {"mcp-session-id": sid} if sid else {}
+        if msg is None:
+            self._body = ""
+        elif sse:
+            self._body = "event: message\ndata: " + json.dumps(msg) + "\n\n"
+        else:
+            self._body = json.dumps(msg)
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *a):
+        return False
+
+    async def text(self):
+        return self._body
+
+
+class _McpServer:
+    """Фейк Chainstack MCP по живым наблюдениям: 406 без парного Accept, 400 без
+    mcp-session-id, SSE-фрейм в ответе, HTTP 200 + result.isError при отказе
+    инструмента, один session id переиспользуется на несколько вызовов.
+    """
+
+    def __init__(
+        self,
+        *,
+        tool_error=False,
+        jsonrpc_error=False,
+        drop_session=False,
+        no_sid=False,
+        tool_status=200,
+        reject_key=False,
+    ):
+        self.tool_error = tool_error
+        self.jsonrpc_error = jsonrpc_error
+        self.drop_session = drop_session
+        self.no_sid = no_sid
+        self.tool_status = tool_status
+        self.reject_key = reject_key
+        self.handshakes = 0
+        self.tool_calls = []
+        self.sessions = set()
+
+    def post(self, url, **kw):
+        headers = kw.get("headers") or {}
+        payload = kw.get("json") or {}
+        accept = headers.get("Accept", "")
+        if "application/json" not in accept or "text/event-stream" not in accept:
+            return _McpResp(406, {"error": {"code": -32600, "message": "Not Acceptable"}}, sse=False)
+        method = payload.get("method")
+        if method == "initialize":
+            if self.reject_key or not headers.get("Authorization", "").startswith("Bearer "):
+                return _McpResp(401, {"error": {"code": -32001, "message": "Unauthorized"}}, sse=False)
+            self.handshakes += 1
+            sid = f"sid{self.handshakes}"
+            self.sessions.add(sid)
+            result = {"protocolVersion": "2025-06-18", "serverInfo": {"name": "Chainstack"}}
+            return _McpResp(200, {"jsonrpc": "2.0", "id": payload.get("id"), "result": result},
+                            sid=None if self.no_sid else sid)
+        sid = headers.get("mcp-session-id")
+        if not sid or sid not in self.sessions:
+            return _McpResp(400, {"error": {"code": -32600, "message": "Missing session ID"}}, sse=False)
+        if method == "notifications/initialized":
+            return _McpResp(202)
+        if self.drop_session:
+            self.sessions.discard(sid)
+            return _McpResp(400, {"error": {"code": -32600, "message": "Missing session ID"}}, sse=False)
+        args = payload["params"]["arguments"]
+        self.tool_calls.append((args, headers.get("Authorization")))
+        if self.tool_status != 200:
+            return _McpResp(self.tool_status, sse=False)
+        if self.jsonrpc_error:
+            return _McpResp(200, {"error": {"code": -32603, "message": "boom"}}, sid=sid)
+        if self.tool_error:
+            return _McpResp(
+                200,
+                {"result": {"content": [{"type": "text", "text": "No API key provided"}], "isError": True}},
+                sid=sid,
+            )
+        text = f"Topped up {args['address']} on {args['network']} up to the maximum"
+        return _McpResp(200, {"result": {"content": [{"type": "text", "text": text}]}}, sid=sid)
+
+
+class _McpSession:
+    def __init__(self, server):
+        self.server = server
+
+    def post(self, url, **kw):
+        return self.server.post(url, **kw)
+
+
+def _chainstack_faucet():
+    from core.faucet import Faucet
+    return Faucet({"faucet": {}, "proxy": {}})
+
+
+@contextlib.contextmanager
+def _chainstack_key(value):
+    """CHAINSTACK_API_KEY в нужном состоянии (env восстанавливается на выходе)."""
+    with patch.dict(os.environ, {}, clear=False):
+        if value is None:
+            os.environ.pop("CHAINSTACK_API_KEY", None)
+        else:
+            os.environ["CHAINSTACK_API_KEY"] = value
+        yield
+
+
+class TestFaucetChainstackMcp(unittest.TestCase):
+
+    _STRATEGY = {"type": "chainstack", "url": "https://mcp.test/mcp", "network_param": "robinhood"}
+    _URL = "https://mcp.test/mcp"
+
+    def _run_requests(self, server, addrs, key="cs-key-1", strategy=None):
+        """Прогоняет запросы через ОДИН экземпляр крана (как в пачке)."""
+        f = _chainstack_faucet()
+        session = _McpSession(server)
+        results = []
+        with _chainstack_key(key):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                for a in addrs:
+                    results.append(_run(f._request_strategy(session, strategy or self._STRATEGY, None, a)))
+        return results, f
+
+    def test_no_key_no_requests(self):
+        server = _McpServer()
+        results, _ = self._run_requests(server, [_ADDR], key=None)
+        self.assertEqual(results, [False])
+        self.assertEqual(server.handshakes, 0)
+        self.assertEqual(server.tool_calls, [])
+
+    def test_success_sends_bearer_and_args(self):
+        server = _McpServer()
+        results, f = self._run_requests(server, [_ADDR])
+        self.assertEqual(results, [True])
+        args, auth = server.tool_calls[0]
+        self.assertEqual(args, {"network": "robinhood", "address": _ADDR})
+        self.assertEqual(auth, "Bearer cs-key-1")
+        self.assertEqual(f._mcp_sids, {self._URL: "sid1"})
+
+    def test_network_param_from_strategy(self):
+        server = _McpServer()
+        results, _ = self._run_requests(server, [_ADDR], strategy={"type": "chainstack",
+                                                                   "url": self._URL,
+                                                                   "network_param": "arc"})
+        self.assertEqual(results, [True])
+        self.assertEqual(server.tool_calls[0][0]["network"], "arc")
+
+    def test_default_network_param_is_robinhood(self):
+        server = _McpServer()
+        results, _ = self._run_requests(server, [_ADDR], strategy={"type": "chainstack", "url": self._URL})
+        self.assertEqual(results, [True])
+        self.assertEqual(server.tool_calls[0][0]["network"], "robinhood")
+
+    def test_handshake_once_per_batch(self):
+        server = _McpServer()
+        addrs = [_ADDR, _ADDR_CS, "0x" + "2" * 40]
+        results, _ = self._run_requests(server, addrs)
+        self.assertEqual(results, [True, True, True])
+        self.assertEqual(server.handshakes, 1)
+        self.assertEqual([a["address"] for a, _ in server.tool_calls], addrs)
+
+    def test_tool_is_error_is_failure(self):
+        self.assertEqual(self._run_requests(_McpServer(tool_error=True), [_ADDR])[0], [False])
+
+    def test_jsonrpc_error_is_failure(self):
+        self.assertEqual(self._run_requests(_McpServer(jsonrpc_error=True), [_ADDR])[0], [False])
+
+    def test_non_200_tools_call_is_failure(self):
+        self.assertEqual(self._run_requests(_McpServer(tool_status=500), [_ADDR])[0], [False])
+
+    def test_initialize_without_session_id_is_failure(self):
+        server = _McpServer(no_sid=True)
+        results, f = self._run_requests(server, [_ADDR])
+        self.assertEqual(results, [False])
+        self.assertEqual(server.tool_calls, [])
+        self.assertEqual(f._mcp_sids, {})
+
+    def test_rejected_key_is_failure(self):
+        """Ключ локально есть, но сервер его не принимает: 401 на handshake, вызова нет."""
+        server = _McpServer(reject_key=True)
+        results, f = self._run_requests(server, [_ADDR])
+        self.assertEqual(results, [False])
+        self.assertEqual(server.handshakes, 0)
+        self.assertEqual(server.tool_calls, [])
+        self.assertEqual(f._mcp_sids, {})
+
+    def test_expired_session_reinitializes(self):
+        server = _McpServer(drop_session=True)
+        results, f = self._run_requests(server, [_ADDR, _ADDR_CS])
+        self.assertEqual(results, [False, False])
+        self.assertEqual(server.handshakes, 2)
+        self.assertEqual(f._mcp_sids, {})
+
+    def test_transport_errors(self):
+        import aiohttp
+
+        f = _chainstack_faucet()
+        for exc in (TimeoutError("t"), aiohttp.ClientError("e"), RuntimeError("g")):
+            session = AsyncMock()
+            session.post = MagicMock(side_effect=exc)
+            with _chainstack_key("cs-key-1"):
+                self.assertFalse(_run(f._chainstack_request(session, self._STRATEGY, None, _ADDR)))
+
+    def test_missing_url(self):
+        server = _McpServer()
+        results, _ = self._run_requests(server, [_ADDR], strategy={"type": "chainstack"})
+        self.assertEqual(results, [False])
+        self.assertEqual(server.handshakes, 0)
+
+
+class TestMcpHelpers(unittest.TestCase):
+
+    def test_parse_sse_body(self):
+        from core.faucet import _parse_mcp_body
+        self.assertEqual(_parse_mcp_body('event: message\ndata: {"a": 1}\n\n'), {"a": 1})
+
+    def test_parse_bare_json(self):
+        from core.faucet import _parse_mcp_body
+        self.assertEqual(_parse_mcp_body('{"error": {"code": -32600}}'), {"error": {"code": -32600}})
+
+    def test_parse_empty_and_garbage(self):
+        from core.faucet import _parse_mcp_body
+        self.assertIsNone(_parse_mcp_body(""))
+        self.assertIsNone(_parse_mcp_body("{not json"))
+        self.assertIsNone(_parse_mcp_body("event: message\ndata: {bad\n\ndata: {also bad\n\n"))
+        self.assertIsNone(_parse_mcp_body("event: message\n\n"))
+
+    def test_mcp_text_joins_content(self):
+        from core.faucet import _mcp_text
+        self.assertEqual(_mcp_text({"content": [{"type": "text", "text": "a"}, {"type": "image"}, {}]}), "a")
+        self.assertEqual(_mcp_text({}), "")
+
+    def test_mcp_text_truncated(self):
+        from core.faucet import _mcp_text
+        self.assertEqual(len(_mcp_text({"content": [{"text": "y" * 500}]})), 400)
+
+    def test_api_key_from_env(self):
+        from core.faucet import Faucet
+        with _chainstack_key("abc"):
+            self.assertEqual(Faucet._api_key(), "abc")
+        with _chainstack_key(None):
+            self.assertEqual(Faucet._api_key(), "")
+
+
 class TestFaucetRequestTokens(unittest.TestCase):
 
     def test_disabled(self):
@@ -561,6 +943,23 @@ class TestFaucetRequestTokens(unittest.TestCase):
         with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session), \
              patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
             self.assertFalse(_run(f.request_tokens(_ADDR, retries=1)))
+
+    def test_exhausted_retries_wait_between_cycles(self):
+        """При retries>1 между циклами обязана быть пауза — иначе пачка бьёт в rate limit."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "web", "url": "http://fail.test"}],
+                               "retries": 2, "delay_between_requests": [0.01, 0.02]}, "proxy": {}})
+        f._reachable = [True]
+        with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=AsyncMock()), \
+             patch.object(f, "_request_strategy", new_callable=AsyncMock, return_value=False), \
+             patch("core.faucet.asyncio.sleep", new_callable=AsyncMock) as sleeper:
+            self.assertFalse(_run(f.request_tokens(_ADDR)))
+        # 1 стратегия * 2 цикла: intra-сон после attempt 0 + inter-cycle сон
+        # (после attempt 1 сон пропускается — запросов больше не будет)
+        self.assertEqual(sleeper.await_count, 2)
+        backoffs = [c.args[0] for c in sleeper.await_args_list]
+        # Междоузловая пауза берётся из delay_between_requests, а не из 1-3с шага
+        self.assertTrue(any(0.01 <= b <= 0.02 for b in backoffs), backoffs)
 
     def test_with_proxy(self):
         from core.faucet import Faucet
@@ -846,7 +1245,7 @@ class TestVibeVibeCallMethod(unittest.TestCase):
     def _make_mock_contract(self, vi, method="swap"):
         mock_contract = MagicMock()
         mock_fn = MagicMock()
-        mock_fn.__call__ = MagicMock(return_value=mock_fn)
+        mock_fn.return_value = mock_fn
         mock_fn.build_transaction = MagicMock(return_value={"gas": 100000})
         mock_fn.estimate_gas = MagicMock(return_value=50000)
         mock_contract.functions = MagicMock()
@@ -868,14 +1267,16 @@ class TestVibeVibeCallMethod(unittest.TestCase):
     def test_success_swap(self):
         vi = self._setup_vi()
         self._make_mock_contract(vi, "swap")
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
         self.assertIsNotNone(result)
 
     def test_success_mint(self):
         vi = self._setup_vi()
         self._make_mock_contract(vi, "mint")
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "mint", "0x" + "ab" * 32))
         self.assertIsNotNone(result)
 
@@ -883,7 +1284,8 @@ class TestVibeVibeCallMethod(unittest.TestCase):
         vi = self._setup_vi()
         vi.network.wait_for_receipt = AsyncMock(return_value=None)
         self._make_mock_contract(vi, "swap")
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
         self.assertIsNone(result)
 
@@ -891,7 +1293,8 @@ class TestVibeVibeCallMethod(unittest.TestCase):
         vi = self._setup_vi()
         vi.network.wait_for_receipt = AsyncMock(return_value={"status": 0})
         self._make_mock_contract(vi, "swap")
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
         self.assertIsNone(result)
 
@@ -916,7 +1319,8 @@ class TestVibeVibeCallMethod(unittest.TestCase):
             "maxFeePerGas": 2000000000, "maxPriorityFeePerGas": 1000000000
         })
         self._make_mock_contract(vi, "swap")
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
         self.assertIsNotNone(result)
 
@@ -924,9 +1328,30 @@ class TestVibeVibeCallMethod(unittest.TestCase):
         vi = self._setup_vi()
         mock_fn = self._make_mock_contract(vi, "swap")
         mock_fn.estimate_gas = MagicMock(side_effect=RuntimeError("est gas fail"))
-        vi.network.get_account.return_value.sign_transaction = MagicMock(return_value=MagicMock(raw_transaction=b"\x00"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
         result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000, gas_mult=2.0))
         self.assertIsNotNone(result)
+
+    def test_estimate_gas_fallback_uses_config_gas_limit(self):
+        """estimate_gas падает → используем gas_limit из конфига, не падаем."""
+        vi = self._setup_vi()
+        mock_fn = self._make_mock_contract(vi, "swap")
+        mock_fn.estimate_gas = MagicMock(side_effect=RuntimeError("gas estimate fail"))
+        vi.network.get_account.return_value.sign_transaction = MagicMock(
+            return_value=MagicMock(raw_transaction=b"\x00"))
+        result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
+        self.assertIsNotNone(result)
+
+    def test_rollback_nonce_exception_logged(self):
+        """rollback_nonce_if_free падает → логируем warning, возвращаем None."""
+        vi = self._setup_vi()
+        self._make_mock_contract(vi, "swap")
+        # send_raw_transaction падает после того, как nonce уже получен
+        vi.network.send_raw_transaction = AsyncMock(side_effect=RuntimeError("send fail"))
+        vi.network.rollback_nonce_if_free = AsyncMock(side_effect=RuntimeError("rollback fail"))
+        result = _run(vi.call_method(_ADDR_CS, "swap", "0x" + "ab" * 32, amount_wei=1000))
+        self.assertIsNone(result)
 
 
 class TestVibeVibeW3Property(unittest.TestCase):

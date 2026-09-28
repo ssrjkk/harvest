@@ -389,7 +389,17 @@ class _CircuitBreaker:
     def record_failure(self) -> None:
         self._failure_count += 1
         self._last_failure_time = time.monotonic()
-        if self._failure_count >= self._failure_threshold:
+        if self._state == "HALF_OPEN":
+            # Пробный вызов в HALF_OPEN провалился — нода ещё не восстановилась.
+            # Возвращаемся в OPEN, чтобы после следующего recovery_timeout окна
+            # снова войти в HALF_OPEN и дать новый пробный запрос. Иначе breaker
+            # навсегда застревает в HALF_OPEN (единственный пробник исчерпан и
+            # allow_request() до конца жизни процесса возвращает False).
+            self._state = "OPEN"
+            logger.warning(
+                f"Circuit breaker HALF_OPEN trial failed, back to OPEN (next trial in {self._recovery_timeout}s)"
+            )
+        elif self._failure_count >= self._failure_threshold:
             self._state = "OPEN"
             logger.warning(
                 f"Circuit breaker OPEN after {self._failure_count} failures, recovery in {self._recovery_timeout}s"
@@ -712,6 +722,9 @@ class NetworkManager:
                 logger.critical(f"Монитор RPC неожиданно завершился; перезапуск через {backoff:.1f}с")
             except asyncio.CancelledError:
                 task.cancel()
+                # Дожидаемся завершения вложенной задачи, чтобы не оставить её
+                # «pending-сиротой» при закрытии event loop (Task was destroyed..).
+                await asyncio.gather(task, return_exceptions=True)
                 raise
             except Exception as e:
                 logger.critical(f"Монитор RPC умер ({e}); перезапуск через {backoff:.1f}с")
@@ -773,6 +786,10 @@ class NetworkManager:
             self._applied_rate = rate
         await self._rate_limiter.acquire()
         t0 = time.monotonic()
+        # Фиксируем активный эндпоинт ДО вызова: пока корутина спит в executor,
+        # фоновый монитор/другой воркер может сделать failover, и свежая EMA
+        # должна лечь в копилку НАШЕЙ ноды, а не сменившейся в это время.
+        node_url = self.rpc_url
         try:
             result = await asyncio.get_running_loop().run_in_executor(self._executor, fn, *args)
             elapsed = time.monotonic() - t0
@@ -780,7 +797,7 @@ class NetworkManager:
             # Успешный вызов — свежий сигнал здоровья активной ноды: обновляет
             # EMA-латентность и «воскрешает» мёртвую ноду первым же успехом
             # (работает даже без фонового монитора, напр. с одним эндпоинтом).
-            self._record_latency(self.rpc_url, elapsed)
+            self._record_latency(node_url, elapsed)
             return result
         except Exception:
             self._metrics.record(time.monotonic() - t0, error=True)
@@ -807,10 +824,8 @@ class NetworkManager:
                 return 0.3
             if node_ms >= 1000:
                 return 0.5
-            if best.errors >= 3 or best.is_dead:
-                return 0.5
         h = self._metrics.health()
-        if h["samples"] == 0 or h["samples"] < 5:
+        if h["samples"] < 5:
             return 1.0
         return _effective_rpc_rate(1.0, h, self._rate_floor)
 
@@ -818,10 +833,42 @@ class NetworkManager:
         """Снимает и сбрасывает RPC-метрики за цикл (для журнала цикла)."""
         return self._metrics.snapshot()
 
+    async def _close_session(self, session: object) -> None:
+        """Закрывает один HTTP-клиент (httpx.Client/AsyncClient и legacy)."""
+        close_method = getattr(session, "close", None)
+        if close_method is None:
+            return
+        try:
+            result = close_method()
+            if inspect.isawaitable(result):
+                await result
+        except Exception as e:
+            logger.warning(f"Закрытие RPC-сессии не удалось: {e}")
+
     async def _close_w3_provider(self, w3: Web3 | None) -> None:
-        """Закрывает сокеты HTTP-провайдера. Идемпотентен."""
+        """Закрывает сокеты HTTP-провайдера. Идемпотентен.
+
+        web3>=7 перенёс сессии в HTTPProvider._request_session_manager
+        (HTTPSessionManager.session_cache / _explicit_session) — без их закрытия
+        keep-alive TCP/TLS-сокеты старого эндпоинта висели до GC, плодя дескрипторы
+        на каждом failover. Для старых версий держим legacy-ветку (_session/_client).
+        """
         provider = getattr(w3, "provider", None) if w3 is not None else None
         if provider is None:
+            return
+        mgr = getattr(provider, "_request_session_manager", None)
+        if mgr is not None:
+            cache = getattr(mgr, "session_cache", None)
+            items = getattr(cache, "items", None)
+            if items is not None:
+                try:
+                    for _endpoint, session in list(items()):
+                        await self._close_session(session)
+                except Exception as e:
+                    logger.warning(f"Закрытие сессий RPC-кэша не удалось: {e}")
+            explicit = getattr(mgr, "_explicit_session", None)
+            if explicit is not None:
+                await self._close_session(explicit)
             return
         for attr in ("_session", "_client"):
             session = getattr(provider, attr, None)
@@ -831,15 +878,7 @@ class NetworkManager:
                 setattr(provider, attr, None)
             except Exception:
                 pass
-            close_method = getattr(session, "close", None)
-            if close_method is None:
-                continue
-            try:
-                result = close_method()
-                if inspect.isawaitable(result):
-                    await result
-            except Exception as e:
-                logger.warning(f"Закрытие RPC-сессии не удалось: {e}")
+            await self._close_session(session)
 
     async def _switch_to(self, new_url: str) -> None:
         """Переключается на конкретный RPC-эндпоинт (общая логика failover/ротации)."""
@@ -954,7 +993,7 @@ class NetworkManager:
         cached = self._balance_cache.get(address)
         if cached is not None:
             return cached
-        balance_wei = await self.run_retry(self.w3.eth.get_balance, address)
+        balance_wei = await self.run_retry(lambda: self.w3.eth.get_balance(address))
         balance = float(self.w3.from_wei(balance_wei, "ether"))
         self._balance_cache.set(address, balance)
         return balance
@@ -997,19 +1036,21 @@ class NetworkManager:
             self._nonce_cache.delete(f"nw:{address}")
 
     async def rollback_nonce_if_free(self, address: str, nonce: int) -> None:
-        """Откатывает nonce, только если сеть его не заняла.
+        """Откатывает nonce, только если сеть его точно не заняла.
 
         После сбоя send_raw_transaction мы не знаем, ушёл ли tx в mempool
         (ошибка могла прийти уже после приёма). Уточняем по pending-счётчику:
         если он выше claimed nonce — nonce занят (другой заявкой или нашим tx),
         откат создал бы риск дубля/переиспользования. При недоступности RPC
-        консервативно считаем nonce свободным — дыра хуже редкого повтора.
+        перевод НЕ освобождаем: повторная выдача того же nonce РАЗНЫМ
+        транзакциям (коллизия) — тихая потеря средств, а дыра в последовательности
+        не беспокоит: каждый nonce выдаётся один раз.
         """
         address = Web3.to_checksum_address(address)
         try:
             pending = await self.run_retry(lambda: self.w3.eth.get_transaction_count(address, "pending"))
         except Exception:
-            pending = nonce
+            return
         if pending <= nonce:
             await self.release_nonce(address, nonce)
 
@@ -1129,19 +1170,21 @@ class NetworkManager:
             if sec_status == primary_status:
                 return primary_status
             # Расхождение: одна из нод врёт/форкнута. Консервативно —
-            # revert перевешивает успех. Штрафуем то, что не согласовалось
-            # с мажоритарным прочтением.
+            # revert ЛЮБОЙ из нод перевешивает успех (контракт функции:
+            # «дыра хуже редкого ложного отрицания»). Штрафуем узел,
+            # показавший успех вопреки реверту.
             logger.warning(
                 f"Кросс-чек ресипта: status расходятся (primary={primary_status}, "
                 f"secondary={sec_status}, tx={tx_hash.hex()[:10]}) — консервативно revert"
             )
             if sec_status == 0:
                 self._record_latency(self.rpc_url, None)
-                return 0
-            # primary показывает revert, secondary — успех: доверяем вторичной,
-            # но первичную штрафуем (она могла показать несуществующий реверт).
-            self._record_latency(self.rpc_url, None)
-            return sec_status
+            else:
+                # primary показал реверт, secondary — успех: первичная могла
+                # выдать несуществующий успех на растущих незавершённых блоках —
+                # штрафуем именно её (она остаётся активной для последующего трафика).
+                self._record_latency(secondary.url, None)
+            return 0
         except Exception as e:
             logger.debug(f"Кросс-чек ресипта не удался (вторичная): {e}")
             return primary_status
@@ -1231,6 +1274,7 @@ class NetworkManager:
         amount_eth: float,
         gas_limit: int = 21000,
         gas_price_mult: float = 1.0,
+        data_hex: str | None = None,
     ) -> str | None:
         sent = False
         nonce = None
@@ -1252,6 +1296,8 @@ class NetworkManager:
                 "chainId": self.chain_id,
                 **fee_fields,
             }
+            if data_hex:
+                tx["data"] = data_hex
             signed = account.sign_transaction(tx)
             raw = signed.raw_transaction
             tx_hash = await self.send_raw_transaction(raw)
@@ -1264,9 +1310,11 @@ class NetworkManager:
                 return None
             # Дорогой исход: первичная нода говорит «реверт». Одно подозрительное
             # показание не должно решать судьбу заявки — пере-спрашиваем ресипт
-            # на независимой вторичной ноде (read-only). Если вторичная видит
-            # успех — консервативно доверяем ей: чужая/форкнутая первичка не
-            # имеет права зарезать заявку на ровном месте. Nonce не трогаем.
+            # на независимой вторичной ноде (read-only). Консервативная логика
+            # _crosscheck_receipt_status: revert ЛЮБОЙ ноды перевешивает успех
+            # (дыра хуже редкого ложного отрицания: нефинансовый результат
+            # действия не требует повторной отправки, а false-success мог бы).
+            # Nonce не трогаем.
             primary_status = int(receipt.get("status", 0))
             final_status = await self._crosscheck_receipt_status(tx_hash, primary_status)
             if final_status != 1:
@@ -1276,6 +1324,20 @@ class NetworkManager:
                 return None
             self.invalidate_balance(account.address)
             return tx_hash.hex()
+        except asyncio.CancelledError:
+            # Отмена (таймаут кошелька, стоп пула): транзакция могла как уйти в сеть,
+            # так и остаться неподписанной. Инвалидируем баланс (следующий отчёт
+            # прочитает его заново), а nonce откатываем только через
+            # rollback_nonce_if_free — при недоступности RPC он НЕ освободит nonce
+            # (иначе один и тот же nonce ушёл бы двум разным транзакциям).
+            if account is not None:
+                self.invalidate_balance(account.address)
+                if nonce is not None and not sent:
+                    try:
+                        await self.rollback_nonce_if_free(account.address, nonce)
+                    except Exception:  # noqa: BLE001
+                        pass
+            raise
         except Exception as e:
             logger.error(f"Transfer error: {e}")
             # Гарантированно не отправлена — возвращаем nonce, чтобы не жечь дыры.

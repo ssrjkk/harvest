@@ -206,6 +206,23 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         wallet_rows: list[dict] = []
         if config["wallets"].get("generate_if_missing", True):
             existing = await db.get_all_wallets()
+            raw_total = await db.count_wallets()
+            if raw_total and not existing:
+                # Строки в БД есть, но НИ ОДНА не расшифровалась текущим ключом:
+                # это почти наверняка подменённый/неверный master-ключ, а не
+                # «пустая база». Молчаливая генерация флота ВЫШЕ нечитаемых
+                # шифрованных строк превратила бы потерю ключа в фальшивую
+                # «OK: 50 кошельков» с новыми пустыми адресами. Ошибка ключа
+                # обратима (верни старый ключ) — генерация новых — нет.
+                print(f"{Fore.RED}  ОШИБКА: в БД {raw_total} кошельков, но НИ ОДИН не расшифрован текущим master-ключом.{Style.RESET_ALL}")
+                print("  Это подмена/потеря database.master_key (master.key), а НЕ повод генерировать новые кошельки.")
+                print("  Верни настоящий ключ БД (или master.key). Генерация отключена автоматически.")
+                try:
+                    guard.release()
+                except Exception:
+                    pass
+                await db.close()
+                return
             if existing:
                 if len(existing) >= wallet_count:
                     wallet_rows = existing[:wallet_count]
@@ -317,6 +334,11 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         export_data = db_wallets if db_wallets else wallets
         csv_path = f"{args.export}.csv"
         json_path = f"{args.export}.json"
+        if config.get("advanced", {}).get("dry_run"):
+            # Симуляция не имеет права перетирать реальный экспорт: в нём
+            # приватные ключи и сид-фразы рабочего флота, копии которых нигде.
+            csv_path = f"{args.export}_dryrun.csv"
+            json_path = f"{args.export}_dryrun.json"
         export_csv(export_data, csv_path)
         export_json(export_data, json_path)
         print(f"  CSV:  {csv_path}")
@@ -445,6 +467,14 @@ async def show_cycle_history(db: Database, limit: int) -> None:
 
 async def main_auto() -> None:
     args = parse_args()
+
+    if args.encrypt and not getattr(sys.stdin, "isatty", lambda: False)():
+        print(
+            f"  {Fore.RED}--encrypt требует интерактивного ввода пароля, а stdin — "
+            f"не терминал (pipeline/расписание). Раньше при этом шифрование молча "
+            f"пропускалось, а export-файлы с ключами оставались ОТКРЫТЫМ текстом.{Style.RESET_ALL}"
+        )
+        raise SystemExit(2)
 
     if args.version:
         print(version_line())

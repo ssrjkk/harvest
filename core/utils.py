@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import random
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -49,11 +50,24 @@ def _coerce_env_value(raw: str) -> Any:
         return raw
 
 
+def _split_rpc_urls(raw: str) -> str | list[str]:
+    """FARMER_RPC_URL допускает несколько эндпоинтов через `;` или `,`.
+
+    Один эндпоинт остаётся строкой (совместимость с конфиг-схемой),
+    несколько — списком, который парсит NetworkManager (network.py).
+    """
+    if not raw:
+        return raw
+    parts = [u.strip() for u in re.split(r"[;,]", raw) if u.strip()]
+    return parts[0] if len(parts) == 1 else parts
+
+
 def apply_env_overrides(config: dict) -> dict:
     for env_key, (section, key) in _ENV_MAP.items():
         raw = os.environ.get(env_key)
         if raw is not None:
-            config.setdefault(section, {})[key] = _coerce_env_value(raw)
+            value = _split_rpc_urls(raw) if env_key == "FARMER_RPC_URL" else _coerce_env_value(raw)
+            config.setdefault(section, {})[key] = value
     return config
 
 

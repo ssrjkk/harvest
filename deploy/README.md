@@ -2,6 +2,52 @@
 
 Портал = веб-дашборд + API + Telegram-бот (aiogram, long-polling) + Mini App.
 
+## 0. Подготовка сервера (с чистого VPS)
+
+```bash
+# 1. Обновить систему
+apt update && apt upgrade -y
+
+# 2. Docker Engine (официальный репозиторий)
+curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
+
+# 3. Docker Compose (plugin идёт вместе с get.docker; проверить)
+docker compose version
+
+# 4. Файрвол: SSH + ничего лишнего. Порт 8080 НЕ открываем наружу —
+#    доступ к дашборду через SSH-tunnel или Caddy позже.
+ufw allow OpenSSH
+ufw enable
+ufw status            # 22 разрешён, всё остальное закрыто
+
+# 5. Swap (рекомендую для VPS до 4GB RAM): 2GB
+fallocate -l 2G /swapfile && chmod 600 /swapfile
+mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 6. Резервный каталог для бэкапов
+mkdir -p /root/backups
+```
+
+Деплой кода: репозиторий приватный — проще не `git clone`, а rsync с твоей машины:
+
+```bash
+# локально (Windows: убедись, что rsync есть или используй WinSCP для папки deploy)
+rsync -avz --exclude='.git' deploy/ user@server:/opt/harvest/deploy/
+rsync -avz --exclude='.git' core/ portal/ abi/ requirements.txt \
+  requirements-portal.txt config_*.yaml config.example.yaml user@server:/opt/harvest/
+# либо один каталог: rsync -avz --exclude='.git' --exclude='tests' ./ user@server:/opt/harvest/
+```
+
+Дальше — раздел 1 (секреты и запуск), но с абсолютным путём:
+
+```bash
+cd /opt/harvest/deploy
+cp .env.example .env   # заполнить, см. ниже
+docker compose up -d --build
+```
+
 ## 1. Быстрый старт
 
 ```bash
@@ -14,6 +60,8 @@ cp .env.example .env
 #    - FARMER_MASTER_KEY: сгенерируйте 64-hex:
 #        python3 -c "import secrets; print(secrets.token_hex(32))"
 #      Это ключ шифрования БД И мастер-пароль входа в веб.
+#      НЕ пропускайте: при пустом ключе (и без Google/TG) портал не стартует —
+#      это fail-closed защита от «открытого» инстанса.
 #    - PORTAL_SECRET: если пусто — создастся сам в /app/data/portal_secret.key.
 
 # 3. Запуск
@@ -40,7 +88,7 @@ ssh -L 8080:127.0.0.1:8080 user@host   # затем открой http://localhos
 #      TELEGRAM_ALLOW_IDS=<ваш числовой user_id>  (default-deny: бот отвечает только им)
 docker compose up -d --build   # перезапуск с ботом
 ```
-Бот работает на long-polling и НЕ требует публичного URL. Команды: `/start`, `/stats`, `/start`, `/stop`, `/pause`, `/resume`, `/links`, `/doctor`, `/history`.
+Бот работает на long-polling и НЕ требует публичного URL. Текстовые команды: `/start`, `/help`, `/doctor`, `/history`. Остальные действия (`/stats`, `/stop`, `/pause`, `/resume`, `/links`, сеть, страница) — inline-кнопки под сообщениями бота.
 
 Сторожевой монитор шлёт вам push при проблемах: «сеть деградировала», «ферма стоит», «всплеск ошибок», «ферма остановилась» (+ восстановление). Настройки:
 `PORTAL_WATCH_INTERVAL_S` (по умолчанию 300 c) и `PORTAL_HEARTBEAT_HOURS` (периодический «пульс», 0 = выкл) в `deploy/.env`.
@@ -70,7 +118,7 @@ docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 - в `.env` установите `PORTAL_ALLOW_PASSWORD_HTTP=` (пусто) и раскомментируйте
   `PORTAL_TRUST_PROXY=1` (продакшен-режим: пароль только по HTTPS, cookies secure);
 - добавьте `GOOGLE_CLIENT_ID/SECRET` для OAuth-входа, если нужен.
-- Mini App использует `/public/index.html` по `PORTAL_BASE_URL=https://ваш-домен`.
+- Mini App (дашборд) живёт в портале: `/static/index.html` по `PORTAL_BASE_URL=https://ваш-домен`.
 
 ## 5. Обновление
 
@@ -78,6 +126,16 @@ docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 cd harvest && git pull
 cd deploy && docker compose up -d --build
 ```
+
+Для приватного репозитория (без токена на сервере) — rsync:
+
+```bash
+rsync -avz --delete --exclude='.git' --exclude='data' ./ user@server:/opt/harvest/
+ssh user@server 'cd /opt/harvest/deploy && docker compose up -d --build'
+```
+
+Данные в volume `harvest_portal-data` не трогаются (в образе `/app/data` пустой,
+volume подмонтирован поверх) — обновление безопасно.
 
 ## Операционные заметки
 

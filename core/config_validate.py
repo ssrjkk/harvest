@@ -13,6 +13,10 @@ class ConfigError(Exception):
     pass
 
 
+def _is_hex(value: str) -> bool:
+    return bool(value) and all(c in "0123456789abcdefABCDEF" for c in value)
+
+
 # Дефолты, используемые в нескольких модулях (единый источник истины)
 DEFAULT_MAX_WORKERS = 20
 
@@ -23,6 +27,9 @@ VALID_ACTION_TYPES = frozenset(
         "transfer",
         "vibevibe_swap",
         "vibevibe_mint",
+        # Универсальный вызов контракта (value или 4-байт селектор) — используется
+        # автоконфигурацией для найденных топ-контрактов без заранее известного ABI.
+        "contract_call",
         # Flop Labs
         "flop_compute",
         "flop_validate",
@@ -36,6 +43,42 @@ VALID_ACTION_TYPES = frozenset(
 
 # Подмножество: контрактные действия (обязаны иметь contract и method)
 _CONTRACT_ACTION_TYPES = frozenset(t for t in VALID_ACTION_TYPES if t != "transfer")
+
+# Адрес-заглушка: действие с ним в runtime пропускается (фоллбэк на transfer).
+_ZERO_ADDR = "0x0000000000000000000000000000000000000000"
+
+# Маркеры-заглушки, которые НЕ должны попасть в реальный фарм.
+# chain_id 99999 используется в config_flop.yaml как «заглушка» (README.md).
+_PLACEHOLDER_CHAIN_IDS = frozenset({99999})
+
+
+def config_warnings(config: dict) -> list[str]:
+    """Замечания о незаполненных заглушках: 0x0-контракты, chain_id-маркер.
+
+    Это НЕ ошибки (валидатор пропускает их намеренно: transfer/сети без
+    контрактов должны работать, --skip-farm легален). Но реальной сети
+    нужны вписанные адреса/chain_id — возвращаем человекочитаемые
+    предупреждения, которые doctor показывает отдельной строкой, а
+    actions.py при запуске фарма повторяет для 0x0-контрактов.
+    """
+    warnings: list[str] = []
+
+    net = config.get("network") or {}
+    if net.get("chain_id") in _PLACEHOLDER_CHAIN_IDS:
+        warnings.append("network.chain_id=99999 — маркер-заглушка: впишите реальный chain_id сети перед фармом")
+
+    for i, a in enumerate(config.get("actions") or []):
+        if not isinstance(a, dict):
+            continue
+        atype = a.get("type", "")
+        if atype not in _CONTRACT_ACTION_TYPES:
+            continue
+        if a.get("contract", "") in (None, "", _ZERO_ADDR):
+            warnings.append(
+                f"actions[{i}].{atype}: contract — заглушка 0x0, действие будет "
+                "пропущено (фоллбэк на transfer). Впишите реальный адрес контракта."
+            )
+    return warnings
 
 
 def _check_range(
@@ -64,7 +107,7 @@ def _check_range(
 
 
 def _check_range_pair(name: str, value: Any, errors: list[str] | None = None) -> None:
-    """Проверяет, что value — список [min, max] где min <= max, или одно число."""
+    """Проверяет, что value — список [min, max] где 0 <= min <= max, или одно число."""
     msg: str | None = None
     if isinstance(value, (list, tuple)):
         if len(value) != 2:
@@ -73,6 +116,11 @@ def _check_range_pair(name: str, value: Any, errors: list[str] | None = None) ->
             lo, hi = value
             if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
                 msg = f"{name}: min/max должны быть числами"
+            elif lo < 0:
+                # Отрицательный min ломал инварианты молча: random.randint(-х, hi)
+                # давал «0 действий», asyncio.sleep(отрицательное) схлопывался в 0 —
+                # анти-сибил задержки исчезали без единого предупреждения.
+                msg = f"{name}: min ({lo}) < 0 — диапазоны не могут быть отрицательными"
             elif lo > hi:
                 msg = f"{name}: min ({lo}) > max ({hi})"
     elif not isinstance(value, (int, float)):
@@ -222,16 +270,24 @@ def validate_config(config: dict) -> None:
                     errors.append(
                         f"actions[{i}].target: '{tgt}' не похож на адрес (нужен 0x+40hex или 'random_wallet')"
                     )
-            # Контрактные действия обязаны иметь contract и method
+            # Контрактные действия обязаны иметь contract; method — кроме
+            # contract_call (value-only вызов возможен без каллдаты).
             if atype in _CONTRACT_ACTION_TYPES:
                 contract = a.get("contract", "")
                 if not contract:
                     errors.append(f"actions[{i}].contract: обязателен для {atype}")
-                elif contract != "0x0000000000000000000000000000000000000000" and not Web3.is_address(contract):
+                elif contract != _ZERO_ADDR and not Web3.is_address(contract):
                     errors.append(f"actions[{i}].contract: '{contract}' не похож на адрес")
-                method = a.get("method", "")
-                if not method:
-                    errors.append(f"actions[{i}].method: обязателен для {atype}")
+                if atype == "contract_call":
+                    method = a.get("method") or ""
+                    if method and not (method.startswith("0x") and len(method) == 10 and _is_hex(method[2:])):
+                        errors.append(
+                            f"actions[{i}].method: для contract_call ожидается 4-байт селектор (0x+8 hex) или пусто"
+                        )
+                else:
+                    method = a.get("method", "")
+                    if not method:
+                        errors.append(f"actions[{i}].method: обязателен для {atype}")
 
     # --- farming ---
     farm = config.get("farming")
@@ -255,7 +311,6 @@ def validate_config(config: dict) -> None:
     # При РЕАЛЬНЫХ контрактных действиях (не-заглушка 0x0) gas_limit должен быть
     # достаточным (min 50000). Заглушки в runtime падают на transfer (actions.py),
     # им 21000 достаточно — требоваться 50000 за них неправильно.
-    _ZERO_ADDR = "0x0000000000000000000000000000000000000000"
     has_real_contract = any(
         isinstance(a, dict)
         and a.get("type", "") in _CONTRACT_ACTION_TYPES

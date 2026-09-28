@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.config_validate import ConfigError, validate_config
+from core.config_validate import ConfigError, config_warnings, validate_config
 
 
 def good_config() -> dict:
@@ -74,6 +74,35 @@ class TestLoggingAndPaths(unittest.TestCase):
         cfg = good_config()
         cfg["database"] = {"path": "C:/data/farming_state.db"}
         validate_config(cfg)
+
+
+class TestPlaceholderWarnings(unittest.TestCase):
+    """config_warnings() — fail-loud предупреждения о заглушках (не ошибки)."""
+
+    def test_clean_config_no_warnings(self):
+        self.assertEqual(config_warnings(good_config()), [])
+
+    def test_zero_contract_warned(self):
+        cfg = good_config()
+        cfg["actions"][1]["contract"] = "0x0000000000000000000000000000000000000000"
+        warnings = config_warnings(cfg)
+        self.assertTrue(any("0x0" in w and "vibevibe_swap" in w for w in warnings))
+        # Заглушка не мешает валидации — это замечание, а не ошибка.
+        validate_config(cfg)
+
+    def test_chain_id_placeholder_warned(self):
+        cfg = good_config()
+        cfg["network"]["chain_id"] = 99999
+        warnings = config_warnings(cfg)
+        self.assertTrue(any("99999" in w and "chain_id" in w for w in warnings))
+
+    def test_transfer_not_warned(self):
+        cfg = good_config()
+        cfg["actions"] = [
+            {"type": "transfer", "target": "random_wallet", "weight": 1.0,
+             "min_amount": 0.0001, "max_amount": 0.001}
+        ]
+        self.assertEqual(config_warnings(cfg), [])
 
 
 class TestConfigValidate(unittest.TestCase):

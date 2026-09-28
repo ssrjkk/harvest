@@ -111,7 +111,10 @@ class TestWatchdog(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Прогресс возобновился", sent[0])
 
     async def test_pause_is_not_stall(self):
-        wd = Watchdog(_Daemon(_stats(processed=10), _stats(processed=10, paused=True), _stats(processed=10, paused=True)))
+        wd = Watchdog(
+            _Daemon(_stats(processed=10), _stats(processed=10, paused=True),
+                    _stats(processed=10, paused=True))
+        )
         await wd.tick()
         self.assertEqual(await wd.tick(), [])
         self.assertEqual(await wd.tick(), [])
@@ -147,7 +150,10 @@ class TestWatchdog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await wd.tick(), [])
 
     async def test_restart_sets_fresh_baseline(self):
-        wd = Watchdog(_Daemon(_stats(running=True, processed=99), _stats(running=False), _stats(running=True, processed=0)))
+        wd = Watchdog(
+            _Daemon(_stats(running=True, processed=99), _stats(running=False),
+                    _stats(running=True, processed=0))
+        )
         await wd.tick()
         await wd.tick()
         # Рестарт: тик только фиксирует базлайн, без шума "стоит".

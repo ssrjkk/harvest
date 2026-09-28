@@ -104,9 +104,14 @@ class Watchdog:
         if not was_running and running:
             # Рестарт: новый базлайн, чтобы не алертить "стоит"
             # пока пул только инициализируется.
+            self._prev["running"] = True
             self._prev["processed"] = processed
             self._prev_errors = errors_total
+            # Сбрасываем и трипы предыдущего запуска: их "восстановительные"
+            # сообщения относятся к старой сессии фарма, а зеро-перенос ошибок
+            # иначе глушил бы новый всплеск (elif "errors" видит stale-флаг).
             self._streak.clear()
+            self._tripped.clear()
             self._heartbeat_ts = now
             return sent
 

@@ -35,6 +35,11 @@ class BatchWriter:
         # Сколько записей потеряно из-за отказа БД и когда разрешена следующая попытка.
         self.dropped_count = 0
         self._cooldown_until = 0.0
+        # Жёсткий предел буфера поверх max_buffer: во время кулдауна (БД лежит
+        # 30 сек, flush — no-op) add_action продолжал копить записи, и буфер рос
+        # без ограничений вместе с health_updates. Превышение — сбрасываем
+        # старейшие строки с учётом счётчиков (аналог backpressure).
+        self.hard_cap = max(1000, max_buffer * 10)
 
     def start(self) -> None:
         if self._task is None:
@@ -48,6 +53,9 @@ class BatchWriter:
             except asyncio.CancelledError:
                 pass
             self._task = None
+        # Отменяем кулдаун: если БД уже оправилась, финальный flush на выходе
+        # должен унести остатки буфера, а не молча их бросить.
+        self._cooldown_until = 0.0
         await self.flush()
 
     async def add_action(
@@ -66,6 +74,19 @@ class BatchWriter:
                 self._health_updates[address] = (1, delta)
             else:
                 self._health_updates[address] = (entry[0] + 1, entry[1] + delta)
+            # Жёсткий лимит: даже при недоступной БД буфер ограничен сверху.
+            # Выбрасываем старейшие строки, сохраняя корректность health-счётчиков.
+            if len(self._actions) > self.hard_cap:
+                excess = len(self._actions) - self.hard_cap
+                dropped = self._actions[:excess]
+                self._actions = self._actions[excess:]
+                for d_addr, _dt, _tx, d_ok, _details in dropped:
+                    entry = self._health_updates.get(d_addr)
+                    if entry:
+                        self._health_updates[d_addr] = (entry[0] - 1, entry[1] - d_ok)
+                self.dropped_count += len(dropped)
+                logger.warning(f"BatchWriter: буфер переполнен ({self.hard_cap}), "
+                               f"сброшено {len(dropped)} старейших записей")
             should_flush = self._flush_on_action or len(self._actions) >= self.max_buffer
         if should_flush:
             await self.flush()
@@ -103,6 +124,20 @@ class BatchWriter:
                 await self.db.update_wallet_health_batch(pending_health)
                 pending_health = {}
             self._consecutive_failures = 0
+        except asyncio.CancelledError:
+            # Отмена (stop) прилетела во время записи: батч уже изъят из буфера,
+            # но мы НЕ знаем, успел ли executemany/commit лечь в БД — commit
+            # атомарен, а результат мог вернуться уже после отмены. Requeue
+            # (как раньше) приводил к двойной записи тем же финальным flush()
+            # в stop(): инкременты health и строки actions_log задублировались.
+            # Поэтому in-flight батч НЕ возвращаем: потеря пары телеметрических
+            # строк при остановке честнее молчаливых дублей в статистике.
+            if pending_actions or pending_health:
+                logger.warning(
+                    f"BatchWriter: запись прервана отменой "
+                    f"({len(pending_actions)} действий, {len(pending_health)} health) — дроп в полёте, без requeue"
+                )
+            raise
         except Exception as e:
             self._consecutive_failures += 1
             # Устойчивый отказ БД: не копить буфер вечно. После 3 сбоев подряд
@@ -118,10 +153,14 @@ class BatchWriter:
                 return
             # Сбой записи: возвращаем в буфер только НЕ записанную часть,
             # чтобы не задвоить уже закоммиченные rows.
-            async with self._lock:
-                if pending_actions:
-                    self._actions = pending_actions + self._actions
-                for addr, (total, ok) in pending_health.items():
-                    cur = self._health_updates.get(addr, (0, 0))
-                    self._health_updates[addr] = (cur[0] + total, cur[1] + ok)
+            await self._requeue(pending_actions, pending_health)
             logger.error(f"BatchWriter flush error (будет повторено): {e}")
+
+    async def _requeue(self, actions: list[tuple], health: dict[str, tuple[int, int]]) -> None:
+        """Возвращает не записанную часть батча в буфер (после сбоя/отмены)."""
+        async with self._lock:
+            if actions:
+                self._actions = actions + self._actions
+            for addr, (total, ok) in health.items():
+                cur = self._health_updates.get(addr, (0, 0))
+                self._health_updates[addr] = (cur[0] + total, cur[1] + ok)

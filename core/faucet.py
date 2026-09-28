@@ -5,7 +5,9 @@ Pre-flight validate(): быстро проверяет доступность UR
 """
 
 import asyncio
+import json
 import logging
+import os
 import random
 
 import aiohttp
@@ -18,6 +20,44 @@ logger = logging.getLogger(__name__)
 
 # общий таймаут на один запрос крана (короткий, чтобы не висеть)
 _REQUEST_TIMEOUT = 8
+
+# Chainstack MCP (streamable-HTTP JSON-RPC). Имя инструмента — request_testnet_funds,
+# путь запроса — /mcp: POST на /request_testnet_funds отвечает 404 и не пополняет
+# ни один кошелёк, поэтому в конфигах обязан быть именно /mcp.
+_CHAINSTACK_TOOL = "request_testnet_funds"
+_CHAINSTACK_KEY_ENV = "CHAINSTACK_API_KEY"
+_MCP_PROTOCOL_VERSION = "2025-06-18"
+_MCP_SESSION_HEADER = "mcp-session-id"
+# Без обоих подтипов в Accept сервер отвечает 406 на валидный initialize.
+_MCP_ACCEPT = "application/json, text/event-stream"
+# HTTP-коды GET-пробы, означающие «эндпоинта запроса нет». Раньше любой ответ
+# (включая 404) считался живым — мёртвый URL крана переживал pre-flight.
+_DEAD_PROBE_STATUSES = frozenset({404, 410})
+
+
+def _parse_mcp_body(body: str) -> dict | None:
+    """Тело MCP-ответа: SSE-фрейм `data: {json}` либо голый JSON."""
+    text = (body or "").strip()
+    if not text:
+        return None
+    if text.startswith("{"):
+        try:
+            return json.loads(text)
+        except ValueError:
+            return None
+    for line in text.splitlines():
+        if line.startswith("data:"):
+            try:
+                return json.loads(line[5:].strip())
+            except ValueError:
+                continue
+    return None
+
+
+def _mcp_text(result: dict) -> str:
+    """Человекочитаемый ответ tool-вызова: result.content[*].text одной строкой."""
+    parts = [c.get("text", "") for c in (result.get("content") or []) if isinstance(c, dict) and c.get("text")]
+    return " ".join(parts)[:400]
 
 
 class Faucet:
@@ -53,6 +93,8 @@ class Faucet:
         self._reachable: list[bool] | None = None
         self._session: aiohttp.ClientSession | None = None
         self._connector: aiohttp.TCPConnector | None = None
+        # MCP session id по URL: handshake один раз на пачку кошельков
+        self._mcp_sids: dict[str, str] = {}
         proxy_cfg = config.get("proxy", {})
         self._proxy_enabled = proxy_cfg.get("enabled", False)
         self._proxies = self._load_proxies(proxy_cfg)
@@ -96,6 +138,7 @@ class Faucet:
 
     async def close(self) -> None:
         """Закрывает общий session и connector (освобождает коннекты)."""
+        self._mcp_sids.clear()
         if self._session and not self._session.closed:
             await self._session.close()
             self._session = None
@@ -103,12 +146,202 @@ class Faucet:
             await self._connector.close()
             self._connector = None
 
-    async def validate(self) -> int:
-        """Проверяет ДОСТУПНОСТЬ URL-ов крана. Возвращает число живых стратегий.
+    @staticmethod
+    def _api_key() -> str:
+        """Chainstack API key берётся только из env.
 
-        Это connectivity-проба, а не функциональная проверка: любой HTTP-ответ
-        (включая 4xx/5xx — например, валидация адреса) означает, что URL жив.
-        Просьба о пополнении не выполняется — квота крана не тратится.
+        В config.yaml ключ писать нельзя: конфиги раздаются вместе со сборкой
+        и попадают в логи/репозиторий.
+        """
+        return os.environ.get(_CHAINSTACK_KEY_ENV, "").strip()
+
+    async def _mcp_post(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        payload: dict,
+        proxy: str | None,
+        headers: dict | None = None,
+    ) -> tuple[int, dict | None, str | None]:
+        """Один JSON-RPC вызов MCP. Возвращает (status, message, session_id).
+
+        status 0 — транспортная ошибка (таймаут/HTTP-исключение).
+        """
+        req_headers = {
+            "User-Agent": utils.get_random_user_agent(),
+            "Content-Type": "application/json",
+            "Accept": _MCP_ACCEPT,
+        }
+        if headers:
+            req_headers.update(headers)
+        try:
+            async with session.post(
+                url,
+                json=payload,
+                headers=req_headers,
+                proxy=proxy,
+                timeout=aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT),
+            ) as resp:
+                sid = resp.headers.get(_MCP_SESSION_HEADER)
+                body = await resp.text()
+                if resp.status not in (200, 202):
+                    logger.debug(f"MCP {url} [{resp.status}]: {body[:120]}")
+                    return resp.status, None, sid
+                return resp.status, _parse_mcp_body(body), sid
+        except TimeoutError:
+            logger.debug(f"MCP timeout для {url}")
+        except aiohttp.ClientError as e:
+            logger.debug(f"MCP HTTP ошибка: {e}")
+        except Exception as e:
+            logger.debug(f"MCP ошибка: {e}")
+        return 0, None, None
+
+    async def _mcp_handshake(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        proxy: str | None,
+        auth: dict,
+    ) -> str | None:
+        """initialize + notifications/initialized. Возвращает session id или None.
+
+        Без session id сервер отвергает tools/call (400 «Missing session ID»).
+        """
+        status, _, sid = await self._mcp_post(
+            session,
+            url,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": _MCP_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "clientInfo": {"name": "harvest", "version": "1"},
+                },
+            },
+            proxy,
+            auth,
+        )
+        if status != 200 or not sid:
+            logger.debug(f"MCP initialize не прошёл ({url})")
+            return None
+        await self._mcp_post(
+            session,
+            url,
+            {"jsonrpc": "2.0", "method": "notifications/initialized"},
+            proxy,
+            {**auth, _MCP_SESSION_HEADER: sid},
+        )
+        return sid
+
+    async def _mcp_session(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+        proxy: str | None,
+        auth: dict,
+    ) -> str | None:
+        """Session id MCP с кэшем на пачку: сервер принимает много вызовов на одном.
+
+        Кэш по URL (несколько MCP-стратегий не подменяют session друг друга).
+        Без кэша это 3 HTTP-запроса на кошелёк; с кэшем — 2 на всю пачку.
+        """
+        cached = self._mcp_sids.get(url)
+        if cached:
+            return cached
+        sid = await self._mcp_handshake(session, url, proxy, auth)
+        if sid:
+            self._mcp_sids[url] = sid
+        return sid
+
+    async def _chainstack_request(
+        self,
+        session: aiohttp.ClientSession,
+        strategy: dict,
+        proxy: str | None,
+        address: str,
+    ) -> bool:
+        """Пополнение через Chainstack MCP: tools/call request_testnet_funds.
+
+        Инструмент доливает адрес до сетевого максимума, поэтому повторный вызов
+        для уже пополненного кошелька безопасен (квота не тратится дважды).
+        HTTP 200 здесь НЕ означает успех: сервер отвечает 200 и на isError=true.
+        """
+        url = strategy.get("url")
+        key = self._api_key()
+        if not key:
+            logger.warning(
+                f"Кран chainstack: {_CHAINSTACK_KEY_ENV} не задан — пропускаю "
+                "(ключ: https://console.chainstack.com/user/settings/api-keys)"
+            )
+            return False
+        auth = {"Authorization": f"Bearer {key}"}
+        sid = await self._mcp_session(session, url, proxy, auth)
+        if not sid:
+            return False
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "tools/call",
+            "params": {
+                "name": _CHAINSTACK_TOOL,
+                "arguments": {
+                    "network": strategy.get("network_param", "robinhood"),
+                    "address": address,
+                },
+            },
+        }
+        status, msg, _ = await self._mcp_post(
+            session,
+            url,
+            payload,
+            proxy,
+            {**auth, _MCP_SESSION_HEADER: sid},
+        )
+        if status in (400, 401, 403, 404, 410):
+            # протухший/отклонённый session — следующий адрес начнёт новый handshake
+            self._mcp_sids.pop(url, None)
+        if status != 200 or not isinstance(msg, dict):
+            return False
+        if "error" in msg:
+            logger.debug(f"Кран chainstack JSON-RPC ошибка: {str(msg['error'])[:160]}")
+            return False
+        result = msg.get("result") or {}
+        text = _mcp_text(result)
+        if result.get("isError"):
+            logger.warning(f"Кран chainstack отказ для {address[:10]}: {text[:200]}")
+            return False
+        logger.info(f"Faucet OK (chainstack) for {address[:10]}: {text[:120]}")
+        return True
+
+    async def _chainstack_probe(
+        self,
+        session: aiohttp.ClientSession,
+        url: str,
+    ) -> bool:
+        """Функциональная проба MCP-крана: handshake с ключом даёт session id.
+
+        GET-проба на /mcp бессмысленна (405/406), а исторический URL
+        …/request_testnet_funds отвечает 404 — «любой HTTP-ответ = жив»
+        пропускал такую стратегию в фарм-пачку.
+        """
+        if not self._api_key():
+            logger.warning(
+                f"Кран chainstack: {_CHAINSTACK_KEY_ENV} не задан — стратегия исключена "
+                "(ключ: https://console.chainstack.com/user/settings/api-keys)"
+            )
+            return False
+        auth = {"Authorization": f"Bearer {self._api_key()}"}
+        return bool(await self._mcp_session(session, url, None, auth))
+
+    async def validate(self) -> int:
+        """Проверяет доступность стратегий крана. Возвращает число живых.
+
+        Это connectivity-проба, а не функциональная проверка: просьба о
+        пополнении не выполняется (кроме chainstack, где handshake с ключом —
+        единственная осмысленная проба), квота крана не тратится.
+        404/410 означают, что эндпоинта запроса нет, — стратегия исключается.
         """
         if not self.enabled or not self.strategies:
             self._reachable = []
@@ -116,18 +349,23 @@ class Faucet:
         self._reachable = []
         session = await self._get_session()
 
-        async def _probe(url: str | None) -> bool:
+        async def _probe(strategy: dict) -> bool:
+            url = strategy.get("url")
             if not url:
                 return False
+            if strategy.get("type") == "chainstack":
+                return await self._chainstack_probe(session, url)
             try:
                 # GET-проба обычно дешевле POST и не тратит лимиты пополнений.
-                # Если сервер не поддерживает GET (405/404) — это тоже ответ,
-                # значит URL доступен.
+                # 405 (GET не поддерживается) — тоже ответ живого эндпоинта.
                 async with session.get(
                     url,
                     headers={"User-Agent": utils.get_random_user_agent()},
                     timeout=aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT),
                 ) as resp:
+                    if resp.status in _DEAD_PROBE_STATUSES:
+                        logger.warning(f"Кран: {url} отвечает HTTP {resp.status} — эндпоинта нет")
+                        return False
                     logger.info(f"Кран стратегия доступна (HTTP {resp.status})")
                     return True
             except Exception:
@@ -135,7 +373,7 @@ class Faucet:
 
         # Пробы всех стратегий идут ПАРАЛЛЕЛЬНО — при большом списке кранов
         # валидация не растягивается на сумму таймаутов (8с * N).
-        probes = await asyncio.gather(*[_probe(s.get("url")) for s in self.strategies], return_exceptions=True)
+        probes = await asyncio.gather(*[_probe(s) for s in self.strategies], return_exceptions=True)
         for strategy, ok in zip(self.strategies, probes, strict=True):
             alive = bool(ok) and not isinstance(ok, BaseException)
             self._reachable.append(alive)
@@ -161,14 +399,10 @@ class Faucet:
         url = strategy.get("url")
         if not url:
             return False
+        if strategy.get("type") == "chainstack":
+            return await self._chainstack_request(session, strategy, proxy, address)
         try:
-            if strategy.get("type") == "chainstack":
-                payload = {
-                    "network": strategy.get("network_param", "robinhood"),
-                    "address": address,
-                }
-            else:
-                payload = {"address": address}
+            payload = {"address": address}
             headers = {
                 "User-Agent": utils.get_random_user_agent(),
                 "Content-Type": "application/json",
@@ -205,11 +439,14 @@ class Faucet:
         session = await self._get_session()
         attempts = max(1, retries if retries is not None else self.retries)
         for attempt in range(attempts):
-            for strategy in live:
+            for idx, strategy in enumerate(live):
                 if await self._request_strategy(session, strategy, proxy, address):
                     return True
-                # Exponential backoff между стратегиями
-                await asyncio.sleep(random.uniform(1, 3) * (attempt + 1))
+                # Exponential backoff между стратегиями (только если есть следующий запрос)
+                has_next_strategy = idx < len(live) - 1
+                has_next_cycle = attempt < attempts - 1
+                if has_next_strategy or has_next_cycle:
+                    await asyncio.sleep(random.uniform(1, 3) * (attempt + 1))
             if attempt < attempts - 1:
                 # Exponential backoff между retry-циклами
                 backoff = random.uniform(*self.delay_range) * (2**attempt)
@@ -233,7 +470,17 @@ class Faucet:
                 if balance >= self.target_balance:
                     break
             return balance >= self.min_balance
-        return await self.request_tokens(address)
+        # target_balance не задан — судим по min_balance. HTTP 200/201/202 НЕ
+        # равен зачислению: кран отвечает успехом, но токены могут не прийти
+        # (rate-limit, капча, заглушка). Истинный успех — свежий баланс >= min,
+        # иначе авто-режим печатает OK=funded и фарм уходит на пустых кошельках.
+        await self.request_tokens(address)
+        balance = await network.get_balance(address, refresh=True)
+        if balance < goal:
+            logger.warning(
+                f"Кран ответил, но баланс {balance:.6f} < min {goal} для {address[:10]} — считаю неуспехом"
+            )
+        return balance >= goal
 
     def concurrent_batch(self, workers: int) -> int:
         """Потолок одновременных запросов крана: min(воркеры, лимит из конфига).

@@ -101,6 +101,56 @@ class TestBatchWriter(unittest.IsolatedAsyncioTestCase):
         await bw.stop()
         self.assertEqual(len(db.actions_written), 1)
 
+    async def test_cancel_during_flush_drops_inflight_avoids_duplicates(self):
+        """Отмена (stop) во время записи НЕ возвращает батч в буфер.
+
+        commit атомарен, и результат мог вернуться уже после отмены: requeue
+        заставил бы финальный flush в stop() записать те же строки повторно —
+        задублировались бы actions_log и инкременты health. Честнее потерять
+        одну телеметрическую пачку при остановке, чем молча задублировать статистику.
+        """
+        import asyncio
+
+        class CancelOnceDB(FakeDB):
+            def __init__(self):
+                super().__init__()
+                self.cancel_next = False
+
+            async def log_actions_batch(self, rows):
+                if self.cancel_next:
+                    self.cancel_next = False
+                    raise asyncio.CancelledError
+                return await super().log_actions_batch(rows)
+
+        db = CancelOnceDB()
+        bw = BatchWriter(db, flush_every=999, max_buffer=500)
+        await bw.add_action("0x1", "a", "h", True)
+        db.cancel_next = True
+        with self.assertRaises(asyncio.CancelledError):
+            await bw.flush()
+        # In-flight пачка НЕ вернулась в буфер: stop() не перепишет её повторно.
+        async with bw._lock:
+            pending = len(bw._actions)
+        self.assertEqual(pending, 0)
+        # В БД тоже не попало (отмена прилетела до записи).
+        self.assertEqual(len(db.actions_written), 0)
+        # Данные после отмены пишутся штатно, дублей нет.
+        db.cancel_next = False
+        await bw.add_action("0x2", "b", "h", True)
+        await bw.stop()
+        self.assertEqual(len(db.actions_written), 1)
+        self.assertEqual(db.health_written, {"0x2": (1, 1)})
+
+    async def test_stop_flushes_despite_cooldown(self):
+        """stop() сбрасывает кулдаун: остаток буфера уходит на диск, а не молча."""
+        db = FakeDB(fail=True)
+        bw = BatchWriter(db, flush_every=999, max_buffer=500)
+        await bw.add_action("0x1", "a", "h", True)
+        bw._cooldown_until = 999999.0
+        db.set_fail(False)
+        await bw.stop()
+        self.assertEqual(len(db.actions_written), 1)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

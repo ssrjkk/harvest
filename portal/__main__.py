@@ -117,7 +117,7 @@ async def main() -> None:
             raise SystemExit(_mkey.reason)
         if _mkey.reason:
             logger.warning("Мастер-ключ: %s", _mkey.reason)
-    if os.name == "nt" and os.environ.get("PORTAL_SECRET") is None:
+    if os.name == "nt" and os.environ.get("PORTAL_SECRET") is None:  # pragma: no cover - только Windows
         logger.warning(
             "portal_secret.key создан на Windows: права 0600 здесь не работают — "
             "убедитесь, что рабочий каталог не в синхронизируемой папке"

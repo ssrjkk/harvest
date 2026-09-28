@@ -239,6 +239,28 @@ class TestApiUnitBranches(_PortalApiBase, unittest.TestCase):
         finally:
             api.REVOKED_FILE = saved
 
+    def test_load_revoked_skips_broken_entries_keeps_valid(self):
+        """Битая строка НЕ должна «воскрешать» весь список отзыва сессий.
+
+        Одна мусорная запись (частичная запись, ручная правка) пропускается по
+        отдельности; остальные отозванные jti продолжают блокироваться, а
+        истёкшие вычищаются.
+        """
+        import json
+
+        now = int(time.time())
+        p = str(Path(self._td.name) / "mixed.json")
+        Path(p).write_text(
+            json.dumps({"valid": now + 3600, "broken": "not-an-int", "expired": now - 10}),
+            encoding="utf-8",
+        )
+        saved = api.REVOKED_FILE
+        api.REVOKED_FILE = p
+        try:
+            self.assertEqual(api._load_revoked(), {"valid": now + 3600})
+        finally:
+            api.REVOKED_FILE = saved
+
     def test_revoke_skipped_without_jti(self):
         api._revoked = {"old": 1}
         api._revoke(None, 123)

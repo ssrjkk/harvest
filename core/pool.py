@@ -33,6 +33,28 @@ logger = logging.getLogger(__name__)
 _STATE_FILE = "state.json"
 
 
+def _unlink_state_file(path: Path) -> bool:
+    """Синхронное удаление crash-state файла (для to_thread)."""
+    try:
+        path.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def _write_empty_state(path: Path) -> None:
+    """Перезаписывает crash-state «пустым» состоянием (атомарно через tmp).
+
+    Конец цикла не должен оставлять файл с полным списком processed_addresses:
+    иначе следующий запуск примет его за «цикл уже завершён» и отфильтрует
+    все кошельки. load() на пустом состоянии возвращает False -> фарм с нуля.
+    """
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text("{}", encoding="utf-8")
+    restrict_file_permissions(str(tmp))
+    tmp.replace(path)
+
+
 class _CycleState:
     """Состояние текущего цикла для crash recovery."""
 
@@ -118,18 +140,27 @@ class _CycleState:
         self.processed_addresses.clear()
         self.cycle_number = 0
         self.started_at = 0.0
-        if self._path.exists():
-
-            def _unlink() -> None:
-                try:
-                    self._path.unlink()
-                except OSError as e:
-                    logger.warning(f"Crash state clear failed: {e}")
-
-            try:
-                await asyncio.to_thread(_unlink)
-            except Exception:
-                pass
+        self._last_save_ts = 0.0
+        self._last_saved_count = 0
+        if not self._path.exists():
+            return
+        # Конец цикла: стереть след. Если файл прихвачен (Windows: антивирус/
+        # индексатор) и unlink не удался, МОЛЧА оставшийся state с полным
+        # списком processed_addresses следующему запуску покажет «цикл завершён»
+        # и отфильтрует все кошельки — тихий пустой фарм. Поэтому при неудаче
+        # перезаписываем файл «пустым» состоянием (load() вернёт False).
+        try:
+            ok = await asyncio.to_thread(_unlink_state_file, self._path)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Crash state clear (unlink) failed: {e}")
+            ok = False
+        if ok:
+            return
+        try:
+            await asyncio.to_thread(_write_empty_state, self._path)
+            logger.warning("Crash state: файл не удалился, перезаписан пустым (след. запуск фармит с начала)")
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Crash state clear failed (удаление и перезапись): {e}")
 
 
 class FarmerPool:
@@ -223,6 +254,30 @@ class FarmerPool:
             "health": round(self._health_factor, 2),
         }
 
+    def _per_wallet_timeout(self, profile: WalletProfile) -> int:
+        """Персональный бюджет времени на кошелёк (сек).
+
+        Глобальный пул-таймаут считается по дефолтным множителям конфига, а
+        профиль может растягивать задержки до delay_actions_scale (~5x) и давать
+        всплески burst в actions_per_cycle — медленный профиль на таком бюджете
+        получал ложные таймауты (wait_for резал цикл на середине). Здесь бюджет
+        масштабируется ровно профильными множителями конкретного кошелька.
+        """
+        farm = self.config["farming"]
+        max_actions = (
+            max(farm["actions_per_cycle"]) if isinstance(farm.get("actions_per_cycle"), (list, tuple)) else 8
+        )
+        max_delay = (
+            max(farm["delay_between_actions"]) if isinstance(farm.get("delay_between_actions"), (list, tuple)) else 20
+        )
+        beh = self.config.get("behavior") or {}
+        burst = max(1.0, float(beh.get("burst_multiplier", 1.6))) if not profile.neutral else 1.0
+        actions_eff = max_actions
+        if not profile.neutral:
+            actions_eff = max(max_actions * max(2.0, burst), max_actions * profile.activity)
+        delay_eff = max_delay * (profile.delay_actions_scale if not profile.neutral else 1.0) * 1.15 + 10
+        return int(actions_eff * delay_eff + 30)
+
     async def _run_one(
         self,
         wallet: dict,
@@ -255,7 +310,9 @@ class FarmerPool:
         )
         addr = address[:10]
         try:
-            result = await asyncio.wait_for(farmer.run_cycle(), timeout=self.timeout)
+            result = await asyncio.wait_for(
+                farmer.run_cycle(), timeout=self._per_wallet_timeout(profile)
+            )
             if result > 0:
                 logger.info(f"  {addr} +{result} действий")
             return address, result
@@ -295,6 +352,10 @@ class FarmerPool:
     ) -> list[tuple[str, int]]:
         t0 = time.monotonic()
         total = len(wallets)
+        # Ошибки — счётчик за ЭТОТ цикл: error_count живёт в рамках сессии
+        # (live-консоль показывает накопление), а в журнал циклов пишем дельту,
+        # иначе каждый следующий цикл "тянул" ошибки всех предыдущих.
+        cycle_errors = self.error_count
         final: list[tuple[str, int]] = []
         # Сквозной номер цикла для профилей «отдыха» (в одиночном прогоне cycle_number=0).
         self._cycle_seq += 1
@@ -429,7 +490,7 @@ class FarmerPool:
                     wallets=processed,
                     wallets_ok=sum(1 for _, v in final if v > 0),
                     actions_ok=success_total,
-                    errors=self.error_count,
+                    errors=self.error_count - cycle_errors,
                     rpc_url=self.network.rpc_url,
                     rpc_calls=rpc_m.get("calls", 0),
                     rpc_errors=rpc_m.get("errors", 0),
@@ -479,6 +540,15 @@ class FarmerPool:
                     await self._interruptible_sleep(60, stop_event)
                     continue
                 all_addresses = [w["address"] for w in wallets]
+                # Crash-recovery МЕЖДУ процессами: run_forever нумерует циклы
+                # локально с 1, а state.json от прошлого запуска может нести
+                # cycle_number=5 (обрыв в цикле 5). Без подхвата run_once
+                # расценил бы это как «несовпадение номера» и стёр сохранённый
+                # прогресс. Продолжаем нумерацию с сохранённого номера —
+                # run_once встретит совпадение и возобновит обработку.
+                restored = await self._state.load()
+                if restored and self._state.cycle_number > cycle_count:
+                    cycle_count = self._state.cycle_number
                 await self.run_once(
                     wallets,
                     all_addresses,
@@ -495,6 +565,17 @@ class FarmerPool:
                     except Exception as e:
                         logger.error(f"Ошибка prune лога: {e}")
                 wait_time = random.uniform(min_d, max_d)
+                # Индивидуальные масштабы межцикловых пауз (behavior ->
+                # cycle_delay_scale): усредняем по кошелькам. Профиль не обязан
+                # быть нейтральным — он меняет ритм, но только в пределах
+                # конфигового разброса; иммитация без совпадений по всем т.н.
+                # «шаблонам фермеров» на общей инфраструктуре.
+                beh = self.config.get("behavior") or {}
+                if beh.get("enabled", True):
+                    scales = [self._profile(w["address"]).delay_cycles_scale for w in wallets]
+                    if scales:
+                        wait_time *= sum(scales) / len(scales)
+                wait_time = max(0.1, wait_time)
                 logger.info(f"Ожидание {wait_time:.0f} сек до следующего цикла...")
                 await self._interruptible_sleep(wait_time, stop_event)
         finally:

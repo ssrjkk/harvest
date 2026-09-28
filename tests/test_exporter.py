@@ -143,6 +143,23 @@ class TestEncryptDecrypt(unittest.TestCase):
             self.assertFalse(Path(enc + ".tmp").exists())
             self.assertFalse(Path(path + ".tmp").exists())
 
+    def test_encrypt_reports_failure_when_plaintext_survives(self):
+        # Если исходный plaintext не удалился (Windows lock/AV), encrypt_file
+        # обязан вернуть ИСХОДНЫЙ путь — auto.py увидит «не зашифровано» и
+        # напечатает громкое предупреждение вместо ложного успеха.
+        from unittest.mock import patch
+
+        if not HAS_CRYPTO:
+            self.skipTest("cryptography не установлена")
+        with tempfile.TemporaryDirectory() as td:
+            path = str(Path(td) / "w.json")
+            export_csv(sample_wallets(), path)
+            with patch("core.exporter.os.remove", side_effect=OSError("locked")):
+                result = encrypt_file(path, "pw")
+            self.assertEqual(result, path)
+            self.assertTrue(Path(path).exists(), "plaintext выжил — тронули открыто")
+            self.assertTrue(Path(path + ".enc").exists())
+
     def test_v1_encrypted_file_still_decrypts(self):
         # Ленивая деривация v1 (раунд 14) не должна сломать чтение старых
         # файлов формата v1 (AES+MAC одним ключом).

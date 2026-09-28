@@ -63,13 +63,26 @@ _revoked_lock = threading.RLock()
 
 
 def _load_revoked() -> dict[str, int]:
-    """Загружает отозванные jti с досуга истёкших записей. Никогда не падает."""
+    """Загружает отозванные jti с вычисткой истёкших записей. Никогда не падает.
+
+    Битые записи пропускаем по одной, а не роняем весь список: одна мусорная
+    строка (частичная запись, ручная правка) не должна «воскрешать» все ранее
+    отозванные сессии до их естественного expiry.
+    """
     try:
         data = json.loads(Path(REVOKED_FILE).read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             return {}
         now = time.time()
-        return {str(k): int(v) for k, v in data.items() if int(v) > now}
+        clean: dict[str, int] = {}
+        for k, v in data.items():
+            try:
+                exp = int(v)
+            except (TypeError, ValueError):
+                continue
+            if exp > now:
+                clean[str(k)] = exp
+        return clean
     except Exception:  # noqa: BLE001
         return {}
 
@@ -386,7 +399,9 @@ async def api_logout(request: web.Request) -> web.Response:
         _audit(request, "logout")
     resp = _json({"ok": True})
     resp.del_cookie(COOKIE_NAME, path="/")
-    resp.del_cookie(SECURE_COOKIE_NAME, path="/")
+    # __Host-кука обязана приходить с атрибутом Secure, иначе браузер отбрасывает
+    # Set-Cookie с Max-Age=0 и «мёртвая» сессия остаётся в хранилище до expiry.
+    resp.del_cookie(SECURE_COOKIE_NAME, path="/", secure=True)
     return resp
 
 
@@ -604,6 +619,11 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
         def _apply(resp) -> web.Response:
             resp.headers.setdefault("X-Content-Type-Options", "nosniff")
             resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+            # Авторизованные данные (/api/stats, /api/links, HTML) не должны
+            # оседать в промежуточных кэшах: наивные кэши не учитывают Set-Cookie
+            # в cache-key и могли бы отдать чужой сессии данные фермы.
+            if not request.path.startswith("/static"):
+                resp.headers.setdefault("Cache-Control", "no-store")
             frame = _CSP_FRAME_LOGIN if request.path == "/login" else _CSP_FRAME_APP
             resp.headers.setdefault("Content-Security-Policy", f"{_CSP_BASE}; {frame}")
             # HSTS только когда соединение фактически HTTPS (прямо или через

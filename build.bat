@@ -54,9 +54,11 @@ if exist "dist\harvest\harvest.exe" (
     echo   dist\harvest\            - копируйте ВСЮ папку целиком
     echo   harvest.exe              - запускаемый файл
     echo   config.yaml              - ВАШ боевой конфиг: положите рядом с exe
-    echo   config_robinhood.yaml    - все config_*.yaml рядом с exe появятся
-    echo   config_flop.yaml           в стартовом меню "Выбор тестнета"
-    echo   config_arc.yaml            (переключение сетей - клавиша S)
+    echo   config_*.yaml            - скопируйте нужный из каталога проекта:
+    echo                                config_robinhood.yaml (Robinhood 46630)
+    echo                                config_flop.yaml     (Flop Labs 99999)
+    echo                                config_arc.yaml      (Arc 5042002)
+    echo                                (переключение сетей - клавиша S)
     echo   _internal\abi\           - ABI контрактов (уже в бандле)
     echo   _internal\config.example.yaml - шаблон конфига (уже в бандле)
     echo.

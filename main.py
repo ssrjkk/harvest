@@ -75,6 +75,7 @@ def menu(u: ui.UI) -> str:
         (
             "СЕРВИС",
             [
+                ("G", "Веб-интерфейс (GUI)"),
                 ("9", "Диагностика RPC"),
                 ("D", "Полная диагностика (doctor)"),
                 ("B", "Бэкапы БД"),
@@ -237,17 +238,24 @@ async def screen_farm_live(u: ui.UI, config: dict, db: Database, stop_event: asy
         u.print("  На одной БД может работать только один пул — выходим.", style="yellow")
         return
     # Один NetworkManager на пул и на latency-пробы (не плодим два RPC-провайдера).
-    net = NetworkManager(config, db)
-    pool = None
+    # net может остаться None, если конструктор сети упадёт ДО назначения: лок
+    # уже захвачен выше — его освобождаем в except, иначе следующая попытка
+    # фарма навсегда упрётся в «уже работает другой экземпляр».
+    net: NetworkManager | None = None
+    pool: FarmerPool | None = None
     try:
+        net = NetworkManager(config, db)
         pool = FarmerPool(config, db, network=net)
         task = asyncio.create_task(pool.run_forever(stop_event))
     except Exception:
         if pool is not None:
             await pool.close()
-        else:
+        elif net is not None:
             await net.close()
-        guard.release()
+        try:
+            guard.release()
+        except Exception as e:
+            logger.warning(f"Ошибка снятия single-instance lock: {e}")
         raise
     state: dict[str, Any] = {
         "wallets": [],
@@ -604,6 +612,7 @@ async def screen_help(u: ui.UI) -> None:
         ("B", "Бэкапы: список / создать / восстановить / удалить"),
         ("L", "Лицензия: статус и смена пароля"),
         ("S", "Сменить тестнет (выбор сети заново)"),
+        ("G", "Веб-интерфейс (GUI в браузере)"),
         ("H", "Эта справка"),
         ("0", "Выход из сети (назад к выбору тестнета)"),
     ]
@@ -626,6 +635,51 @@ async def screen_help(u: ui.UI) -> None:
             "Подсказки: стрелки не нужны — просто номер + Enter."
         )
     u.panel("СПРАВКА", body)
+
+
+async def screen_gui(u: ui.UI, config: dict) -> None:
+    """Запуск веб-интерфейса."""
+    u.panel("ВЕБ-ИНТЕРФЕЙС", "Запуск GUI...")
+    u.print()
+
+    try:
+        from core.web_gui import start_gui
+
+        u.print("  Откройте браузер и перейдите по адресу:", style="cyan")
+        u.print("  http://127.0.0.1:8080", style="bold green")
+        u.print()
+        u.print("  Нажмите Ctrl+C для остановки", style="yellow")
+        u.print()
+
+        # Запускаем GUI в отдельном потоке
+        import threading
+
+        def run_gui():
+            try:
+                start_gui()
+            except KeyboardInterrupt:
+                pass
+            except Exception as e:
+                logger.error(f"GUI ошибка: {e}")
+
+        gui_thread = threading.Thread(target=run_gui, daemon=True)
+        gui_thread.start()
+
+        # Ждем ввода пользователя
+        try:
+            input("  Нажмите Enter для возврата в меню...")
+        except (KeyboardInterrupt, EOFError):
+            pass
+
+    except ImportError as e:
+        u.print(f"  Ошибка: не удалось загрузить веб-интерфейс", style="red")
+        u.print(f"  {e}", style="red")
+        u.print()
+        u.print("  Установите зависимости: pip install fastapi uvicorn", style="yellow")
+        input("  Нажмите Enter для возврата...")
+    except Exception as e:
+        u.print(f"  Ошибка запуска GUI: {e}", style="red")
+        input("  Нажмите Enter для возврата...")
 
 
 async def request_faucet_all(config: dict, db: Database) -> None:
@@ -910,6 +964,8 @@ async def run_session(u: ui.UI, config_path: str) -> None:
                 await import_wallets(config, db)
             elif choice == "c":
                 await screen_history(u, db)
+            elif choice == "g":
+                await screen_gui(u, config)
             elif choice == "9":
                 await screen_rpc_diag(u, config, db)
             elif choice == "d":

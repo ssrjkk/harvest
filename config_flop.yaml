@@ -1,0 +1,127 @@
+# ============================================================
+#  FLOP LABS TESTNET - КОНФИГУРАЦИЯ
+#  Блокчейн от Артура Хейса (BitMEX)
+#  Proof-of-Useful-Inference: ИИ-агенты + compute
+#  Airdrop: 20% от саплая FLOP (Q4 2026)
+# ============================================================
+
+network:
+  name: "Flop Labs Testnet"
+  rpc_url: "https://rpc.testnet.floplabs.io"        # ЗАМЕНИТЬ на реальный RPC
+  chain_id: 99999                                    # ЗАМЕНИТЬ на реальный chain_id
+  explorer: "https://explorer.testnet.floplabs.io"   # ЗАМЕНИТЬ
+  currency: "FLOP"
+  network_type: "flop"                               # маркер сети для роутинга действий
+
+# ---------- Кошельки ----------
+wallets:
+  count: 50
+  file: "wallets_flop.json"
+  generate_if_missing: true
+
+# ---------- Кран ----------
+faucet:
+  enabled: true
+  min_balance: 0.01
+  target_balance: 0.1
+  retries: 3
+  max_concurrent: 8            # параллельных запросов к крану (защита от rate limit)
+  strategies:
+    - type: "direct"
+      url: "https://faucet.testnet.floplabs.io/claim"   # ЗАМЕНИТЬ
+    - type: "direct"
+      url: "https://faucet.testnet.floplabs.io/drip"    # ЗАМЕНИТЬ
+  delay_between_requests: [5, 15]
+
+# ---------- Действия ----------
+# Ключевое отличие Flop: compute-задачи для ИИ-агентов
+# + стандартные transfer для активности
+actions:
+  # Compute: запуск ИИ-вычислений (главный критерий дропа)
+  - type: "flop_compute"
+    weight: 0.4
+    contract: "0x0000000000000000000000000000000000000000"    # ЗАМЕНИТЬ на compute-контракт
+    method: "submitTask"
+    min_amount: 0.001
+    max_amount: 0.01
+    # task_types: ["inference", "training", "validation"]    # типы compute-задач
+
+  # Validate: валидация вычислений других агентов
+  - type: "flop_validate"
+    weight: 0.25
+    contract: "0x0000000000000000000000000000000000000000"    # ЗАМЕНИТЬ
+    method: "validateTask"
+
+  # Transfer: стандартный трансфер для активности
+  - type: "transfer"
+    weight: 0.2
+    target: "random_wallet"
+    min_amount: 0.0001
+    max_amount: 0.005
+
+  # Stake: стейкинг FLOP (если доступен)
+  - type: "flop_stake"
+    weight: 0.15
+    contract: "0x0000000000000000000000000000000000000000"    # ЗАМЕНИТЬ
+    method: "stake"
+    min_amount: 0.001
+    max_amount: 0.01
+
+# ---------- Фарминг ----------
+farming:
+  actions_per_cycle: [5, 15]       # Больше действий — Flop требует активности
+  delay_between_actions: [3, 15]
+  delay_between_cycles: [1800, 3600]  # 30-60 мин (чаще чем Robinhood)
+  skip_cycle_probability: 0.03
+
+# ---------- Расширенные настройки ----------
+advanced:
+  check_balance_before_action: true
+  force_farm: false
+  gas_limit: 300000                 # Compute-контракты требуют больше газа
+  min_gas_for_action: 0.01
+  max_consecutive_failures: 15
+
+# ---------- Параллелизм ----------
+threading:
+  max_workers: 30                   # Больше воркеров — Flop масштабируется
+  rpc_threads: 0
+  timeout_per_wallet: 0
+  prune_log_every_cycles: 10
+
+# ---------- Кэш RPC-вызовов ----------
+cache:
+  gas_price_ttl: 15
+  balance_ttl: 10
+  nonce_ttl: 30
+  rpc_rate_limit: 80                # Flop RPC может быть быстрее
+  rpc_rate_floor: 0.2               # нижняя граница скорости при деградации узла
+
+# ---------- Прокси ----------
+proxy:
+  enabled: false
+  list: []
+  rotate: "sequential"
+
+# ---------- База данных ----------
+database:
+  path: "farming_flop.db"
+  master_key: "master_flop.key"
+  log_keep: 200000
+
+# ---------- Лицензия ----------
+license:
+  enabled: false
+  deploy_url: ""
+  deploy_salt: "harvest-deploy-salt-v1"
+  grace_days: 7
+  cache_file: ".license_cache_flop"
+
+# ---------- Логирование ----------
+logging:
+  level: "INFO"
+  file: "logs/farm_flop.log"
+  max_bytes: 10485760
+  backup_count: 5
+  console: true
+  colors: true

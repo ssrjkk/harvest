@@ -255,6 +255,25 @@ class TestCircuitBreaker(unittest.TestCase):
         self.assertEqual(cb._state, "CLOSED")
         self.assertTrue(cb.allow_request())
 
+    def test_half_open_failed_trial_returns_to_open(self):
+        # Регрессия: провал пробного вызова в HALF_OPEN навсегда застревал в
+        # HALF_OPEN (единственный пробник исчерпан, allow_request -> False).
+        cb = _CircuitBreaker(failure_threshold=2, recovery_timeout=0.03)
+        for _ in range(2):
+            cb.record_failure()
+        self.assertFalse(cb.allow_request())
+        time.sleep(0.05)
+        self.assertTrue(cb.allow_request())  # HALF_OPEN trial пропущен
+        self.assertFalse(cb.allow_request())  # внутри окна повторный не пускаем
+        cb.record_failure()  # пробник провалился → возврат в OPEN
+        self.assertEqual(cb._state, "OPEN", "неудачный пробник не должен оставаться в HALF_OPEN")
+        self.assertFalse(cb.allow_request())
+        time.sleep(0.05)
+        # Новое recovery-окно открылось: ещё один пробный вызов возможен.
+        self.assertTrue(cb.allow_request(), "после OPEN -> HALF_OPEN должен появиться новый пробник")
+        cb.record_success()
+        self.assertEqual(cb._state, "CLOSED")
+
 
 class TestRPCMetrics(unittest.TestCase):
     def test_snapshot_resets(self):
@@ -613,6 +632,100 @@ class TestRpcRotation(unittest.TestCase):
                 self.assertEqual(result, 42)
                 self.assertFalse(node.is_dead)
                 self.assertLess(node.latency_ms, 2000.0)
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_run_in_executor_records_latency_to_original_node(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                net = NetworkManager(self._CONFIG, MagicMock())
+
+                def switch_during_call():
+                    # Пока вызов «в полёте» (в отдельном потоке) происходит
+                    # failover: активным становится b.
+                    net.rpc_url = "https://b.example.com/rpc"
+                    return 7
+
+                result = await net.run_in_executor(switch_during_call)
+                self.assertEqual(result, 7)
+                # Успех пишется в EMA НАЧАЛЬНОЙ ноды (a), а не сменившейся
+                # посреди вызова (b): иначе деградация a остаётся незаметной,
+                # а b «воскресает» по чужому замеру.
+                self.assertGreater(net._nodes[0].successes, 1, "EMA записан в исходную ноду")
+                self.assertEqual(net._nodes[1].successes, 1, "b не получил чужую EMA")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_crosscheck_revert_on_primary_success_vs_secondary_revert(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        w3s = {
+            "https://a.example.com/rpc": MagicMock(),
+            "https://b.example.com/rpc": MagicMock(),
+        }
+        w3s["https://b.example.com/rpc"].eth.get_transaction_receipt.return_value = {"status": 0}
+
+        def _connect(self, url):
+            return w3s[url]
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", _connect):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                # primary показывает успех, secondary — реверт: контракт
+                # «revert любой из нод перевешивает успех».
+                result = await net._crosscheck_receipt_status(b"\xaa" * 32, 1)
+                self.assertEqual(result, 0, "реверт с вторичной ноды перевешивает успех primary")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_crosscheck_primary_revert_vs_secondary_success_still_revert(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        w3s = {
+            "https://a.example.com/rpc": MagicMock(),
+            "https://b.example.com/rpc": MagicMock(),
+        }
+        w3s["https://b.example.com/rpc"].eth.get_transaction_receipt.return_value = {"status": 1}
+
+        def _connect(self, url):
+            return w3s[url]
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", _connect):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                # primary=0 (revert), secondary=1 (success): реверт всё равно
+                # побеждает. Штрафуется «ложно-успешная» вторичная нода.
+                result = await net._crosscheck_receipt_status(b"\xab" * 32, 0)
+                self.assertEqual(result, 0, "revert primary не должен превращаться в success")
+                self.assertTrue(net._nodes[1].errors > 0, "ложно-успешная нода штрафуется")
+                await net.close()
+
+        asyncio.run(scenario())
+
+    def test_crosscheck_single_node_returns_primary(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", lambda self, u: MagicMock()):
+                cfg = {"network": {"rpc_url": ["https://only.example.com/rpc"], "chain_id": 288}}
+                net = NetworkManager(cfg, MagicMock())
+                # Один эндпоинт: кросс-чек невозможен, доверяем primary как есть.
+                self.assertIsNone(net._secondary_live_node())
+                self.assertEqual(await net._crosscheck_receipt_status(b"\xac" * 32, 1), 1)
+                self.assertEqual(await net._crosscheck_receipt_status(b"\xac" * 32, 0), 0)
                 await net.close()
 
         asyncio.run(scenario())

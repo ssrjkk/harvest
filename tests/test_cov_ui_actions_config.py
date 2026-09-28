@@ -268,7 +268,9 @@ class TestActionExecutor:
     async def test_contract_call_dry_run(self):
         ex, net, vb, _ = self._make_executor(dry_run=True)
         wallet = _make_wallet()
-        result = await ex._contract_call(wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01)
+        result = await ex._contract_call(
+            wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01
+        )
         assert result is True
 
     @pytest.mark.asyncio
@@ -278,7 +280,10 @@ class TestActionExecutor:
         net.w3.to_wei.return_value = 1000000
         vb.call_method = AsyncMock(return_value="0x" + "f" * 64)
         wallet = _make_wallet()
-        result = await ex._contract_call(wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01, gas_mult=1.2)
+        result = await ex._contract_call(
+            wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40},
+            amount=0.01, gas_mult=1.2
+        )
         assert result is True
 
     @pytest.mark.asyncio
@@ -288,7 +293,9 @@ class TestActionExecutor:
         net.w3.to_wei.return_value = 1000000
         vb.call_method = AsyncMock(return_value="")
         wallet = _make_wallet()
-        result = await ex._contract_call(wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01)
+        result = await ex._contract_call(
+            wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01
+        )
         assert result is False
 
     @pytest.mark.asyncio
@@ -298,7 +305,9 @@ class TestActionExecutor:
         net.w3.to_wei.return_value = 1000000
         vb.call_method = AsyncMock(side_effect=RuntimeError("vb err"))
         wallet = _make_wallet()
-        result = await ex._contract_call(wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01)
+        result = await ex._contract_call(
+            wallet, {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40}, amount=0.01
+        )
         assert result is False
 
     @pytest.mark.asyncio
@@ -306,7 +315,9 @@ class TestActionExecutor:
         ex, net, vb, _ = self._make_executor()
         vb.call_method = AsyncMock(return_value="0x" + "f" * 64)
         wallet = _make_wallet()
-        result = await ex._contract_call(wallet, {"type": "vibevibe_mint", "method": "mint", "contract": "0x" + "a" * 40})
+        result = await ex._contract_call(
+            wallet, {"type": "vibevibe_mint", "method": "mint", "contract": "0x" + "a" * 40}
+        )
         assert result is True
 
     @pytest.mark.asyncio
@@ -345,7 +356,10 @@ class TestActionExecutor:
 
     @pytest.mark.asyncio
     async def test_execute_action_contract_with_amount(self):
-        actions = [{"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40, "min_amount": 0.001, "max_amount": 0.01}]
+        actions = [
+            {"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "a" * 40,
+             "min_amount": 0.001, "max_amount": 0.01}
+        ]
         ex, net, vb, _ = self._make_executor(actions=actions)
         net.w3 = MagicMock()
         net.w3.to_wei.return_value = 1000000
@@ -387,7 +401,10 @@ class TestActionExecutor:
         ex, net, vb, _ = self._make_executor()
         net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
         wallet = _make_wallet()
-        prof = WalletProfile(activity=1.0, amount_min_mul=1.0, amount_max_mul=1.0, odd_amount_prob=0.5, action_multipliers={})
+        prof = WalletProfile(
+            activity=1.0, amount_min_mul=1.0, amount_max_mul=1.0,
+            odd_amount_prob=0.5, action_multipliers={}
+        )
         result = await ex.execute_action(wallet, [wallet["address"], "0x" + "c" * 40], profile=prof)
         assert result is True
 

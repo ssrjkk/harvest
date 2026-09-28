@@ -39,13 +39,25 @@ pytest_*.txt
 
 # Живые конфиги и локальные артефакты (могут содержать RPC-ключи/URL)
 # Шаблоны, которые отслеживаются: config.example.yaml
+# Сетевые конфиги robinhood/flop/arc — референсные (публичные тестнеты,
+# без секретов): отслеживаются, чтобы deploy-Dockerfile/README-ссылки
+# работали в свежем клоне.
 config.yaml
 config_*.yaml
+!config_robinhood.yaml
+!config_flop.yaml
+!config_arc.yaml
+!config.simple.yaml
 portal_config.yaml
+portal_secret.key
 
 # Локальное состояние портала
 revoked_sessions.json
 license.json
+
+# Lock-файлы single-instance и кэш активации лицензии под именованными конфигами
+*.lock
+*.license_cache*
 
 # Деплой: секреты окружения (docker compose env_file)
 .env

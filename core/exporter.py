@@ -61,11 +61,15 @@ def _atomic_write_restricted(path: str, data: str, encoding: str = "utf-8") -> N
 
     Наивное open(path) оставляло окно, пока файл с ключами без прав
     виден другим локальным пользователям (на Windows до установки ACL).
-    Правый порядок: tmp -> restrict -> os.replace (атомарно).
+    Правый порядок: tmp -> restrict -> os.replace (атомарно). Перед
+    replace — flush+fsync: при крахе в середине записи tmp не остаётся
+    частичным (иначе возможен битый файл в точке исправной замены).
     """
     tmp = path + ".tmp"
     with open(tmp, "w", newline="", encoding=encoding) as f:
         f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
     restrict_file_permissions(tmp)
     os.replace(tmp, path)
 
@@ -165,12 +169,23 @@ def encrypt_file(path: str, password: str) -> str:
         tmp_path = enc_path + ".tmp"
         with open(tmp_path, "wb") as f:
             f.write(salt + iv + ciphertext + mac)
+            f.flush()
+            os.fsync(f.fileno())
         restrict_file_permissions(tmp_path)
         os.replace(tmp_path, enc_path)
         try:
             os.remove(path)
         except OSError as e:
-            print(f"  {Fore.YELLOW}Внимание: исходный файл не удалён после шифрования: {e}{Style.RESET_ALL}")
+            # Исходник остался открытым текстом: делаем РЕШЕТО громким и
+            # возвращаем исходный путь — auto.py/CLI увидят «не зашифровано»
+            # и не напечатают ложный успех (раньше рядом с .enc мог лежать
+            # plaintext, а пользователь получал «Файлы зашифрованы»).
+            msg = (
+                "  {Fore.RED}Исходный файл НЕ удалён после шифрования — он остался "
+                "открытым текстом: {e}{Style.RESET_ALL}"
+            )
+            print(msg.format(Fore=Fore, e=e, Style=Style))
+            return path
         return enc_path
     except ImportError:
         print(f"  {Fore.YELLOW}Для шифрования установите: pip install cryptography{Style.RESET_ALL}")

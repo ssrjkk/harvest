@@ -52,6 +52,25 @@ class TestEnvOverrides(unittest.TestCase):
         cfg = apply_env_overrides({})
         self.assertEqual(cfg["network"]["rpc_url"], "https://env/rpc")
 
+    def test_rpc_url_list_via_semicolon(self):
+        os.environ["FARMER_RPC_URL"] = "https://a/rpc ; https://b/rpc ; https://c/rpc"
+        cfg = apply_env_overrides({})
+        self.assertEqual(
+            cfg["network"]["rpc_url"],
+            ["https://a/rpc", "https://b/rpc", "https://c/rpc"],
+        )
+
+    def test_rpc_url_list_via_comma(self):
+        os.environ["FARMER_RPC_URL"] = "https://a/rpc,https://b/rpc"
+        cfg = apply_env_overrides({})
+        self.assertEqual(cfg["network"]["rpc_url"], ["https://a/rpc", "https://b/rpc"])
+
+    def test_rpc_url_single_kept_string(self):
+        # Один эндпоинт без разделителей остаётся строкой (совместимость со схемой).
+        os.environ["FARMER_RPC_URL"] = "https://single/rpc"
+        cfg = apply_env_overrides({})
+        self.assertEqual(cfg["network"]["rpc_url"], "https://single/rpc")
+
     def test_no_override_without_env(self):
         cfg = apply_env_overrides({"network": {"rpc_url": "x"}})
         self.assertEqual(cfg["network"]["rpc_url"], "x")

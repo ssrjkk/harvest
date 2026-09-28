@@ -83,6 +83,25 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(st["total_actions"], 2)
         await self.db.close()
 
+    async def test_reimport_preserves_accumulated_history(self):
+        # Регрессия: повторный импорт того же адреса не должен «обнулять»
+        # накопленную статистику (INSERT OR REPLACE удалял строку целиком).
+        await self.db.init()
+        await self.db.save_wallets_batch([("aa1", "k1", "m1")])
+        await self.db.update_wallet_health_batch({"aa1": (3, 7)})
+        # Переимпорт: новые seed-значения, но счётчики обязаны сохраниться.
+        await self.db.save_wallets_batch([("aa1", "k1new", "m1new")])
+        st = await self.db.get_stats()
+        self.assertEqual(st["total_actions"], 7, "переимпорт стёр накопленные total_actions")
+        wallets = await self.db.get_all_wallets()
+        self.assertEqual(wallets[0]["private_key"], "k1new")
+        self.assertEqual(wallets[0]["mnemonic"], "m1new")
+        conn = await self.db._connect()
+        async with conn.execute("SELECT total_attempts FROM wallets WHERE address = 'aa1'") as cur:
+            row = await cur.fetchone()
+        self.assertEqual(row[0], 3, "переимпорт стёр накопленные total_attempts")
+        await self.db.close()
+
     async def test_backup_cycle(self):
         if not HAS_ETH:
             self.skipTest("eth_account не установлена")
@@ -127,6 +146,52 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         wallets = await bad.get_all_wallets()
         self.assertEqual(len(wallets), 0)
         await bad.close()
+
+    async def test_log_actions_batch_raises_to_caller(self):
+        """Ошибка БД больше не глотается молча: BatchWriter должен видеть отказ."""
+        from unittest.mock import AsyncMock, patch
+
+        await self.db.init()
+        conn = self.db._db
+        with patch.object(conn, "executemany", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                await self.db.log_actions_batch([("0x1", "transfer", "h", 1, "")])
+        # БД осталась рабочей: следующий вызов без сбоя проходит.
+        ok = await self.db.save_wallets_batch([("0x3", "k3", "m3")])
+        self.assertTrue(ok)
+
+    async def test_health_batch_raises_to_caller(self):
+        from unittest.mock import AsyncMock, patch
+
+        await self.db.init()
+        conn = self.db._db
+        with patch.object(conn, "executemany", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                await self.db.update_wallet_health_batch({"0x1": (1, 1)})
+
+    async def test_save_wallets_forces_full_sync_and_restores(self):
+        """save_wallets_batch коммитит в synchronous=FULL и возвращает NORMAL."""
+        await self.db.init()
+        await self.db.save_wallets_batch([("0x1", "k1", "m1")])
+        conn = self.db._db
+        async with conn.execute("PRAGMA synchronous") as cur:
+            row = await cur.fetchone()
+        self.assertEqual(row[0], 1, "после сейва прагма снова NORMAL")
+
+    async def test_save_wallets_restores_sync_after_error(self):
+        from unittest.mock import AsyncMock, patch
+
+        await self.db.init()
+        conn = self.db._db
+        with patch.object(conn, "executemany", new=AsyncMock(side_effect=RuntimeError("boom"))):
+            ok = await self.db.save_wallets_batch([("0x2", "k2", "m2")])
+        self.assertFalse(ok, "фейл сейва возвращается наружу")
+        # Прагма восстановлена даже после ошибки — БД снова боевая.
+        ok2 = await self.db.save_wallets_batch([("0x4", "k4", "m4")])
+        self.assertTrue(ok2)
+        async with conn.execute("PRAGMA synchronous") as cur:
+            row = await cur.fetchone()
+        self.assertEqual(row[0], 1)
 
     async def test_cycle_history_record_and_read(self):
         await self.db.init()
@@ -241,11 +306,32 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         await plain_db.init()
         await plain_db.save_wallets_batch([("aa1", "k1", "m1")])
         self.assertFalse(await plain_db.any_seed_encrypted())
+        self.assertEqual(await plain_db.count_wallets(), 1)
         await plain_db.close()
         # с ключом — значения получают префикс шифрования
         await self.db.init()
         await self.db.save_wallets_batch([("aa2", "k2", "m2")])
         self.assertTrue(await self.db.any_seed_encrypted())
+        self.assertEqual(await self.db.count_wallets(), 1)
+
+    async def test_count_wallets_counts_unreadable_with_wrong_key(self):
+        # count_wallets учитывает СТРОКИ, а не расшифрованные кошельки: при
+        # неверном master-ключе get_all_wallets() вернёт [], а счётчик укажет,
+        # что кошельки есть — это признак подмены ключа (auto.py на нём
+        # отменяет молчаливую генерацию нового флота).
+        await self.db.init()
+        await self.db.save_wallets_batch([("aa2", "k2", "m2")])
+        wrong_db = Database(str(self.dir / "wrong.db"), master_key=b"\x00" * 32)
+        await wrong_db.init()
+        # init() открыл своё соединение на wrong.db; ниже оно перезаписывается,
+        # поэтому закрываем именно его — иначе на Windows файл остаётся
+        # заблокированным и cleanup() временной папки падает с PermissionError.
+        own_conn = wrong_db._db
+        wrong_db._db = self.db._db  # та же БД, другой ключ
+        await own_conn.close()
+        self.assertGreaterEqual(await wrong_db.count_wallets(), 1)
+        self.assertEqual(await wrong_db.get_all_wallets(), [])
+        await wrong_db.close()
 
     async def test_cycle_history_redacts_rpc_url(self):
         # RPC URL с API-ключом/credentials не должен попадать в БД и историю.

@@ -140,6 +140,28 @@ class TestCycleStateSaveDebounce(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(second["processed_addresses"]), 51)
         self.assertEqual(len(state.processed_addresses), 52, "память свежее файла")
 
+    async def test_clear_overwrites_state_when_unlink_fails(self):
+        """Если end-of-cycle unlink не удался (Windows lock), файл перезаписывается
+        пустым состоянием — иначе следующий запуск молча отфильтрует все кошельки."""
+        from unittest.mock import patch
+
+        from core.pool import _CycleState
+
+        st = _CycleState(str(self.dir / "state.json"))
+        st.cycle_number = 1
+        st.processed_addresses.add("0x" + "1" * 40)
+        await st.save()
+
+        with patch("core.pool._unlink_state_file", return_value=False):
+            await st.clear()
+
+        # Файл существует (не удалился), но теперь «пустой»: load() не видит прогресса.
+        self.assertTrue((self.dir / "state.json").exists())
+        loaded = _CycleState(str(self.dir / "state.json"))
+        self.assertFalse(await loaded.load())
+        self.assertEqual(loaded.processed_addresses, set())
+        self.assertEqual(loaded.cycle_number, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

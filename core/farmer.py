@@ -132,6 +132,16 @@ class Farmer:
                 ok = await self.executor.execute_action(self.wallet, self.all_addresses)
             else:
                 ok = await self.executor.execute_action(self.wallet, self.all_addresses, profile=self.profile)
+            if not ok and self.advanced.get("auto_replay", True):
+                logger.debug(f"{address[:10]} auto-replay: retrying with RPC rotation")
+                try:
+                    await self.network._switch_rpc()
+                except Exception:
+                    pass
+                if self.profile.neutral:
+                    ok = await self.executor.execute_action(self.wallet, self.all_addresses)
+                else:
+                    ok = await self.executor.execute_action(self.wallet, self.all_addresses, profile=self.profile)
             if ok:
                 success_count += 1
                 self._consecutive_failures = 0

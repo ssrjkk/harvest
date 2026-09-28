@@ -1,0 +1,8 @@
+[run]
+source = portal
+
+[report]
+# CI гейт: 100% строк портала (ветки с os.name == "nt" исключены на Linux).
+omit =
+    portal/__main__.py
+show_missing = True

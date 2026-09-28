@@ -66,6 +66,11 @@ class FarmDaemon:
         self.pool: FarmerPool | None = None
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        # Сериализатор управления: одновременные start()/stop() из разных хендлеров
+        # (двойной клик, rest-api + бот-команда) иначе перезаписывали бы _task и
+        # оставляли за спиной утечку второго пула. Все управляющие операции —
+        # под одним локом.
+        self._mgmt = asyncio.Lock()
         # SingleInstance-лок на время фарма: одна ферма на одной БД. Дашборд/
         # статистика работают и без лока — он нужен только пока крутится run_forever.
         self._guard: SingleInstance | None = None
@@ -103,28 +108,29 @@ class FarmDaemon:
         }
 
     async def start(self) -> bool:
-        if self.running:
-            return False
-        if self.pool is None or self.pool._closed:
-            # run_forever по завершении сам закрывает ресурсы пула (core/pool.py).
-            # После стопа строим СВЕЖИЙ пул, иначе следующий фарм упадёт
-            # на закрытых Network/BatchWriter.
-            self.pool = None
-            await self.connect()
-        # Одна ферма на одной БД: если другой процесс (main.py/auto.py) уже
-        # держит SingleInstance-лок, фарм не запускаем — дашборд продолжает жить.
-        guard = SingleInstance(default_lock_path(self.db_path))
-        if not guard.acquire():
-            logger.warning(
-                "Другой экземпляр фармера уже работает на этой БД (%s) — фарм не запущен",
-                self.db_path,
-            )
-            await self._alert("⚠️ Ферма не запустилась: другой экземпляр уже работает на этой БД.")
-            return False
-        self._guard = guard
-        self._stop = asyncio.Event()
-        self._task = asyncio.create_task(self._run())
-        return True
+        async with self._mgmt:
+            if self.running:
+                return False
+            if self.pool is None or self.pool._closed:
+                # run_forever по завершении сам закрывает ресурсы пула (core/pool.py).
+                # После стопа строим СВЕЖИЙ пул, иначе следующий фарм упадёт
+                # на закрытых Network/BatchWriter.
+                self.pool = None
+                await self.connect()
+            # Одна ферма на одной БД: если другой процесс (main.py/auto.py) уже
+            # держит SingleInstance-лок, фарм не запускаем — дашборд продолжает жить.
+            guard = SingleInstance(default_lock_path(self.db_path))
+            if not guard.acquire():
+                logger.warning(
+                    "Другой экземпляр фармера уже работает на этой БД (%s) — фарм не запущен",
+                    self.db_path,
+                )
+                await self._alert("⚠️ Ферма не запустилась: другой экземпляр уже работает на этой БД.")
+                return False
+            self._guard = guard
+            self._stop = asyncio.Event()
+            self._task = asyncio.create_task(self._run())
+            return True
 
     async def _run(self) -> None:
         assert self.pool is not None
@@ -146,13 +152,14 @@ class FarmDaemon:
             await self._shutdown_pool()
 
     async def stop(self) -> bool:
-        if not self.running:
-            return False
-        self._stop.set()
-        assert self._task is not None
-        await self._task
-        self._task = None
-        return True
+        async with self._mgmt:
+            if not self.running:
+                return False
+            self._stop.set()
+            assert self._task is not None
+            await self._task
+            self._task = None
+            return True
 
     async def _shutdown_pool(self) -> None:
         """Полное закрытие ресурсов пула (необратимо). БД остаётся для статистики."""
@@ -174,16 +181,18 @@ class FarmDaemon:
                 logger.warning("Ошибка при снятии фарм-лока", exc_info=True)
 
     async def pause(self) -> bool:
-        if self.running and self.pool is not None and not self.pool.paused:
-            self.pool.pause()
-            return True
-        return False
+        async with self._mgmt:
+            if self.running and self.pool is not None and not self.pool.paused:
+                self.pool.pause()
+                return True
+            return False
 
     async def resume(self) -> bool:
-        if self.running and self.pool is not None and self.pool.paused:
-            self.pool.resume()
-            return True
-        return False
+        async with self._mgmt:
+            if self.running and self.pool is not None and self.pool.paused:
+                self.pool.resume()
+                return True
+            return False
 
     async def close(self) -> None:
         if self.running:

@@ -24,6 +24,8 @@ CONTRACT_ACTIONS = frozenset(
     {
         "vibevibe_swap",
         "vibevibe_mint",
+        # Универсальный вызов найденного контракта (value или 4-байт селектор)
+        "contract_call",
         "flop_compute",
         "flop_validate",
         "flop_stake",
@@ -160,6 +162,10 @@ class ActionExecutor:
         return _is_valid_contract(action_conf.get("contract", ""))
 
     def _pick_action(self, profile: WalletProfile | None = None) -> tuple[int, dict]:
+        if not self.actions_conf:
+            # Нет ни одного действия в конфиге: раньше random.choices(range(0))
+            # на пустом списке ронял воркер IndexError на КАЖДЫЙ кошелёк.
+            return -1, {}
         weights = [a.get("weight", 1.0) for a in self.actions_conf]
         if profile is not None and profile.action_multipliers:
             weights = [
@@ -263,6 +269,63 @@ class ActionExecutor:
             await self.buffer_log(wallet["address"], action_conf["type"], "", False, str(e)[:300])
         return False
 
+    async def _generic_call(
+        self,
+        wallet: dict,
+        action_conf: dict,
+        amount: float | None = None,
+        gas_mult: float = 1.0,
+    ) -> bool:
+        """contract_call: вызов найденного контракта без известного ABI.
+
+        Если method задан 4-байт селектором (0x+8 hex) — кладём его в calldata;
+        иначе это value-only вызов (просто перевод на адрес контракта).
+        """
+        contract = action_conf.get("contract", "")
+        method = action_conf.get("method") or ""
+        data = method if method.startswith("0x") and len(method) == 10 else None
+        if self.dry_run:
+            tx_hash = _fake_tx_hash()
+            logger.debug(f"DRY-RUN contract_call: {contract} value={amount} data={data}")
+            await self.buffer_log(
+                wallet["address"],
+                action_conf["type"],
+                tx_hash,
+                True,
+                f"[DRY-RUN] contract={contract}, method={method}",
+            )
+            return True
+        try:
+            value = amount if amount is not None else 0.0
+            result_hash = await self.network.send_transfer(
+                wallet["private_key"],
+                contract,
+                value,
+                gas_limit=self.gas_limit,
+                gas_price_mult=gas_mult,
+                data_hex=data,
+            )
+            if result_hash:
+                await self.buffer_log(
+                    wallet["address"],
+                    action_conf["type"],
+                    result_hash,
+                    True,
+                    f"contract={contract}, value={value:.6f}, data={data or ''}",
+                )
+                return True
+            await self.buffer_log(
+                wallet["address"],
+                action_conf["type"],
+                "",
+                False,
+                f"contract={contract}, value={value:.6f}, data={data or ''}",
+            )
+        except Exception as e:
+            logger.error(f"contract_call {contract} ошибка: {e}")
+            await self.buffer_log(wallet["address"], action_conf["type"], "", False, str(e)[:300])
+        return False
+
     async def execute_action(
         self,
         wallet: dict,
@@ -270,6 +333,9 @@ class ActionExecutor:
         profile: WalletProfile | None = None,
     ) -> bool:
         idx, action_conf = self._pick_action(profile)
+        if idx < 0:
+            logger.warning("Не настроено ни одного действия (actions пуст) — действие пропущено")
+            return False
         atype = action_conf["type"]
         my_addr = wallet["address"]
         # Множитель газа — локальная переменная вызова: ActionExecutor общий для
@@ -314,6 +380,13 @@ class ActionExecutor:
                 action_conf.get("max_amount", 0.001),
             )
             ok = await self.transfer(wallet, to_addr, amount, gas_mult=gas_mult)
+
+        elif atype == "contract_call":
+            has_amt = "min_amount" in action_conf and "max_amount" in action_conf
+            send_amount: float | None = (
+                _amount(action_conf["min_amount"], action_conf["max_amount"]) if has_amt else 0.0
+            )
+            ok = await self._generic_call(wallet, action_conf, amount=send_amount, gas_mult=gas_mult)
 
         elif atype in CONTRACT_ACTIONS:
             # amount передаём только если в конфиге заданы min/max_amount.

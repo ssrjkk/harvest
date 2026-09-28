@@ -58,6 +58,22 @@ def _cfg(config: dict, key: str, default):
     return (config.get("behavior") or {}).get(key, default)
 
 
+def _as_range(value, default: tuple[float, float]) -> tuple[float, float]:
+    """Нормализует диапазон из конфига в пару (lo, hi).
+
+    Скаляр `activity: 1.5` осмыслен как фиксированное значение (1.5, 1.5),
+    а не как `rng.uniform(1.5)`, который рушится TypeError. Мусор (строка
+    и т.п.) — на дефолт: безопасное поведение, а не безвучная нулевая
+    производительность кошелька.
+    """
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        return (float(value[0]), float(value[1]))
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        v = float(value)
+        return (v, v)
+    return (float(default[0]), float(default[1]))
+
+
 def profile_for(address: str, config: dict) -> WalletProfile:
     """Детерминированный профиль поведения для адреса."""
     beh = config.get("behavior") or {}
@@ -66,14 +82,16 @@ def profile_for(address: str, config: dict) -> WalletProfile:
 
     rng = random.Random(int(hashlib.sha256(address.lower().encode("utf-8")).hexdigest()[:16], 16))
 
-    activity = max(0.1, min(3.0, rng.uniform(*_cfg(config, "activity", (0.5, 1.5)))))
+    activity = max(0.1, min(3.0, rng.uniform(*_as_range(_cfg(config, "activity", (0.5, 1.5)), (0.5, 1.5)))))
 
-    rl, rh = _cfg(config, "rest_cycles", (1, 3))
+    rl, rh = _as_range(_cfg(config, "rest_cycles", (1, 3)), (1, 3))
     rest_lo = max(1, int(rng.uniform(rl, rh)))
     rest_cycles = (rest_lo, max(rest_lo + 1, int(rng.uniform(rl, rh)) + 1))
 
-    delay_actions_scale = max(0.1, min(5.0, rng.uniform(*_cfg(config, "action_delay_scale", (0.7, 1.5)))))
-    delay_cycles_scale = max(0.1, min(5.0, rng.uniform(*_cfg(config, "cycle_delay_scale", (0.8, 1.8)))))
+    adl = _as_range(_cfg(config, "action_delay_scale", (0.7, 1.5)), (0.7, 1.5))
+    delay_actions_scale = max(0.1, min(5.0, rng.uniform(*adl)))
+    cdl = _as_range(_cfg(config, "cycle_delay_scale", (0.8, 1.8)), (0.8, 1.8))
+    delay_cycles_scale = max(0.1, min(5.0, rng.uniform(*cdl)))
 
     # Индивидуальный «коридор» числа действий в цикле (уже глобального диапазона).
     raw_apt = config.get("farming", {}).get("actions_per_cycle", [1, 8])
@@ -110,11 +128,15 @@ def profile_for(address: str, config: dict) -> WalletProfile:
 
     # Staggered start: детерминированный стартовый сдвиг кошелька (анти-сибил).
     # Воркер-пул не стартует все кошельки одновременно — каждый входит плавно.
-    sd_range = _cfg(config, "start_delay", (0.0, 3.0))
-    if isinstance(sd_range, (list, tuple)) and len(sd_range) == 2:
-        start_delay = max(0.0, min(30.0, rng.uniform(float(sd_range[0]), float(sd_range[1]))))
+    sd = _cfg(config, "start_delay", (0.0, 3.0))
+    if isinstance(sd, (int, float)) and not isinstance(sd, bool):
+        sd_range = (float(sd), float(sd))
+    elif isinstance(sd, (list, tuple)) and len(sd) == 2:
+        sd_range = (float(sd[0]), float(sd[1]))
     else:
-        start_delay = 0.0
+        # Мусор/нечисловой тип — без стаггера (fix тест: "owo" -> 0.0).
+        sd_range = (0.0, 0.0)
+    start_delay = max(0.0, min(30.0, rng.uniform(*sd_range)))
 
     return WalletProfile(
         activity=activity,

@@ -193,6 +193,16 @@ flop_validate, flop_stake, arc_launch, arc_trade, arc_add_liquidity}`,
 - `logging.level` — валидное имя уровня; `logging.file`/`license.cache_file` —
   без `..`.
 
+`config_warnings(config) -> list[str]` — замечания о **заглушках** (не ошибки:
+валидатор пропускает их намеренно, transfers работают и без контрактов):
+- contract-действие с `0x0`-адресом → «фоллбэк на transfer, впишите реальный
+  адрес»;
+- `network.chain_id == 99999` (маркер-заглушка в `config_flop.yaml`).
+
+Вывод: `--doctor` печатает жёлтые «Замечания»; в runtime `actions.py` дублирует
+для 0x0-контрактов. Про то, как вписать реальные данные сети (RPC, адреса
+контрактов, кран) — см. раздел «Tier 2» в конце документа.
+
 ### 3.3. `performance.py` — единый источник параллелизма
 
 Все модули (network, wallet, pool, doctor, auto, main) читают значения отсюда.
@@ -514,10 +524,15 @@ daily_window_strength, burst_prob/burst_mult, start_delay, neutral).
 
 ### 3.19. `faucet.py` — кран
 
-`Faucet(config)`: `strategies` — список dict (`type: chainstack|direct`,
+`Faucet(config)`: `strategies` — список dict (`type: chainstack|direct|web`,
 `url`, `network_param`); `_REQUEST_TIMEOUT = 8`.
-- `validate() -> int` — pre-flight: сколько стратегий живы (проверка URL,
-  HEAD/статус);
+- `validate() -> int` — pre-flight: сколько стратегий живы. Для `chainstack` —
+  реальный MCP handshake (`initialize` → `mcp-session-id` → кэш на пачку).
+  Для остальных — HTTP-проба (404/410 = мертва, остальные статусы = жива).
+- `_chainstack_request` — Chainstack MCP: `tools/call request_testnet_funds`
+  с `Authorization: Bearer <CHAINSTACK_API_KEY>` (env, не config). Ключ берётся
+  из `CHAINSTACK_API_KEY` (https://console.chainstack.com/user/settings/api-keys).
+  Без ключа стратегия исключается на pre-flight с предупреждением.
 - `request_tokens(address, retries)` — `_pick_proxy` (из `proxy.list`,
   `rotate: sequential|random`), `aiohttp` + random `delay_between_requests`,
   retries, `fake-useragent`;
@@ -525,7 +540,7 @@ daily_window_strength, burst_prob/burst_mult, start_delay, neutral).
   (не ниже `min_balance`);
 - `concurrent_batch(workers)`, `request_batch(addresses, batch, network,
   progress, pause, max_concurrent)` — семфорный массовый запрос, возвращает
-  `(ok, failed)`; `close()` — закрытие сессии.
+  `(ok, failed)`; `close()` — закрытие сессии и кэша MCP-сессий.
 
 ### 3.20. `exporter.py` — экспорт и файловое шифрование
 
@@ -740,8 +755,8 @@ transfer); реальные адреса подставляются операт
 
 ## 7. Тесты
 
-`tests/` — 26 файлов (`pytest`, `pyproject.toml: testpaths=tests, -q`),
-362 теста, все зелёные:
+`tests/` — 31 файл (`pytest`, `pyproject.toml: testpaths=tests, -q`),
+732 теста, все зелёные:
 
 - ядро: `test_workpool`, `test_pool`, `test_farmer`, `test_actions`,
   `test_behavior`, `test_faucet`, `test_batchwriter`, `test_wallet`,
@@ -756,9 +771,14 @@ transfer); реальные адреса подставляются операт
   close_idempotent, monitor_skipped_single_endpoint,
   node_health_redacts_url, diagnostics_redacts_urls);
 - UI/инфраструктура: `test_ui`, `test_logger`, `test_single_instance`,
-  `test_main_select`, `test_import_wallets`, `test_config_validate`;
+  `test_main_select`, `test_import_wallets`, `test_config_validate`
+  (в т.ч. `TestPlaceholderWarnings` — `config_warnings()` про 0x0 и
+  chain_id-99999);
 - портал: `test_portal_main`, `test_portal_farm`, `test_portal_auth`,
-  `test_portal_api`, `test_bot_telegram`.
+  `test_portal_api`, `test_portal_guard`, `test_bot_telegram`;
+- покрытийные сквозные ветки: `test_cov_ui_actions_config`,
+  `test_cov_portal_config_main_bot`, `test_cov_portal_api_auth_farm`,
+  `test_cov_doctor_faucet_vibevibe`.
 
 Запуск: `python -m pytest tests`. Линтеры: `ruff check` (E,F,W,I,B,UP,
 игнор E501), `ruff format --check` (line-length 120), `flake8` (120,
@@ -809,6 +829,39 @@ pandas, pytest и пр.; `upx=False` (ложные срабатывания AV/E
   не создаёт.
 - **Лицензия**: владелец — `python -m core.license setpass ПАРОЛЬ`,
   обновление `pass` в license.json на GitHub; `status: revoked` гасит копии.
+
+---
+
+## 9.5. Tier 2 — подключение реальных сетей (вписать свои данные)
+
+Референсы `config_robinhood.yaml`, `config_flop.yaml`, `config_arc.yaml` —
+готовые каркасы с **заглушками**: validator их пропускает (transfers работают),
+но `--doctor` печатает жёлтые «Замечания» и runtime предупреждает о 0x0.
+Перед реальным фармом впишите данные сети:
+
+1. **Скопировать каркас в боевой файл**: `cp config_robinhood.yaml config.yaml`
+   (или запускать `--config config_robinhood.yaml`).
+2. **RPC** `network.rpc_url` (строка или `;`-разделённый список failover'ов):
+   https-URL, без токенов в query; секреты выносить в env
+   (`FARMER_RPC_URL`). В логах/`diagnostics()` адрес всегда redacted.
+3. **`network.chain_id`** — реальный id сети (не 99999): doctor сверяет его
+   с RPC-нодой (`eth_chainId`), несовпадение → RPC-fail.
+4. **Контракты** — заменить `0x0...0` на реальные адреса (lowercase hex).
+   Контрактные действия требуют `advanced.gas_limit >= 50000`; после вписки
+   гана подберите по факту (insufficient gas → короткий цикл + log).
+5. **Кран** — `faucet.strategies[].url` (https; http разрешён только для
+   `127.0.0.1`/localhost-кранов).
+6. **`portal/links.json`** — реальные ссылки (explorer/faucet/страницы),
+   они отдаются в `/api/links` и в боте.
+7. **Проверка перед первым боем**:
+   `python auto.py --doctor --config <файл>` → все пункты зелёные, раздел
+   «Замечания» пуст; затем smoke: `python auto.py --config <файл> --wallets 3
+   --cycles 5 --skip-faucet` → EXIT=0, в логе без 0x0-предупреждений.
+8. **Деплой**: секреты через `deploy/.env.example` (см. `deploy/README.md`),
+   `master.key` сгенерировать, `license.json` — пароль владельца.
+
+`portal/links.json` наполняется так: `[ { "label": "<что>", "url": "<https://…>" } ]` —
+и проверяется `GET /api/links` портала.
 
 ---
 

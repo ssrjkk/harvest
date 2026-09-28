@@ -348,6 +348,12 @@ class Database:
             if col not in existing_cycle_cols:
                 await db.execute(f"ALTER TABLE cycle_history ADD COLUMN {col} {ddl}")
 
+        from core.groups import GroupManager
+
+        gm = GroupManager(self.path)
+        await gm.ensure_schema(db)
+        await db.commit()
+
     async def _migrate_legacy_seeds(self) -> bool:
         """Одноразовое шифрование seed-данных, оставшихся от старых версий БД.
 
@@ -496,9 +502,25 @@ class Database:
         # Шифруем seed-данные перед записью (legacy: без ключа — как есть)
         rows = [(addr, self._encrypt(pk), self._encrypt(mn)) for addr, pk, mn in rows]
         db = await self._connect()
+        # WAL + synchronous=NORMAL (глобально) коммитит до сброса на диск: при
+        # внезапном падении питания могут потеряться последние коммиты. Для
+        # приватных ключей свежесозданных кошельков это неприемлемо — этот
+        # конкретный коммит форсируем в FULL (fsync до return).
         try:
+            await db.execute("PRAGMA synchronous=FULL")
+        except Exception:
+            pass
+        try:
+            # UPSERT вместо INSERT OR REPLACE: REPLACE удалял существующую строку
+            # и вставлял новую с дефолтами — повторный импорт того же адреса
+            # затирал total_actions/total_attempts/last_action/created_at
+            # (накопленная статистика и история «исчезали»). Здесь обновляются
+            # только seed-поля, счётчики сохраняются.
             await db.executemany(
-                "INSERT OR REPLACE INTO wallets (address, private_key, mnemonic) VALUES (?, ?, ?)",
+                """INSERT INTO wallets (address, private_key, mnemonic) VALUES (?, ?, ?)
+                   ON CONFLICT(address) DO UPDATE SET
+                       private_key = excluded.private_key,
+                       mnemonic = excluded.mnemonic""",
                 rows,
             )
             await db.commit()
@@ -506,11 +528,19 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка батч-вставки кошельков ({len(rows)}): {e}")
             return False
+        finally:
+            try:
+                await db.execute("PRAGMA synchronous=NORMAL")
+            except Exception:
+                pass
 
     async def update_wallet_health_batch(self, updates: dict[str, tuple[int, int]]) -> None:
         """Массовое обновление health score: {address: (attempts, successes)}.
 
         total_attempts += attempts, total_actions += successes.
+        Raises: пробрасывает ошибку БД — BatchWriter решает, повторять
+        или отбрасывать батч (молчаливый swallow здесь превращал его
+        retry/requeue-механику в мёртвый код).
         """
         db = await self._connect()
         try:
@@ -525,7 +555,20 @@ class Database:
             )
             await db.commit()
         except Exception as e:
-            logger.debug(f"update_wallet_health_batch error: {e}")
+            logger.error(f"Ошибка батч-обновления health ({len(updates)}): {e}")
+            raise
+
+    def get_group_manager(self) -> "GroupManager":
+        from core.groups import GroupManager
+
+        gm = GroupManager(self.path)
+        return gm
+
+    async def get_addresses_by_group(self, group_id: int) -> list[str]:
+        gm = self.get_group_manager()
+        db = await self._connect()
+        gm.set_db(db)
+        return await gm.get_group_addresses(group_id)
 
     async def get_all_addresses(self, limit: int = 0) -> list[str]:
         """Список адресов БЕЗ дешифровки seed-данных (мониторы/краны/лидерборды).
@@ -547,15 +590,41 @@ class Database:
             return []
 
     async def any_seed_encrypted(self) -> bool:
-        """Есть ли в БД зашифрованные seed-данные (без массовой дешифровки)."""
+        """Есть ли в БД зашифрованные seed-данные (без массовой дешифровки).
+
+        Проверяем ВСЕ строки (а не первую): если первый кошелёк записан
+        plaintext'ом после смены master-ключа, а остальные — шифрованные,
+        «по первому» было бы False и потеря зашифрованных кошельков прошла бы
+        молча (auto.py генерировал бы новые поверх нерасшифровываемых).
+        """
         try:
             db = await self._connect()
-            async with db.execute("SELECT private_key FROM wallets LIMIT 1") as cursor:
+            async with db.execute(
+                "SELECT 1 FROM wallets WHERE private_key LIKE ? LIMIT 1",
+                (f"{_ENC_PREFIX}%",),
+            ) as cursor:
                 row = await cursor.fetchone()
-            return bool(row) and str(row[0] or "").startswith(_ENC_PREFIX)
+            return row is not None
         except Exception as e:
             logger.error(f"Ошибка проверки шифрования seed-данных: {e}")
             return False
+
+    async def count_wallets(self) -> int:
+        """Сырое количество строк в wallets — БЕЗ дешифровки seed-данных.
+
+        Отличается от get_all_wallets(): строки, не расшифровавшиеся текущим
+        master-ключом, здесь учитываются. Разница счётчиков — индикатор
+        подменённого/неверного ключа (см. автозащиту в auto.py от молчаливой
+        генерации кошельков поверх нечитаемых строк).
+        """
+        try:
+            db = await self._connect()
+            async with db.execute("SELECT COUNT(*) FROM wallets") as cursor:
+                row = await cursor.fetchone()
+            return int(row[0]) if row else 0
+        except Exception as e:
+            logger.error(f"Ошибка подсчёта кошельков: {e}")
+            return 0
 
     async def get_all_wallets(self) -> list[dict]:
         try:
@@ -595,11 +664,13 @@ class Database:
         """Массовая запись логов действий одним батчем.
 
         rows: list of (address, action_type, tx_hash, success:int, details).
+        Raises: пробрасывает ошибку БД — BatchWriter сам решает, повторять
+        или отбрасывать батч (см. update_wallet_health_batch).
         """
         if not rows:
             return
+        db = await self._connect()
         try:
-            db = await self._connect()
             await db.executemany(
                 "INSERT INTO actions_log (address, action_type, tx_hash, success, details) VALUES (?, ?, ?, ?, ?)",
                 rows,
@@ -607,6 +678,7 @@ class Database:
             await db.commit()
         except Exception as e:
             logger.error(f"Ошибка батч-записи логов ({len(rows)}): {e}")
+            raise
 
     async def get_nonce(self, address: str) -> int | None:
         try:
@@ -632,9 +704,15 @@ class Database:
     async def prune_actions_log(self, keep_latest: int = 200000) -> None:
         """Подрезает actions_log, оставляя последние keep_latest записей.
 
+        keep_latest <= 0 — подрезка отключена: оператор скорее хотел НЕ трогать
+        лог, чем стереть его целиком (раньше LIMIT 0 в NOT IN давал полную
+        чистку без предупреждения).
+
         Предотвращает бесконечный рост БД при долгом run_forever с сотнями
         кошельков (в лог пишется каждая транзакция).
         """
+        if int(keep_latest) <= 0:
+            return
         try:
             db = await self._connect()
             await db.execute(

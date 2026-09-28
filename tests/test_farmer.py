@@ -151,6 +151,7 @@ class TestRunCycleSuccess(unittest.TestCase):
                     "force_farm": False,
                     "max_consecutive_failures": 2,
                     "check_balance_before_action": False,
+                    "auto_replay": False,
                 },
             }
             wallet = {"address": "0x" + "3" * 40}
@@ -167,6 +168,137 @@ class TestRunCycleSuccess(unittest.TestCase):
             )
             res = await farmer.run_cycle()
             self.assertEqual(res, 0)
+            self.assertEqual(executor.calls, 2)
+
+        asyncio_run(main)
+
+
+class FakeNetworkWithSwitch:
+    def __init__(self, balance: float = 1.0):
+        self.balance = balance
+        self.switch_calls = 0
+
+    async def get_balance(self, address, refresh=False):
+        return self.balance
+
+    async def _switch_rpc(self):
+        self.switch_calls += 1
+
+
+class FakeExecutorVariable:
+    """Executor that fails first N calls, then succeeds."""
+    def __init__(self, fail_count: int = 0):
+        self.fail_count = fail_count
+        self.calls = 0
+
+    async def execute_action(self, wallet, all_addresses, profile=None):
+        self.calls += 1
+        if self.calls <= self.fail_count:
+            return False
+        return True
+
+
+class TestAutoReplay(unittest.TestCase):
+    def test_auto_replay_retries_on_failure(self):
+        async def main():
+            cfg = {
+                "farming": {
+                    "actions_per_cycle": [1, 1],
+                    "delay_between_actions": 0,
+                    "skip_cycle_probability": 0.0,
+                },
+                "advanced": {
+                    "force_farm": False,
+                    "max_consecutive_failures": 5,
+                    "check_balance_before_action": False,
+                    "auto_replay": True,
+                },
+            }
+            wallet = {"address": "0x" + "4" * 40}
+            network = FakeNetworkWithSwitch(1.0)
+            faucet = FakeFaucet(min_balance=1.0)
+            executor = FakeExecutorVariable(fail_count=1)
+            farmer = Farmer(
+                wallet,
+                cfg,
+                cast(NetworkManager, network),
+                cast(ActionExecutor, executor),
+                cast(Faucet, faucet),
+                [wallet["address"]],
+            )
+            res = await farmer.run_cycle()
+            self.assertEqual(res, 1)
+            self.assertEqual(executor.calls, 2)
+            self.assertEqual(network.switch_calls, 1)
+
+        asyncio_run(main)
+
+    def test_auto_replay_disabled(self):
+        async def main():
+            cfg = {
+                "farming": {
+                    "actions_per_cycle": [1, 1],
+                    "delay_between_actions": 0,
+                    "skip_cycle_probability": 0.0,
+                },
+                "advanced": {
+                    "force_farm": False,
+                    "max_consecutive_failures": 5,
+                    "check_balance_before_action": False,
+                    "auto_replay": False,
+                },
+            }
+            wallet = {"address": "0x" + "5" * 40}
+            network = FakeNetworkWithSwitch(1.0)
+            faucet = FakeFaucet(min_balance=1.0)
+            executor = FakeExecutorVariable(fail_count=1)
+            farmer = Farmer(
+                wallet,
+                cfg,
+                cast(NetworkManager, network),
+                cast(ActionExecutor, executor),
+                cast(Faucet, faucet),
+                [wallet["address"]],
+            )
+            res = await farmer.run_cycle()
+            self.assertEqual(res, 0)
+            self.assertEqual(executor.calls, 1)
+            self.assertEqual(network.switch_calls, 0)
+
+        asyncio_run(main)
+
+    def test_auto_replay_with_profile(self):
+        async def main():
+            from core.behavior import WalletProfile
+            cfg = {
+                "farming": {
+                    "actions_per_cycle": [1, 1],
+                    "delay_between_actions": 0,
+                    "skip_cycle_probability": 0.0,
+                },
+                "advanced": {
+                    "force_farm": False,
+                    "max_consecutive_failures": 5,
+                    "check_balance_before_action": False,
+                    "auto_replay": True,
+                },
+            }
+            wallet = {"address": "0x" + "6" * 40}
+            network = FakeNetworkWithSwitch(1.0)
+            faucet = FakeFaucet(min_balance=1.0)
+            executor = FakeExecutorVariable(fail_count=1)
+            profile = WalletProfile(neutral=False)
+            farmer = Farmer(
+                wallet,
+                cfg,
+                cast(NetworkManager, network),
+                cast(ActionExecutor, executor),
+                cast(Faucet, faucet),
+                [wallet["address"]],
+                profile=profile,
+            )
+            res = await farmer.run_cycle()
+            self.assertEqual(res, 1)
             self.assertEqual(executor.calls, 2)
 
         asyncio_run(main)

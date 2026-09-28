@@ -149,7 +149,9 @@ class LicenseManager:
             try:
                 _prefix, iters_s, salt, digest = expected.split("$", 3)
                 iters = int(iters_s)
-                if not (10_000 <= iters <= 10_000_000):
+                # Верхняя граница — защита от CPU-DoS: скомпрометированный
+                # license-hub не должен заставлять клиента жечь CPU на 10M итераций.
+                if not (10_000 <= iters <= 1_000_000):
                     return False
                 dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), iters)
                 return hmac.compare_digest(dk.hex(), digest)

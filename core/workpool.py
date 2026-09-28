@@ -20,7 +20,11 @@ from collections.abc import Awaitable, Callable
 
 logger = logging.getLogger(__name__)
 
-_GET_TIMEOUT = 0.05
+# Таймаут пустого queue.get: воркер просыпается, чтобы проверить _stopping/
+# _retire. 0.2s — 5 пробуждений/сек на воркер (было 20 при 0.05): на крупном
+# пуле (сотни-тысячи воркеров) это заметно снижает нагрузку на event loop,
+# не влияя на отзывчивость — put() будит ожидающих get() сразу.
+_GET_TIMEOUT = 0.2
 _MONITOR_INTERVAL = 5.0
 _HEALTH_MIN = 0.15
 _HEALTH_MAX = 1.0
@@ -102,6 +106,16 @@ class WorkerPool:
                 continue
             except asyncio.CancelledError:
                 raise
+            # Воркера пометили «на пенсию», пока он спал в get(): монитор уже
+            # учёл его как свободный (вывел из расчёта active). Дальше NEW work
+            # он начинать не должен — возвращаем снятую задачу в очередь, чтобы
+            # её подхватил активный воркер, и завершаемся. task_done возвращает
+            # счётчик незакрытых задач к значению «в очереди» (join() ждёт
+            # именно обработку активным воркером).
+            if task in self._retire:
+                await self._queue.put((_prio, _seq, (wallet, all_addresses, cycle_number)))
+                self._queue.task_done()
+                break
             try:
                 address, count = await self.worker_func(wallet, all_addresses, cycle_number)
                 self.results[address] = count

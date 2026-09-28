@@ -113,6 +113,13 @@ class TestHash(unittest.TestCase):
         forged = f"pbkdf2_sha256$1$s${dk.hex()}"
         self.assertFalse(lm._verify_password({"pass": forged}, "x"))
 
+    def test_verify_rejects_huge_iterations_cpu_dos(self):
+        # Скомпрометированный license-hub не должен заставлять клиента жечь CPU:
+        # более 1M итераций (генерилось бы ~секунды на каждую попытку) — отказ.
+        lm = LicenseManager(make_cfg(tempfile.mkdtemp()))
+        forged = f"pbkdf2_sha256$5000000$s${'0' * 64}"
+        self.assertFalse(lm._verify_password({"pass": forged}, "x"))
+
     def test_cli_setpass(self):
         # python -m core.license setpass должен возвращать тот же hash
         root = str(Path(__file__).resolve().parent.parent)

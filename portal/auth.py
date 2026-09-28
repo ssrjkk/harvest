@@ -127,7 +127,10 @@ def check_master_key(actual: str, given: str) -> bool:
     given = given.strip()
     if _HEX64.match(actual) and _HEX64.match(given):
         return hmac.compare_digest(actual.lower(), given.lower())
-    return hmac.compare_digest(actual, given)
+    # compare_digest для str принимает только ASCII: кириллический/юникодный PIN
+    # падал бы TypeError (500 вместо 401). Переводим в bytes (utf-8) — сравнение
+    # остаётся константным по времени и корректным для любых символов.
+    return hmac.compare_digest(actual.encode("utf-8"), given.encode("utf-8"))
 
 
 def _hmac_sha256(key: bytes, data: bytes) -> bytes:
