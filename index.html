@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HARVEST — пульт фермы</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
+<style>
+:root{
+  --bg:#0d1117;--panel:#161b22;--panel2:#1c2128;--border:#30363d;
+  --text:#e6edf3;--muted:#8b949e;--faint:#6e7681;
+  --green:#3fb950;--red:#f85149;--yellow:#d29922;--accent:#58a6ff;
+  --mono:"JetBrains Mono","Cascadia Mono","Consolas",ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{max-width:1100px;margin:0 auto;padding:20px 18px 60px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.brand{font-size:18px;font-weight:700;letter-spacing:.3px}
+.brand small{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:1.5px;font-weight:400}
+.mono{font-family:var(--mono)}
+.muted{color:var(--muted)}.faint{color:var(--faint)}
+.term{display:flex;align-items:center;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:18px}
+.term b{color:var(--text);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.off{background:var(--red);box-shadow:0 0 8px var(--red)}
+.pau{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
+.cursor{display:inline-block;width:7px;height:14px;background:var(--accent);animation:blink 1.1s steps(1) infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px}
+.panel h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
+.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
+.kpi .k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
+.kpi .v{font-family:var(--mono);font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-1px}
+.kpi .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:3px}
+.nets{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.net{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
+.net .name{font-weight:700;font-size:15px}
+.net .meta{font-family:var(--mono);font-size:11px;color:var(--faint)}
+.net .tag{font-size:13px}
+.net .desc{font-size:12.5px;color:var(--muted)}
+.net .rewards{font-family:var(--mono);font-size:11px;color:var(--accent)}
+.net ul{margin:0;padding-left:18px;font-size:12px;color:var(--muted)}
+.net .cur{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--border);color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:12.5px}
+th{text-align:left;font-family:var(--mono);color:var(--faint);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.6px}
+td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text)}
+tr:hover td{background:var(--panel2)}
+.badge{display:inline-block;padding:1px 8px;border-radius:4px;font-family:var(--mono);font-size:10px}
+.ok{background:rgba(63,185,80,.15);color:var(--green)}
+.warn{background:rgba(210,153,34,.15);color:var(--yellow)}
+canvas{width:100%;height:150px;display:block}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:800px){.charts{grid-template-columns:1fr}}
+footer{margin-top:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--faint)}
+.alert{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.4);color:var(--yellow);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">HARVEST<small>FARM CONTROL</small></div>
+    <div class="mono faint" id="updated">—</div>
+  </div>
+
+  <div class="term" id="term">
+    <span style="display:inline-flex;align-items:center;gap:7px"><span class="dot off" id="dot"></span><b id="status">—</b></span>
+    <span>сеть <b id="net">—</b></span>
+    <span>health <b id="health">—</b></span>
+    <span class="cursor"></span>
+  </div>
+
+  <div class="panel">
+    <h2>Состояние</h2>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Действий</div><div class="v" id="cActions">0</div><div class="sub" id="sActions">—</div></div>
+      <div class="kpi"><div class="k">Обработано</div><div class="v" id="cProcessed">0</div><div class="sub" id="sProcessed">—</div></div>
+      <div class="kpi"><div class="k">Ошибок</div><div class="v" id="cErrors">0</div><div class="sub" id="sErrors">—</div></div>
+      <div class="kpi"><div class="k">Циклов</div><div class="v" id="cCycles">0</div><div class="sub" id="sCycles">—</div></div>
+      <div class="kpi"><div class="k">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
+    </div>
+    <div class="charts">
+      <div><canvas id="chartMain"></canvas></div>
+      <div><canvas id="chartProc"></canvas></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Сети</h2>
+    <div class="nets" id="nets"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Топ кошельков</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead><tbody id="tWallets"></tbody></table></div>
+  </div>
+
+  <div class="panel">
+    <h2>История циклов</h2>
+    <div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Статус</th><th>Действий</th><th>Ошибок</th><th>Время,с</th><th>Кошельков</th></tr></thead><tbody id="tHistory"></tbody></table></div>
+  </div>
+
+  <footer>HARVEST · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · данные обновляет ферма каждые 5 минут</footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

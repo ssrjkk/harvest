@@ -1,0 +1,132 @@
+{
+  "running": false,
+  "network": "vibevibe",
+  "networks": [
+    {
+      "slug": "vibevibe",
+      "name": "vibe/vibe",
+      "chain_id": 46630,
+      "currency": "ETH",
+      "tagline": "Permissionless launchpad на Robinhood Chain",
+      "description": "Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",
+      "rewards": "5% сапплая VIBE · торговля, стейкинг, клейм наград",
+      "activities": [
+        "Покупка/продажа на bonding curve (buy/sell)",
+        "Стейкинг и клейм наград (stake/claimRewards)",
+        "Трансферы между кошельками"
+      ]
+    },
+    {
+      "slug": "robinhood",
+      "name": "Robinhood Chain",
+      "chain_id": 46630,
+      "currency": "ETH",
+      "tagline": "Базовый L2-тестнет Robinhood",
+      "description": "Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",
+      "rewards": "Базовый тестнет-эирдроп и опыт",
+      "activities": [
+        "Трансферы между кошельками",
+        "Торговля на bonding curve (swap/mint)",
+        "Стейкинг / клейм наград"
+      ]
+    },
+    {
+      "slug": "flop",
+      "name": "Flop Labs",
+      "chain_id": 99999,
+      "currency": "FLOP",
+      "tagline": "Launchpad Flop Labs",
+      "description": "Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",
+      "rewards": "Тестнет-баллы и эирдроп",
+      "activities": [
+        "Compute / validate / stake",
+        "Трансферы"
+      ]
+    },
+    {
+      "slug": "arc",
+      "name": "Arc (Minara.Fun)",
+      "chain_id": 5042002,
+      "currency": "ARC",
+      "tagline": "Launchpad Minara.Fun",
+      "description": "Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",
+      "rewards": "Тестнет-эирдроп за активности",
+      "activities": [
+        "Запуск / торговля / добавление ликвидности",
+        "Трансферы"
+      ]
+    }
+  ],
+  "pool": {
+    "actions": 0,
+    "errors": 0,
+    "processed": 0,
+    "cycles": 5,
+    "dyn_workers": 0,
+    "dropped": 0
+  },
+  "health_factor": 1.0,
+  "wallet_count": 3,
+  "db": {
+    "cycles": 5,
+    "actions": 0,
+    "errors": 0
+  },
+  "top_wallets": [
+    {
+      "address": "0xb3E43A95989e1a968dc1a2c38BF31258bdeB029E",
+      "actions": 0
+    },
+    {
+      "address": "0x5d7d5Ce85d17911c536251aCF4f1c61200aF8B4F",
+      "actions": 0
+    },
+    {
+      "address": "0x140F65F828D34A198D95B7A9e1Cb394d3D5eB44E",
+      "actions": 0
+    }
+  ],
+  "history": [
+    {
+      "id": 5,
+      "actions_ok": 0,
+      "errors": 0,
+      "duration_s": 8.829000000001543,
+      "wallets": 3
+    },
+    {
+      "id": 4,
+      "actions_ok": 0,
+      "errors": 0,
+      "duration_s": 16.57799999999952,
+      "wallets": 3
+    },
+    {
+      "id": 3,
+      "actions_ok": 0,
+      "errors": 0,
+      "duration_s": 14.90599999999904,
+      "wallets": 3
+    },
+    {
+      "id": 2,
+      "actions_ok": 0,
+      "errors": 0,
+      "duration_s": 16.73400000000038,
+      "wallets": 3
+    },
+    {
+      "id": 1,
+      "actions_ok": 0,
+      "errors": 0,
+      "duration_s": 16.20299999999952,
+      "wallets": 3
+    }
+  ],
+  "chart": {
+    "actions": [],
+    "errors": [],
+    "processed": []
+  },
+  "updated_at": "2026-10-08 21:18 UTC"
+}
