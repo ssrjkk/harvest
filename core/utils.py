@@ -86,10 +86,14 @@ def restrict_file_permissions(path: str) -> None:
             os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
             return
         import getpass
+        import shutil
 
         user = getpass.getuser()
-        r = subprocess.run(
-            ["icacls", path, "/inheritance:r", "/grant:r", f"{user}:(F)"],
+        # Полный путь к icacls (B607): не полагаемся на PATH, который мог быть
+        # подменён (текущий каталог впереди системного — классический hijack).
+        icacls = shutil.which("icacls") or "icacls"
+        r = subprocess.run(  # nosec B603 - фиксированные аргументы, без оболочки
+            [icacls, path, "/inheritance:r", "/grant:r", f"{user}:(F)"],
             capture_output=True,
             text=True,
             timeout=15,

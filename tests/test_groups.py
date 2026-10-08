@@ -139,5 +139,68 @@ class TestGroupManager(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await gm.get_group_addresses(1), [])
 
 
+class _BoomCall:
+    """Объект-вызов: бросает и при await, и при async with."""
+
+    def __await__(self):
+        async def _raise():
+            raise RuntimeError("boom")
+
+        return _raise().__await__()
+
+    async def __aenter__(self):
+        raise RuntimeError("boom")
+
+    async def __aexit__(self, *exc):
+        return False
+
+
+class _Boom:
+    """Фейковое соединение, бросающее ошибку — проверяем обработчики сбоев."""
+
+    def execute(self, *a, **k):
+        return _BoomCall()
+
+    def executemany(self, *a, **k):
+        return _BoomCall()
+
+    async def commit(self):
+        raise RuntimeError("boom")
+
+
+class TestGroupErrorBranches(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.gm = GroupManager("x.db")
+        self.gm.set_db(_Boom())
+
+    async def test_create_group_generic_error_propagates(self):
+        with self.assertRaises(RuntimeError):
+            await self.gm.create_group("G")
+
+    async def test_delete_group_error_returns_false(self):
+        self.assertFalse(await self.gm.delete_group(1))
+
+    async def test_rename_group_error_returns_false(self):
+        self.assertFalse(await self.gm.rename_group(1, "N"))
+
+    async def test_get_all_groups_error_returns_empty(self):
+        self.assertEqual(await self.gm.get_all_groups(), [])
+
+    async def test_add_wallet_error_returns_false(self):
+        self.assertFalse(await self.gm.add_wallet_to_group("0x1", 1))
+
+    async def test_remove_wallet_error_returns_false(self):
+        self.assertFalse(await self.gm.remove_wallet_from_group("0x1", 1))
+
+    async def test_get_wallet_groups_error_returns_empty(self):
+        self.assertEqual(await self.gm.get_wallet_groups("0x1"), [])
+
+    async def test_get_group_addresses_error_returns_empty(self):
+        self.assertEqual(await self.gm.get_group_addresses(1), [])
+
+    async def test_add_bulk_error_returns_zero(self):
+        self.assertEqual(await self.gm.add_bulk_to_group(["0x1"], 1), 0)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

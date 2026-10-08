@@ -17,7 +17,10 @@ services:
       PORTAL_PORT: "8080"
       PORTAL_SECRET_FILE: /app/data/portal_secret.key
       PORTAL_DB: /app/data/farming_state.db
-      PORTAL_FARM_CONFIG: /app/config_robinhood.yaml
+      # Сеть фермера: переключается в .env (FARM_CONFIG), по умолчанию vibe/vibe.
+      # Варианты: /app/config_robinhood.yaml, /app/config_flop.yaml,
+      #           /app/config_arc.yaml, /app/config_vibevibe.yaml, /app/config.simple.yaml
+      PORTAL_FARM_CONFIG: ${FARM_CONFIG:-/app/config_vibevibe.yaml}
       PORTAL_LINKS: /app/portal/links.json
       PORTAL_REVOKED_FILE: /app/data/revoked_sessions.json
     # Публикуем ТОЛЬКО на localhost (доступ — через SSH-tunnel).

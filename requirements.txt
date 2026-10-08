@@ -7,3 +7,9 @@ fake-useragent>=1.4.0
 aiosqlite>=0.20.0
 cryptography>=42.0.4
 rich>=13.0.0
+# PostgreSQL backend (опционально): используйте при database.path = postgres://... 
+asyncpg>=0.30.0
+# Веб-GUI фермы (core/web_gui.py: FastAPI + uvicorn)
+fastapi>=0.110.0
+uvicorn>=0.30.0
+pydantic>=2.0,<3

@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master]
   pull_request:
 
 jobs:
@@ -19,11 +19,15 @@ jobs:
       - name: Установка зависимостей
         run: |
           pip install --upgrade pip
-          pip install -r requirements.txt -r requirements-portal.txt
-          pip install ruff
+          pip install -r requirements.txt -r requirements-portal.txt -r requirements-dev.txt
 
       - name: Линтер
         run: python -m ruff check --select=E,F,W --target-version=py312 --line-length=120 .
+
+      - name: Security-скан (bandit, medium+)
+        run: >
+          python -m bandit -r core portal main.py auto.py sync_motherduck.py publish_dash.py
+          -c .bandit -ll -q
 
       - name: Тесты (полный набор + покрытие портала 100%)
         run: >
@@ -31,3 +35,9 @@ jobs:
           --cov=portal --cov-report=term
           --cov-config=.coveragerc
           --cov-fail-under=100
+
+      - name: Покрытие ядра фермы (core)
+        run: >
+          python -m pytest -q
+          --cov=core --cov-report=term-missing
+          --cov-fail-under=80

@@ -49,6 +49,7 @@ if exist "dist\harvest\harvest.exe" (
     echo   dist\harvest\harvest.exe
     echo   dist\harvest\harvest.exe --config config_flop.yaml
     echo   dist\harvest\harvest.exe --config config_arc.yaml
+    echo   dist\harvest\harvest.exe --config config_vibevibe.yaml
     echo.
     echo Что где:
     echo   dist\harvest\            - копируйте ВСЮ папку целиком
@@ -58,6 +59,7 @@ if exist "dist\harvest\harvest.exe" (
     echo                                config_robinhood.yaml (Robinhood 46630)
     echo                                config_flop.yaml     (Flop Labs 99999)
     echo                                config_arc.yaml      (Arc 5042002)
+    echo                                config_vibevibe.yaml (vibe/vibe 46630)
     echo                                (переключение сетей - клавиша S)
     echo   _internal\abi\           - ABI контрактов (уже в бандле)
     echo   _internal\config.example.yaml - шаблон конфига (уже в бандле)

@@ -9,9 +9,35 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.config import load_config  # noqa: E402
 from core.database import Database  # noqa: E402
 from core.pool import FarmerPool  # noqa: E402
+
+
+def _minimal_config() -> dict:
+    """Самодостаточный минимальный конфиг пула (без зависимости от config.yaml).
+
+    config.yaml гитигнорится и в репо отсутствует: раньше load_config возвращал
+    None, cfg оставался пустым, NetworkManager падал на отсутствующем chain_id,
+    а утёкшее соединение БД держало state.db залоченным на Windows (teardown).
+    """
+    return {
+        "network": {
+            "rpc_url": "http://127.0.0.1:1/rpc",
+            "chain_id": 46630,
+        },
+        "farming": {
+            "actions_per_cycle": [2, 4],
+            "delay_between_actions": [1, 3],
+            "delay_between_cycles": [3600, 7200],
+            "skip_cycle_probability": 0.0,
+        },
+        "threading": {"max_workers": 4, "timeout_per_wallet": 0, "rpc_threads": 2},
+        "behavior": {"enabled": False},
+        "database": {"path": "state.db"},
+        "faucet": {"enabled": True, "strategies": []},
+        "actions": [],
+        "advanced": {"gas_limit": 21000, "check_balance_before_action": False},
+    }
 
 
 def _wallet(i: int) -> dict:
@@ -28,13 +54,9 @@ class TestPoolCrashRecovery(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.dir = Path(self.td.name)
-        cfg = load_config("config.yaml") or {}
-        cfg["database"] = {**cfg.get("database", {}), "path": str(self.dir / "state.db")}
-        # Локальный несуществующий RPC: TCP-connect немедленно отклоняется,
-        # и сетевые попытки не висят по таймауту реальных тестнетов.
-        cfg["network"] = {**cfg.get("network", {}), "rpc_url": "http://127.0.0.1:1/rpc"}
+        cfg = _minimal_config()
+        cfg["database"] = {**cfg["database"], "path": str(self.dir / "state.db")}
         cfg["state_file"] = str(self.dir / "state.json")
-        cfg["threading"] = {**cfg.get("threading", {}), "max_workers": 4}
         self.cfg = cfg
         self.wallets = [_wallet(i) for i in range(6)]
         self.addrs = [w["address"] for w in self.wallets]
@@ -161,6 +183,86 @@ class TestCycleStateSaveDebounce(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(await loaded.load())
         self.assertEqual(loaded.processed_addresses, set())
         self.assertEqual(loaded.cycle_number, 0)
+
+
+class TestPoolControl(unittest.IsolatedAsyncioTestCase):
+    """Управление пулом: close/pause/resume, метрики, профили, прерываемый сон."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.dir = Path(self.td.name)
+        cfg = _minimal_config()
+        cfg["database"] = {**cfg["database"], "path": str(self.dir / "state.db")}
+        cfg["state_file"] = str(self.dir / "state.json")
+        self.cfg = cfg
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    async def _pool_db(self):
+        db = Database(self.cfg["database"]["path"])
+        await db.init()
+        return db, FarmerPool(self.cfg, db)
+
+    async def test_close_is_idempotent(self):
+        db, pool = await self._pool_db()
+        await pool.close()
+        await pool.close()  # повторный close не должен падать
+        await db.close()
+
+    async def test_pause_resume_toggle(self):
+        db, pool = await self._pool_db()
+        try:
+            self.assertFalse(pool.paused)
+            pool.pause()
+            self.assertTrue(pool.paused)
+            pool.resume()
+            self.assertFalse(pool.paused)
+        finally:
+            await pool.close()
+            await db.close()
+
+    async def test_live_stats_shape(self):
+        db, pool = await self._pool_db()
+        try:
+            st = pool.live_stats()
+            for key in ("errors", "actions", "processed", "cycles", "paused", "dropped", "dyn_workers", "health"):
+                self.assertIn(key, st)
+        finally:
+            await pool.close()
+            await db.close()
+
+    async def test_profile_cached(self):
+        db, pool = await self._pool_db()
+        try:
+            p1 = pool._profile("0x" + "1" * 40)
+            p2 = pool._profile("0x" + "1" * 40)
+            self.assertIs(p1, p2)
+            self.assertGreater(pool._per_wallet_timeout(p1), 0)
+        finally:
+            await pool.close()
+            await db.close()
+
+    async def test_interruptible_sleep_exits_when_stopped(self):
+        db, pool = await self._pool_db()
+        try:
+            ev = asyncio.Event()
+            ev.set()
+            # stop уже установлен — сон завершается немедленно
+            await asyncio.wait_for(pool._interruptible_sleep(30, ev), timeout=2)
+        finally:
+            await pool.close()
+            await db.close()
+
+    async def test_run_forever_one_iteration_then_stop(self):
+        db, pool = await self._pool_db()
+        ev = asyncio.Event()
+        task = asyncio.create_task(pool.run_forever(ev))
+        await asyncio.sleep(0.3)  # проходит итерацию: нет кошельков → межцикловый сон
+        ev.set()
+        await asyncio.wait_for(task, timeout=10)
+        self.assertGreaterEqual(pool.cycle_count, 1)
+        await db.close()
 
 
 if __name__ == "__main__":

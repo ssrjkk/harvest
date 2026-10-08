@@ -2,6 +2,8 @@
 
 Версия: **v2.3.0** · Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив)
 
+**Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk · Лицензия [MIT](LICENSE)
+
 HARVEST — автоматизированный фермер тестнет-сетей (EVM): массовая генерация кошельков,
 получение токенов через краны, асинхронный фарминг транзакций по заданным шаблонам
 действий, веб-портал с Telegram-ботом для дистанционного управления.
@@ -272,10 +274,21 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 - `_aesgcm()` — ленивый импорт `cryptography`, ошибка импорта кэшируется
   (`_AESGCM_IMPORT_FAILED`) — без пакета шифрование явно отключается.
 
-### 3.9. `database.py` — SQLite
+### 3.9. `database.py` — SQLite / PostgreSQL
 
-`Database(path="farming_state.db", master_key=None)`; `aiosqlite`, PRAGMA:
-`journal_mode=WAL; synchronous=NORMAL; cache_size=-64000; busy_timeout=5000`.
+`Database(path="farming_state.db", master_key=None)`.
+
+- **Два бэкенда**: по умолчанию **SQLite** (`aiosqlite`, PRAGMA:
+  `journal_mode=WAL; synchronous=NORMAL; cache_size=-64000; busy_timeout=5000`);
+  **PostgreSQL** — если `path` задан DSN `postgres://user:pass@host:5432/db`
+  (или `postgresql://`) → `asyncpg`.
+- Адаптер `_PgAdapter` имитирует интерфейс aiosqlite (`execute` возвращает
+  awaitable-курсор `_PgCursor`, работает `await db.execute(...)` и
+  `async with db.execute(...)`); `_translate_pg` переводит диалект:
+  `?`→`$N`, `datetime('now')`→`now()`, `AUTOINCREMENT`→`GENERATED ... IDENTITY`,
+  `INSERT OR REPLACE/IGNORE`→`ON CONFLICT DO NOTHING`, `PRAGMA`/`VACUUM`→no-op.
+- Для PG пропускаются файловые шаги (бэкап/VACUUM/права) и `PRAGMA table_info`
+  заменяется на `information_schema.columns` (миграция колонок RPC-телеметрии).
 
 - Схема (`_ensure_schema`): `wallets` (address PK, private_key, mnemonic,
   total_actions, total_attempts, last_cycle, last_action, created_at;
@@ -288,6 +301,7 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
   (`_recover_corrupted_db`), VACUUM по расписанию (`_maybe_vacuum`), схема,
   миграция легаси-сидов (`_migrate_legacy_seeds` — перешифровка старых записей),
   ограничение прав файлов (`_restrict_db_files`), чистка бэкапов (`_purge_backups`).
+  (Всё файловое — только для SQLite.)
 - Кошельки: `save_wallets_batch`, `get_all_wallets`, `get_all_addresses`,
   `update_wallet_health_batch`, `any_seed_encrypted`.
 - Nonce: `get_nonce` / `set_nonce` — постоянный счётчик в таблице `nonces`
@@ -296,9 +310,9 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 - Логи действий: `log_actions_batch`, `prune_actions_log(keep_latest=200000)`.
 - Статистика: `get_stats`, `get_top_wallets`, `record_cycle`,
   `get_cycle_history`, `get_cycle_stats`.
-- Бэкапы: `backup_now` (копия БД через SQLite backup API + ограничение прав
-  каталога `_restrict_backup_dir`), `list_backups`, `restore_backup`,
-  `delete_backup`.
+- Бэкапы (SQLite): `backup_now` (копия БД через SQLite backup API +
+  ограничение прав каталога `_restrict_backup_dir`), `list_backups`,
+  `restore_backup`, `delete_backup`.
 - **Redaction**: `_redact_rpc_url(url)` — overload для `str | None` и
   `list[str]` (`_redact_one` на каждый элемент): стирает credentials
   (netloc до `@`) и query-string (`?api_key=...`),
@@ -509,6 +523,11 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 method, amount, wallet, all_addresses, gas_mult, ...)` — build_transaction
 (chain_id, gas price с множителем, nonce из `network.claim_nonce`),
 подпись, отправка, ожидание receipt; gas_limit default 300000.
+Для VibePassMarket добавлен EIP-712 флоу: `sign_trade_intent()` (подпись
+TradeIntent ключом tradeSigner → authorization bytes), `call_trade()`
+(buy — payable value=amount; sell — no-value) и `call_register()`
+(registerLounge, REGISTRAR_ROLE). `read_authorization_epoch()` тянет
+текущий epoch из контракта для digest.
 
 ### 3.18. `behavior.py` — анти-сибил профили
 
@@ -659,7 +678,9 @@ Rate-limit:
 (только HTTPS), `/api/logout`, `/auth/google`, `/auth/google/callback`,
 `/api/links`, `/api/stats`, `/api/farm/{start|stop|pause|resume}`
 (stop не блокирует HTTP — задача в фоне), `/api/cycle-history`,
-`/api/top-wallets`, `/api/tg/init` (только POST, лимит 16 КБ), `/static`.
+`/api/top-wallets`, `/api/wallets/export?format=csv|json` (скачивание всех
+кошельков с ключами; auth + HTTPS), `/api/tg/init` (только POST, лимит 16 КБ),
+`/static`.
 
 ### 4.4. `farm.py` — FarmDaemon
 
@@ -673,14 +694,19 @@ Rate-limit:
 - `stop()` — выставляет стоп и ждёт задачу (штатно; после стопа пул
   пересоздаётся при следующем `start` — `pool.close()` необратим).
 - `pause()/resume()`, `statistics()` (live_stats + `concurrency_factor` +
-  статистика циклов), `top_wallets()`, `cycle_history()`, `close()`.
+  статистика циклов + `wallet_count`), `top_wallets()`, `cycle_history()`,
+  `wallet_count()`, `export_wallets(fmt)` (CSV/JSON со всеми расшифрованными
+  ключами — только авторизованным владельцам), `close()`.
 
 ### 4.5. `bot_telegram.py` — Telegram-бот (aiogram, long-polling)
 
 - `_allowed` — default-deny по `TELEGRAM_ALLOW_IDS` (+`PORTAL_OPEN_ACCESS`).
-- Кнопки: старт/стоп/пауза/резюм фермы, статистика (`_fmt_stats`), ссылки
-  (`load_links`, санитизация, максимум 15 строк), Mini App (`WebAppInfo`
-  → фронтенд шлёт initData в `/api/tg/init`).
+- Кнопки: старт/стоп/пауза/резюм фермы, статистика (`_fmt_stats`, включает
+  счётчик кошельков), ссылки (`load_links`, санитизация, максимум 15 строк),
+  экспорт кошельков (`export:csv`/`export:json` → файл), Mini App
+  (`WebAppInfo` → фронтенд шлёт initData в `/api/tg/init`).
+- Команды: `/doctor`, `/history`, `/export [json]` — скачивание всех
+  кошельков с ключами (владельцу).
 - Все значения из daemon проходят `html.escape` (defense-in-depth);
   сбои callback пишутся в журнал и отвечают generic-текстом.
 
@@ -692,18 +718,28 @@ Rate-limit:
 `threading`, `database` (см. `_REQUIRED_SECTIONS`). Шаблон —
 `config.example.yaml` (бандлится в exe в `_internal/`).
 
-### 5.1. Три тестнета
+### 5.1. Тестнеты
 
-| | Robinhood | Flop Labs | Arc (Minara.Fun) |
-|---|---|---|---|
-| Файл | `config_robinhood.yaml` | `config_flop.yaml` | `config_arc.yaml` |
-| chain_id | 46630 | 99999 (заглушка) | 5042002 |
-| Валюта | ETH | FLOP | ARC |
-| Действия | transfer, vibevibe_swap/mint | flop_compute/validate/stake + transfer | arc_launch/trade/add_liquidity + transfer |
-| farming | [3,8] действ., паузы [5,20] с, цикл 1–2 ч | [5,15], [3,15] с, 30–60 мин | [5,12], [2,10] с, 20–40 мин |
-| workers | 20 | 30 | 30 |
-| rpc_rate_limit | 50 | 80 | 80 |
-| БД | `farming_state.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` |
+| | Robinhood | Flop Labs | Arc (Minara.Fun) | vibe/vibe |
+|---|---|---|---|---|
+| Файл | `config_robinhood.yaml` | `config_flop.yaml` | `config_arc.yaml` | `config_vibevibe.yaml` |
+| chain_id | 46630 | 99999 (заглушка) | 5042002 | 46630 |
+| Валюта | ETH | FLOP | ARC | ETH |
+| Действия | transfer, vibevibe_swap/mint | flop_compute/validate/stake + transfer | arc_launch/trade/add_liquidity + transfer | transfer, vibevibe_mint (claimRewards/stake) |
+| farming | [3,8] действ., паузы [5,20] с, цикл 1–2 ч | [5,15], [3,15] с, 30–60 мин | [5,12], [2,10] с, 20–40 мин | [3,8], [5,20] с, 1–2 ч |
+| workers | 20 | 30 | 30 | 20 |
+| rpc_rate_limit | 50 | 80 | 80 | 50 |
+| БД | `farming_state.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` | `farming_vibevibe.db` / `master.key` |
+
+vibe/vibe — permissionless token launchpad на Robinhood Chain testnet
+(5% сапплая для тестнет-участников). ABI (`abi/vibevibe.json`) содержит
+верифицированные контракты: VibePassMarket (buy/sell на bonding curve),
+VibeLoungeRegistry (registerLounge), VibeShop, VibeItems, VibeFuelStaking
+(stake/unstake), VibeFuelRewards (claimRewards). Buy/sell требуют EIP-712
+подпись TradeIntent ключом `tradeSigner` (config `vibevibe.signer_key` /
+env `FARMER_VIBE_SIGNER_KEY`); без неё действия пропускаются адаптивными
+весами. `registerLounge` доступен только `REGISTRAR_ROLE` платформы.
+Всегда работают `transfer` / `claimRewards` / `stake`.
 
 Контрактные контракты в конфигах — 0x0-заглушки (рантайм фоллбэчит на
 transfer); реальные адреса подставляются оператором.
@@ -834,10 +870,10 @@ pandas, pytest и пр.; `upx=False` (ложные срабатывания AV/E
 
 ## 9.5. Tier 2 — подключение реальных сетей (вписать свои данные)
 
-Референсы `config_robinhood.yaml`, `config_flop.yaml`, `config_arc.yaml` —
-готовые каркасы с **заглушками**: validator их пропускает (transfers работают),
-но `--doctor` печатает жёлтые «Замечания» и runtime предупреждает о 0x0.
-Перед реальным фармом впишите данные сети:
+Референсы `config_robinhood.yaml`, `config_flop.yaml`, `config_arc.yaml`,
+`config_vibevibe.yaml` — готовые каркасы с **заглушками**: validator их
+пропускает (transfers работают), но `--doctor` печатает жёлтые «Замечания»
+и runtime предупреждает о 0x0. Перед реальным фармом впишите данные сети:
 
 1. **Скопировать каркас в боевой файл**: `cp config_robinhood.yaml config.yaml`
    (или запускать `--config config_robinhood.yaml`).

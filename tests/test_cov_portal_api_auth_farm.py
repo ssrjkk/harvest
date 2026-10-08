@@ -652,6 +652,9 @@ class _FakeDb:
     async def get_cycle_stats(self) -> dict:
         return {"cycles": 1}
 
+    async def count_wallets(self) -> int:
+        return 7
+
     async def get_top_wallets(self, limit: int) -> list:
         return [{"address": "0xabc", "actions": 3}]
 

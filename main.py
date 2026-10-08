@@ -672,7 +672,7 @@ async def screen_gui(u: ui.UI, config: dict) -> None:
             pass
 
     except ImportError as e:
-        u.print(f"  Ошибка: не удалось загрузить веб-интерфейс", style="red")
+        u.print("  Ошибка: не удалось загрузить веб-интерфейс", style="red")
         u.print(f"  {e}", style="red")
         u.print()
         u.print("  Установите зависимости: pip install fastapi uvicorn", style="yellow")

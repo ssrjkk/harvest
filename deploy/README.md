@@ -48,23 +48,18 @@ cp .env.example .env   # заполнить, см. ниже
 docker compose up -d --build
 ```
 
-## 1. Быстрый старт
+## 1. Быстрый старт (на сервере)
 
 ```bash
-# 1. Клонировать репозиторий на сервер
-git clone https://github.com/ssrjkk/harvest.git
-cd harvest/deploy
+# 1. Скопировать проект на сервер (rsync, см. раздел 0; или git clone)
+# 2. Секреты — уже готовы в deploy/.env (мастер-ключ, PORTAL_SECRET, токен бота).
+#    Если нужны свои — перегенерируйте:
+#        python3 -c "import secrets; print(secrets.token_hex(32))"   # FARMER_MASTER_KEY
+#    FARMER_MASTER_KEY = ключ шифрования БД И мастер-пароль входа в веб.
+#    Пусто = парольный вход выключен (fail-closed: только Google/TG).
 
-# 2. Секреты
-cp .env.example .env
-#    - FARMER_MASTER_KEY: сгенерируйте 64-hex:
-#        python3 -c "import secrets; print(secrets.token_hex(32))"
-#      Это ключ шифрования БД И мастер-пароль входа в веб.
-#      НЕ пропускайте: при пустом ключе (и без Google/TG) портал не стартует —
-#      это fail-closed защита от «открытого» инстанса.
-#    - PORTAL_SECRET: если пусто — создастся сам в /app/data/portal_secret.key.
-
-# 3. Запуск
+# 3. Локальный запуск (только SSH-tunnel; публичный HTTPS — см. раздел 4)
+cd /opt/harvest/deploy
 docker compose up -d --build
 docker compose ps            # статус
 docker compose logs -f       # логи
@@ -79,46 +74,102 @@ curl http://127.0.0.1:8080/healthz   # -> {"status": "ok", "ready": true}
 ssh -L 8080:127.0.0.1:8080 user@host   # затем открой http://localhost:8080
 ```
 
-## 2. Добавить Telegram-бота (позже)
+Для **публичного доступа** перейдите сразу к разделу 4 (домен + Caddy + HTTPS).
 
+## 2. Telegram-бот
+
+Токен и ваш user_id — в `deploy/.env` (заполните своими значениями, не коммитьте!):
 ```bash
-# 1. Токен — у @BotFather; свой user_id — у @userinfobot
-# 2. В deploy/.env заполнить:
-#      TELEGRAM_BOT_TOKEN=123456:ABCDEF...
-#      TELEGRAM_ALLOW_IDS=<ваш числовой user_id>  (default-deny: бот отвечает только им)
-docker compose up -d --build   # перезапуск с ботом
+# deploy/.env
+TELEGRAM_BOT_TOKEN=<свой токен от @BotFather>
+TELEGRAM_ALLOW_IDS=<ваш числовой user_id>   # default-deny: бот отвечает только вам
 ```
-Бот работает на long-polling и НЕ требует публичного URL. Текстовые команды: `/start`, `/help`, `/doctor`, `/history`. Остальные действия (`/stats`, `/stop`, `/pause`, `/resume`, `/links`, сеть, страница) — inline-кнопки под сообщениями бота.
+После `docker compose up -d --build` бот поднимется автоматически.
 
-Сторожевой монитор шлёт вам push при проблемах: «сеть деградировала», «ферма стоит», «всплеск ошибок», «ферма остановилась» (+ восстановление). Настройки:
-`PORTAL_WATCH_INTERVAL_S` (по умолчанию 300 c) и `PORTAL_HEARTBEAT_HOURS` (периодический «пульс», 0 = выкл) в `deploy/.env`.
+Бот работает на long-polling и НЕ требует публичного URL. Команды: `/start`, `/help`,
+`/doctor`, `/history`, `/status` (развёрнутый статус), `/monitor` (живой мониторинг
+с алертами), `/export` (кошельки). Остальные действия (`/stats`, `/stop`, `/pause`,
+`/resume`, `/links`, сеть, страница, мониторинг, экспорт) — inline-кнопки под
+сообщениями бота.
+
+Сторожевой монитор шлёт push при проблемах: «сеть деградировала», «ферма стоит»,
+«всплеск ошибок», «ферма остановилась» (+ восстановление). Настройки:
+`PORTAL_WATCH_INTERVAL_S` (по умолчанию 300 c) и `PORTAL_HEARTBEAT_HOURS`
+(периодический «пульс», 0 = выкл) в `deploy/.env`.
 
 ## 3. Переключение сети фермера
 
-Сменить `PORTAL_FARM_CONFIG` в `docker-compose.yml`:
-- `/app/config_robinhood.yaml` — Robinhood Testnet (46630), по умолчанию
-- `/app/config_flop.yaml` — Flop Labs
-- `/app/config_arc.yaml` — Arc
-- либо примонтировать свой `config.yaml` volume'ом и указать на него.
-
-После смены сети сделайте свежую БД: `docker compose down && docker volume rm harvest_portal-data` (кошельки создадутся при старте фермы).
-
-## 4. Публичный веб + HTTPS (Caddy) — позже
-
-По умолчанию портал публикуется только на `127.0.0.1` и парольный вход разрешён по HTTP
-(SSH-tunnel / localhost). Для публичного домена:
+Сменить `FARM_CONFIG` в `deploy/.env` (docker-compose.yml читает его через `PORTAL_FARM_CONFIG`):
+- `config_vibevibe.yaml` — vibe/vibe (Robinhood testnet), **по умолчанию**
+- `config_robinhood.yaml` — Robinhood Testnet (46630)
+- `config_flop.yaml` — Flop Labs
+- `config_arc.yaml` — Arc
+- `config.simple.yaml` — только трансферы, отдельная БД
 
 ```bash
-# install "deploy/caddy/Caddyfile.example" -> "deploy/caddy/Caddyfile", вписав домен
+# deploy/.env
+FARM_CONFIG=/app/config_robinhood.yaml
+docker compose up -d --build
+```
+
+> При переключении сети сделайте свежую БД, если в ней кошельки другой сети:
+> `docker compose down && docker volume rm harvest_portal-data` (кошельки создадутся при старте фермы).
+
+## 4. Публичный веб + HTTPS (Caddy)
+
+Готовый `.env` уже лежит в `deploy/.env` (мастер-ключ, PORTAL_SECRET, токен бота).
+Осталось только подставить **домен**:
+
+1. На DNS создайте A-запись `ваш-домен` → IP сервера (порты 80/443 открыты в firewall).
+2. В `deploy/caddy/Caddyfile` замените `your-domain.com` на реальный домен.
+3. В `deploy/.env` замените `PORTAL_BASE_URL=https://harvest.example.com` на ваш домен.
+4. Запуск с Caddy:
+
+```bash
+cd /opt/harvest/deploy
 docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 ```
 
-При этом:
-- Caddy выпустит LetsEncrypt-сертификат и проксирует на портал;
-- в `.env` установите `PORTAL_ALLOW_PASSWORD_HTTP=` (пусто) и раскомментируйте
-  `PORTAL_TRUST_PROXY=1` (продакшен-режим: пароль только по HTTPS, cookies secure);
-- добавьте `GOOGLE_CLIENT_ID/SECRET` для OAuth-входа, если нужен.
-- Mini App (дашборд) живёт в портале: `/static/index.html` по `PORTAL_BASE_URL=https://ваш-домен`.
+Caddy автоматически выпустит LetsEncrypt-сертификат и проксирует HTTPS на портал.
+В `.env` уже выставлено: `PORTAL_ALLOW_PASSWORD_HTTP=` (пусто) и `PORTAL_TRUST_PROXY=1`
+(пароль только по HTTPS, cookies secure, корректное определение HTTPS за прокси).
+
+Проверка:
+```bash
+curl https://ваш-домен/healthz          # {"status":"ok","ready":true}
+# открыть https://ваш-домен  → вход мастер-ключом из deploy/.env
+```
+
+Mini App (дашборд в Telegram) открывается по `PORTAL_BASE_URL` — после деплоя
+кнопка «🚀 Открыть Mini App» в боте заработает сразу.
+
+## 4.5. Бесплатно без карты — Hugging Face Spaces (Docker)
+
+Портал слушает **8080**. HF Space даёт публичный HTTPS без карты. Файлы для HF —
+в [`huggingface/`](huggingface/): `README.md` (карточка Space) и `deploy.ps1`.
+
+1. huggingface.co → **New Space** → SDK **Docker (Blank)**, CPU basic (free), Public.
+2. Клонировать Space и залить код:
+   ```powershell
+   git clone https://huggingface.co/spaces/ВАШ_НИК/harvest C:\hf-harvest
+   powershell -ExecutionPolicy Bypass -File deploy\huggingface\deploy.ps1 -SpaceDir C:\hf-harvest
+   ```
+   (пароль при push — write-токен: Settings → Access Tokens → Write)
+3. **Settings → Variables and secrets** (имена читает код):
+   - `FARMER_MASTER_KEY` — 64-hex (ключ шифрования БД И пароль веб-входа);
+   - `PORTAL_SECRET` — ≥16 символов;
+   - `PORTAL_DB` — DSN внешней PostgreSQL (`postgres://user:pass@host:5432/db`),
+     т.к. диск Space **эфемерный** — SQLite не сохранится;
+   - `TELEGRAM_BOT_TOKEN` + `TELEGRAM_ALLOW_IDS` — чтобы включить бота;
+   - `PORTAL_BASE_URL` — `https://ВАШ_НИК-harvest.hf.space` (для Mini App).
+4. Открыть `https://ВАШ_НИК-harvest.hf.space` (HTTPS уже есть).
+
+**Держать активным:** Space засыпает после ~48 ч без запросов. Workflow
+[`.github/workflows/keepalive.yml`](../.github/workflows/keepalive.yml) пингует
+`/healthz` каждые 6 ч (замените URL на свой). Первый запрос после сна — 30–60 с.
+
+> Кошельки: HF-контейнер их не генерирует. Создайте их локально в ту же
+> PostgreSQL (запустите портал с тем же `PORTAL_DB`) или через `auto.py`.
 
 ## 5. Обновление
 

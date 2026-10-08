@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--config",
         default=os.environ.get("FARMER_CONFIG", "config.yaml"),
-        help="Конфиг (config_robinhood.yaml / config_flop.yaml / config_arc.yaml)",
+        help="Конфиг (config_robinhood.yaml / config_flop.yaml / config_arc.yaml / config_vibevibe.yaml)",
     )
     p.add_argument("--skip-faucet", action="store_true", help="Пропустить кран (уже есть баланс)")
     p.add_argument("--skip-farm", action="store_true", help="Пропустить фарм")
@@ -214,7 +214,10 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                 # шифрованных строк превратила бы потерю ключа в фальшивую
                 # «OK: 50 кошельков» с новыми пустыми адресами. Ошибка ключа
                 # обратима (верни старый ключ) — генерация новых — нет.
-                print(f"{Fore.RED}  ОШИБКА: в БД {raw_total} кошельков, но НИ ОДИН не расшифрован текущим master-ключом.{Style.RESET_ALL}")
+                print(
+                    f"{Fore.RED}  ОШИБКА: в БД {raw_total} кошельков, но НИ ОДИН не расшифрован "
+                    f"текущим master-ключом.{Style.RESET_ALL}"
+                )
                 print("  Это подмена/потеря database.master_key (master.key), а НЕ повод генерировать новые кошельки.")
                 print("  Верни настоящий ключ БД (или master.key). Генерация отключена автоматически.")
                 try:

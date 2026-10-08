@@ -5,12 +5,16 @@ start() — запускает фоновый цикл run_forever; stop() — �
 Важно: pool.close() необратим (останавливает BatchWriter/Network), поэтому
 после ШТАТНОГО стопа пул остаётся живым и re-start работает мгновенно;
 полное закрытие — только при фатальной ошибке или shutdown сервера.
-statistics() собирает живой срез для бота и веба.
+statistics() собирает живой срез для бота и веба. export_wallets() отдаёт
+все кошельки с расшифрованными ключами (CSV/JSON) — только авторизованным.
 """
 
 from __future__ import annotations
 
 import asyncio
+import csv
+import io
+import json
 import logging
 from collections.abc import Awaitable, Callable
 
@@ -19,6 +23,7 @@ from core.crypto import resolve_master_key
 from core.database import Database
 from core.pool import FarmerPool
 from core.single_instance import SingleInstance, default_lock_path
+from portal.networks import DEFAULT_NETWORK, NETWORKS, network_by_slug
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +79,12 @@ class FarmDaemon:
         # SingleInstance-лок на время фарма: одна ферма на одной БД. Дашборд/
         # статистика работают и без лока — он нужен только пока крутится run_forever.
         self._guard: SingleInstance | None = None
+        # Текущая сеть: определяется по имени конфига (config_*.yaml).
+        self.current = DEFAULT_NETWORK
+        for n in NETWORKS:
+            if farm_config.endswith(n["config"]):
+                self.current = n["slug"]
+                break
 
     async def _alert(self, text: str) -> None:
         """Пуш владельцу (Telegram). No-op без колбэка; сбой алерта не роняет демона."""
@@ -100,6 +111,46 @@ class FarmDaemon:
     @property
     def running(self) -> bool:
         return self._task is not None and not self._task.done()
+
+    def networks_info(self) -> list[dict]:
+        """Каталог сетей + признак текущей/запущенной (для UI и бота)."""
+        out = []
+        for n in NETWORKS:
+            out.append(
+                {
+                    **n,
+                    "current": n["slug"] == self.current,
+                    "running": self.running and n["slug"] == self.current,
+                }
+            )
+        return out
+
+    async def switch_to(self, slug: str) -> bool:
+        """Переключает активную сеть (останавливает фарм, меняет конфиг/БД).
+
+        Новую сеть фармить можно через start() — данные каждой сети в своей БД.
+        """
+        n = network_by_slug(slug)
+        if n is None:
+            return False
+        async with self._mgmt:
+            if self.running:
+                self._stop.set()
+                assert self._task is not None
+                await self._task
+                self._task = None
+            await self._shutdown_pool()
+            if self.db is not None:
+                try:
+                    await self.db.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self.db = None
+            self.config = None
+            self.farm_config = n["config"]
+            self.db_path = n["db"]
+            self.current = slug
+            return True
 
     def run_state(self) -> dict:
         return {
@@ -216,9 +267,11 @@ class FarmDaemon:
             cycle = await self.db.get_cycle_stats()
         return {
             **base,
+            "network": self.current,
             "pool": stats,
             "health_factor": round(health, 2),
             "db": cycle,
+            "wallet_count": await self.wallet_count(),
         }
 
     async def top_wallets(self, limit: int = 8) -> list[dict]:
@@ -230,3 +283,50 @@ class FarmDaemon:
         if self.db is None:
             return []
         return await self.db.get_cycle_history(limit)
+
+    async def wallet_count(self) -> int:
+        """Общее число строк кошельков в БД (включая нерасшифрованные)."""
+        if self.db is None:
+            return 0
+        return await self.db.count_wallets()
+
+    async def all_wallets(self) -> list[dict]:
+        """Все кошельки с расшифрованными ключами и сид-фразами (для бота/UI)."""
+        if self.db is None:
+            return []
+        return await self.db.get_all_wallets()
+
+    async def export_wallets(self, fmt: str = "csv") -> tuple[str, str]:
+        """Экспорт ВСЕХ кошельков с расшифрованными ключами для скачивания/бота.
+
+        Возвращает (содержимое, имя_файла). fmt: "csv" (utf-8-sig) или "json".
+        Ключи дешифруются ключом БД — вызов доступен только авторизованным
+        владельцам (проверка на уровне HTTP-хендлера).
+        """
+        if self.db is None:
+            raise RuntimeError("БД фермы не подключена")
+        wallets = await self.db.get_all_wallets()
+        if fmt == "json":
+            data = json.dumps(wallets, indent=2, ensure_ascii=False)
+            return data, "wallets.json"
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["address", "private_key", "mnemonic", "actions"])
+        for w in wallets:
+            writer.writerow(
+                [
+                    _csv_safe(w.get("address", "")),
+                    _csv_safe(w.get("private_key", "")),
+                    _csv_safe(w.get("mnemonic", "")),
+                    _csv_safe(w.get("total_actions", 0)),
+                ]
+            )
+        return buf.getvalue(), "wallets.csv"
+
+
+def _csv_safe(value) -> str:
+    """Нейтрализует формульные инъекции (Excel/Sheets DDE) в CSV-экспорте."""
+    s = str(value)
+    if s[:1] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + s
+    return s

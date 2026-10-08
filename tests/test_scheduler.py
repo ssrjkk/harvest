@@ -1,11 +1,10 @@
 """Тесты для планировщика (core/scheduler.py)."""
 
 import asyncio
-import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 from core.scheduler import ScheduleTask, Scheduler
 
@@ -36,7 +35,17 @@ class TestScheduleTask(unittest.TestCase):
         self.assertEqual(d["cycles"], 2)
 
     def test_from_dict(self):
-        d = {"task_id": "t2", "name": "Task 2", "enabled": False, "interval_hours": 3, "interval_minutes": 0, "run_at_time": None, "cycles": 5, "last_run": None, "next_run": None}
+        d = {
+            "task_id": "t2",
+            "name": "Task 2",
+            "enabled": False,
+            "interval_hours": 3,
+            "interval_minutes": 0,
+            "run_at_time": None,
+            "cycles": 5,
+            "last_run": None,
+            "next_run": None,
+        }
         task = ScheduleTask.from_dict(d)
         self.assertEqual(task.task_id, "t2")
         self.assertFalse(task.enabled)

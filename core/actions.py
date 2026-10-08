@@ -6,7 +6,9 @@
 """
 
 import logging
+import os
 import random
+import secrets
 from collections import deque
 
 from web3 import Web3
@@ -15,7 +17,7 @@ from core.batchwriter import BatchWriter
 from core.behavior import WalletProfile, gas_multiplier
 from core.database import Database
 from core.network import NetworkManager
-from core.vibevibe import VibeVibeInterface
+from core.vibevibe import _TRADE_ACTION_BUY, _TRADE_ACTION_SELL, VibeVibeInterface
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,11 @@ CONTRACT_ACTIONS = frozenset(
         "arc_launch",
         "arc_trade",
         "arc_add_liquidity",
+        # VibePassMarket: buy/sell через EIP-712 подпись tradeSigner
+        "vibevibe_buy",
+        "vibevibe_sell",
+        # VibeLoungeRegistry: registerLounge (только REGISTRAR_ROLE)
+        "vibevibe_register",
     }
 )
 
@@ -59,7 +66,9 @@ def _is_valid_contract(addr) -> bool:
 
 
 def _fake_tx_hash() -> str:
-    return f"0x{''.join(random.choices('0123456789abcdef', k=64))}"
+    # secrets, а не random: Mersenne Twister предсказуем, а хэш показывается
+    # как «подтверждённая» транзакция — коллизии/предсказуемость недопустимы.
+    return "0x" + secrets.token_hex(32)
 
 
 def _normalize_action(action_conf: dict) -> dict:
@@ -144,6 +153,11 @@ class ActionExecutor:
         self.dry_run = config.get("advanced", {}).get("dry_run", False)
         flush_on_action = config.get("advanced", {}).get("flush_on_action", False)
         self.writer = BatchWriter(db, flush_every=2.0, flush_on_action=flush_on_action)
+        # Ключ tradeSigner для EIP-712 подписи VibePassMarket (buy/sell).
+        # config -> vibevibe.signer_key или env FARMER_VIBE_SIGNER_KEY.
+        self.signer_key = (config.get("vibevibe") or {}).get("signer_key") or os.environ.get(
+            "FARMER_VIBE_SIGNER_KEY", ""
+        )
 
     async def buffer_log(
         self,
@@ -326,6 +340,93 @@ class ActionExecutor:
             await self.buffer_log(wallet["address"], action_conf["type"], "", False, str(e)[:300])
         return False
 
+    async def _signed_trade(
+        self,
+        wallet: dict,
+        action_conf: dict,
+        amount: float | None = None,
+        gas_mult: float = 1.0,
+    ) -> bool:
+        """vibevibe_buy/sell: EIP-712 подпись tradeSigner + вызов VibePassMarket.
+
+        Без signer_key (config vibevibe.signer_key / FARMER_VIBE_SIGNER_KEY)
+        действие невыполнимо — возвращает False (адаптивные веса отключат его).
+        """
+        atype = action_conf["type"]
+        contract = action_conf.get("contract", "")
+        action = _TRADE_ACTION_SELL if atype == "vibevibe_sell" else _TRADE_ACTION_BUY
+        lounge_id = int(action_conf.get("lounge_id", 0) or 0)
+        if lounge_id <= 0:
+            logger.warning(f"{atype}: не задан lounge_id (конфиг actions[].lounge_id) — действие пропущено")
+            return False
+        if not self.signer_key:
+            logger.warning(
+                f"{atype}: не задан ключ tradeSigner (config vibevibe.signer_key / "
+                "FARMER_VIBE_SIGNER_KEY) — действие пропущено"
+            )
+            return False
+        if self.dry_run:
+            tx_hash = _fake_tx_hash()
+            logger.debug(f"DRY-RUN {atype}: lounge={lounge_id} amount={amount}")
+            await self.buffer_log(wallet["address"], atype, tx_hash, True, f"[DRY-RUN] lounge_id={lounge_id}")
+            return True
+        try:
+            amount_wei = self.network.w3.to_wei(amount, "ether") if amount is not None else 0
+            result_hash = await self.vibevibe.call_trade(
+                contract,
+                wallet["private_key"],
+                self.signer_key,
+                lounge_id=lounge_id,
+                action=action,
+                amount_wei=int(amount_wei),
+                gas_mult=gas_mult,
+            )
+            if result_hash:
+                await self.buffer_log(
+                    wallet["address"], atype, result_hash, True, f"lounge_id={lounge_id}, amount={amount}"
+                )
+                return True
+            await self.buffer_log(
+                wallet["address"], atype, "", False, f"lounge_id={lounge_id}, amount={amount}"
+            )
+        except Exception as e:
+            logger.error(f"{atype} ошибка: {e}")
+            await self.buffer_log(wallet["address"], atype, "", False, str(e)[:300])
+        return False
+
+    async def _register_lounge(
+        self,
+        wallet: dict,
+        action_conf: dict,
+        gas_mult: float = 1.0,
+    ) -> bool:
+        """vibevibe_register: registerLounge (REGISTRAR_ROLE). В пачном фарме не работает."""
+        contract = action_conf.get("contract", "")
+        if self.dry_run:
+            tx_hash = _fake_tx_hash()
+            logger.debug(f"DRY-RUN vibevibe_register for {wallet['address'][:10]}")
+            await self.buffer_log(wallet["address"], "vibevibe_register", tx_hash, True, "[DRY-RUN] register")
+            return True
+        try:
+            identity_key = bytes.fromhex(action_conf.get("identity_key", "ab")[:64])
+            uri = action_conf.get("uri", "https://vibevibe.fun")
+            result_hash = await self.vibevibe.call_register(
+                contract,
+                wallet["private_key"],
+                identity_key=identity_key,
+                creator=wallet["address"],
+                uri=uri,
+                gas_mult=gas_mult,
+            )
+            if result_hash:
+                await self.buffer_log(wallet["address"], "vibevibe_register", result_hash, True, f"uri={uri}")
+                return True
+            await self.buffer_log(wallet["address"], "vibevibe_register", "", False, f"uri={uri}")
+        except Exception as e:
+            logger.error(f"vibevibe_register ошибка: {e}")
+            await self.buffer_log(wallet["address"], "vibevibe_register", "", False, str(e)[:300])
+        return False
+
     async def execute_action(
         self,
         wallet: dict,
@@ -387,6 +488,14 @@ class ActionExecutor:
                 _amount(action_conf["min_amount"], action_conf["max_amount"]) if has_amt else 0.0
             )
             ok = await self._generic_call(wallet, action_conf, amount=send_amount, gas_mult=gas_mult)
+
+        elif atype == "vibevibe_register":
+            ok = await self._register_lounge(wallet, action_conf, gas_mult=gas_mult)
+
+        elif atype in ("vibevibe_buy", "vibevibe_sell"):
+            has_amt = "min_amount" in action_conf and "max_amount" in action_conf
+            send_amount = _amount(action_conf["min_amount"], action_conf["max_amount"]) if has_amt else None
+            ok = await self._signed_trade(wallet, action_conf, amount=send_amount, gas_mult=gas_mult)
 
         elif atype in CONTRACT_ACTIONS:
             # amount передаём только если в конфиге заданы min/max_amount.

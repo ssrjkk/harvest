@@ -345,6 +345,77 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
 
 
+class TestDatabaseBackupMigrate(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.dir = Path(self.td.name)
+        self.key = make_keyfile(self.dir)
+        self.db = Database(str(self.dir / "state.db"), master_key=self.key)
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    async def test_migrate_legacy_seeds_encrypts_plaintext(self):
+        # БД без ключа хранит seed открытым текстом
+        plain = Database(str(self.dir / "legacy.db"))
+        await plain.init()
+        await plain.save_wallets_batch([("0xaa", "0xkey", "seed words")])
+        self.assertFalse(await plain.any_seed_encrypted())
+        await plain.close()
+        # Открытие с ключом мигрирует открытые значения в зашифрованные
+        keyed = Database(str(self.dir / "legacy.db"), master_key=self.key)
+        await keyed.init()
+        self.assertTrue(await keyed.any_seed_encrypted())
+        wallets = await keyed.get_all_wallets()
+        self.assertEqual(wallets[0]["private_key"], "0xkey")
+        self.assertEqual(wallets[0]["mnemonic"], "seed words")
+        await keyed.close()
+
+    async def test_backup_now_postgres_returns_none(self):
+        self.db.is_postgres = True
+        self.assertIsNone(await self.db.backup_now())
+        self.assertEqual(self.db.list_backups(), [])
+        self.assertFalse(await self.db.delete_backup(0))
+
+    async def test_restore_backup_without_backups(self):
+        await self.db.init()
+        self.assertFalse(await self.db.restore_backup(0))
+        await self.db.close()
+
+    async def test_restore_backup_index_out_of_range(self):
+        await self.db.init()
+        await self.db.backup_now()
+        self.assertFalse(await self.db.restore_backup(99))
+        await self.db.close()
+
+    async def test_list_backups_empty_initially(self):
+        await self.db.init()
+        self.assertEqual(self.db.list_backups(), [])
+        await self.db.close()
+
+    async def test_purge_backups_removes_files(self):
+        backup_dir = self.dir / ".backup"
+        backup_dir.mkdir()
+        stale = backup_dir / "state.db.bak"
+        stale.write_text("old")
+        self.db._purge_backups()
+        self.assertFalse(stale.exists())
+
+    async def test_restrict_db_files_no_crash(self):
+        await self.db.init()
+        await self.db._restrict_db_files()
+        await self.db.close()
+
+    async def test_save_empty_batch_returns_true(self):
+        await self.db.init()
+        self.assertTrue(await self.db.save_wallets_batch([]))
+        await self.db.close()
+
+    async def test_get_group_manager(self):
+        gm = self.db.get_group_manager()
+        self.assertEqual(gm.db_path, self.db.path)
+
+
 class TestRedactRpcUrl(unittest.TestCase):
     def test_query_and_credentials_stripped(self):
         self.assertEqual(

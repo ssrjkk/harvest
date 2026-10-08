@@ -1,8 +1,10 @@
 {
-  "title": "Наши ссылки",
+  "title": "HARVEST · полезные ссылки",
   "items": [
-    { "label": "Ссылка 1", "url": "https://example.com/1" },
-    { "label": "Ссылка 2", "url": "https://example.com/2" },
-    { "label": "Ссылка 3", "url": "https://example.com/3" }
+    { "label": "vibe/vibe Testnet", "url": "https://testnet.vibevibe.fun" },
+    { "label": "vibe/vibe на X", "url": "https://x.com/vibevibefun" },
+    { "label": "Robinhood Chain Explorer", "url": "https://explorer.testnet.chain.robinhood.com" },
+    { "label": "Robinhood Chain Faucet", "url": "https://faucet.testnet.chain.robinhood.com" },
+    { "label": "Robinhood Chain Docs", "url": "https://docs.robinhood.com/chain/" }
   ]
 }

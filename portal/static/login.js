@@ -5,6 +5,21 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const err = $("err");
+  const THEMES = ["dark", "light"];
+
+  function applyTheme(t) {
+    if (t !== "light") t = "dark";
+    document.documentElement.setAttribute("data-bs-theme", t);
+    localStorage.setItem("harvest_theme", t);
+    if ($("thDark")) $("thDark").classList.toggle("active", t === "dark");
+    if ($("thLight")) $("thLight").classList.toggle("active", t === "light");
+  }
+  const saved = localStorage.getItem("harvest_theme") || "dark";
+  applyTheme(saved);
+  THEMES.forEach((th) => {
+    const el = $("th" + th[0].toUpperCase() + th.slice(1));
+    if (el) el.addEventListener("click", () => applyTheme(th));
+  });
 
   function showErr(msg) {
     err.style.display = "block";

@@ -1,34 +1,50 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="ru" data-bs-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>HARVEST PORTAL — вход</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>HARVEST — вход</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="/static/vendor/tabler.min.css">
+  <link rel="stylesheet" href="/static/vendor/tabler-icons.min.css">
+  <link rel="stylesheet" href="/static/app.css?v=5">
 </head>
-<body class="login-body">
-  <div class="login-card">
-    <div class="logo"><span class="badge">H</span><span>HARVEST</span></div>
-    <h1>Вход в портал</h1>
-    <p>Единый доступ: Google-аккаунт или мастер-ключ фармера</p>
+<body class="d-flex flex-column bg-body-tertiary">
+  <div class="page page-center">
+    <div class="container container-tight py-4">
+      <div class="card card-md">
+        <div class="card-body">
+          <div class="d-flex justify-content-end mb-2">
+            <div class="btn-group">
+              <button class="btn btn-sm" id="thDark" title="Тёмная"><i class="ti ti-moon"></i></button>
+              <button class="btn btn-sm" id="thLight" title="Светлая"><i class="ti ti-sun"></i></button>
+            </div>
+          </div>
+          <h2 class="h2 text-center mb-4">
+            <span class="hx-brand justify-content-center"><span class="mark">H</span><span>HARVEST<small>FARM CONTROL</small></span></span>
+          </h2>
+          <div id="err" class="alert alert-danger" style="display:none"></div>
 
-    <div id="err" style="display:none;color:var(--red);text-align:center;margin-bottom:12px"></div>
+          <button class="btn btn-outline-primary w-100 mb-2" id="btnGoogle" style="display:none">
+            <i class="ti ti-brand-google me-1"></i>Войти через Google
+          </button>
+          <div id="sep" class="hr-text" style="display:none">или</div>
 
-    <button class="btn full" id="btnGoogle" style="display:none;background:transparent;border:1px solid var(--accent)">
-      Войти через Google
-    </button>
-    <div id="sep" class="sep" style="display:none">или</div>
-
-    <form id="pwForm" style="display:none" autocomplete="off">
-      <input class="fld" type="password" id="pw" placeholder="Мастер-ключ (FARMER_MASTER_KEY)">
-      <button class="btn full" id="pwSubmit" type="submit">Войти по паролю</button>
-    </form>
-
-    <p class="mt muted" style="font-size:12px">Нет ни того ни другого? Внутри Telegram кнопка Mini App войдёт сама.</p>
+          <form id="pwForm" style="display:none" autocomplete="off">
+            <div class="mb-2">
+              <input class="form-control mono" type="password" id="pw" placeholder="мастер-ключ" autocomplete="off">
+            </div>
+            <div class="form-footer">
+              <button class="btn btn-primary w-100" id="pwSubmit" type="submit">Войти</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      <div class="text-center text-secondary mt-3 mono" style="font-size:11px">В Telegram Mini App войдёт сам</div>
+    </div>
   </div>
 
-  <script src="/static/login.js"></script>
+  <script src="/static/login.js?v=5"></script>
 </body>
 </html>

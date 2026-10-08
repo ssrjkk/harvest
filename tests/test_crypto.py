@@ -5,9 +5,11 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import core.crypto as crypto_mod
 from core.crypto import MasterKeyError, decrypt_seed, encrypt_seed, resolve_master_key
 
 
@@ -34,6 +36,43 @@ class TestCryptoRoundtrip(unittest.TestCase):
         enc = encrypt_seed(bytes(range(32)), "0x" + "aa" * 32)
         with self.assertRaises(ValueError):
             decrypt_seed(bytes(range(1, 33)), enc)
+
+    def test_decrypt_legacy_passthrough(self):
+        # Значение без префикса enc: — legacy/plaintext, возвращается как есть
+        self.assertEqual(decrypt_seed(bytes(range(32)), "0xplain"), "0xplain")
+
+    def test_encrypt_without_cryptography_fails_closed(self):
+        with mock.patch.object(crypto_mod, "_aesgcm", return_value=None):
+            with self.assertRaises(MasterKeyError):
+                encrypt_seed(bytes(range(32)), "secret")
+
+    def test_decrypt_without_cryptography_fails(self):
+        with mock.patch.object(crypto_mod, "_aesgcm", return_value=None):
+            with self.assertRaises(ValueError):
+                decrypt_seed(bytes(range(32)), "enc:" + "00" * 40)
+
+    def test_require_crypto_raises_without_lib(self):
+        with mock.patch.object(crypto_mod, "_aesgcm", return_value=None):
+            with self.assertRaises(MasterKeyError):
+                crypto_mod._require_crypto()
+
+    def test_aesgcm_import_failure_cached(self):
+        old = (crypto_mod._AESGCM, crypto_mod._AESGCM_IMPORT_FAILED)
+        crypto_mod._AESGCM = None
+        crypto_mod._AESGCM_IMPORT_FAILED = False
+        try:
+            with mock.patch.dict(sys.modules, {"cryptography.hazmat.primitives.ciphers.aead": None}):
+                self.assertIsNone(crypto_mod._aesgcm())
+            self.assertTrue(crypto_mod._AESGCM_IMPORT_FAILED)
+        finally:
+            crypto_mod._AESGCM, crypto_mod._AESGCM_IMPORT_FAILED = old
+
+    def test_encrypt_error_wrapped_as_master_key_error(self):
+        fake = mock.MagicMock()
+        fake.return_value.encrypt.side_effect = RuntimeError("boom")
+        with mock.patch.object(crypto_mod, "_aesgcm", return_value=fake):
+            with self.assertRaises(MasterKeyError):
+                encrypt_seed(bytes(range(32)), "secret")
 
 
 class TestMasterKey(unittest.TestCase, HasKeyConfigMixin):
@@ -72,6 +111,37 @@ class TestMasterKey(unittest.TestCase, HasKeyConfigMixin):
         os.environ["FARMER_MASTER_KEY"] = "cd" * 32
         cfg = {"database": {"master_key": ""}}
         self.assertEqual(resolve_master_key(cfg), bytes.fromhex("cd" * 32))
+
+    def test_env_key_with_0x_prefix(self):
+        os.environ["FARMER_MASTER_KEY"] = "0x" + "cd" * 32
+        self.assertEqual(resolve_master_key({"database": {"master_key": ""}}), bytes.fromhex("cd" * 32))
+
+    def test_env_key_wrong_length_fails_closed(self):
+        os.environ["FARMER_MASTER_KEY"] = "ab" * 16  # 32 hex = 16 байт, нужно 32
+        with self.assertRaises(MasterKeyError):
+            resolve_master_key({"database": {"master_key": ""}})
+
+    def test_corrupted_key_file_fails_closed(self):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".key") as f:
+            f.write(b"short")
+            path = f.name
+        try:
+            with self.assertRaises(MasterKeyError):
+                resolve_master_key({"database": {"master_key": path}})
+        finally:
+            os.unlink(path)
+
+    def test_restrict_permissions_failure_does_not_break_read(self):
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".key") as f:
+            f.write(bytes.fromhex("ab" * 32))
+            path = f.name
+        try:
+            with mock.patch("core.crypto.restrict_file_permissions", side_effect=OSError("denied")):
+                self.assertEqual(
+                    resolve_master_key({"database": {"master_key": path}}), bytes.fromhex("ab" * 32)
+                )
+        finally:
+            os.unlink(path)
 
     def test_bad_env_fails_closed(self):
         os.environ["FARMER_MASTER_KEY"] = "nothex!"

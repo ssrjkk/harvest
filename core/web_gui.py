@@ -9,13 +9,12 @@ import asyncio
 import json
 import logging
 import os
-import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -23,7 +22,6 @@ from core.config import load_config
 from core.crypto import resolve_master_key
 from core.database import Database
 from core.faucet import Faucet
-from core.groups import GroupManager
 from core.license import enforce_license_async
 from core.network import NetworkManager
 from core.pool import FarmerPool
@@ -682,7 +680,7 @@ async def websocket_endpoint(websocket: WebSocket):
         for log in _state["logs"][-20:]:
             await websocket.send_text(json.dumps({"type": "log", "message": log, "level": "INFO"}))
         while True:
-            data = await websocket.receive_text()
+            await websocket.receive_text()
     except WebSocketDisconnect:
         pass
     except Exception as e:

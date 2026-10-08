@@ -1,6 +1,9 @@
 # HARVEST v2.3.0
 
 [![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+**Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk
 
 Автоматический фермер тестнет-сетей (EVM): массовая генерация кошельков,
 получение токенов через краны, асинхронный фарминг транзакций по профилям
@@ -25,6 +28,7 @@ python auto.py --doctor        # самодиагностика
 | Robinhood Chain | [config_robinhood.yaml](config_robinhood.yaml) | 46630 | ETH |
 | Flop Labs | [config_flop.yaml](config_flop.yaml) | 99999 (заглушка) | FLOP |
 | Arc (Minara.Fun) | [config_arc.yaml](config_arc.yaml) | 5042002 | ARC |
+| vibe/vibe (Robinhood testnet) | [config_vibevibe.yaml](config_vibevibe.yaml) | 46630 | ETH |
 
 Пресет «только трансферы» для пачного фарма без контрактных адресов —
 [config.simple.yaml](config.simple.yaml) (одна сеть Robinhood, отдельная БД
@@ -32,6 +36,19 @@ python auto.py --doctor        # самодиагностика
 
 ```powershell
 python auto.py --config config.simple.yaml --wallets 200 --cycles 2
+```
+
+vibe/vibe — permissionless token launchpad на Robinhood Chain testnet
+(5% сапплая для тестнет-участников). Контракты верифицированы в Blockscout,
+ABI — в `abi/vibevibe.json` (VibePassMarket, VibeLoungeRegistry, VibeShop,
+VibeItems, VibeFuelStaking, VibeFuelRewards). Реализован EIP-712 флоу
+`buy`/`sell` на VibePassMarket (подпись TradeIntent ключом `tradeSigner` из
+`vibevibe.signer_key` / env `FARMER_VIBE_SIGNER_KEY`) и `registerLounge`
+(только `REGISTRAR_ROLE` платформы). Без ключа подписи buy/sell пропускаются
+адаптивными весами; всегда работают `transfer` / `claimRewards` / `stake`:
+
+```powershell
+python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
 ```
 
 Базовый шаблон для своего конфига — [config.example.yaml](config.example.yaml).
@@ -55,6 +72,11 @@ python auto.py --history 20 / --doctor / --version
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + Telegram-бот (env-конфигурация ниже)
 ```
+
+Веб-дашборд и Telegram-бот: мониторинг метрик (циклы, действия, ошибки,
+health, количество кошельков), старт/стоп/пауза фермы, история циклов,
+топ кошельков и **экспорт всех кошельков с ключами** (CSV/JSON) — в вебе
+кнопкой «Скачать кошельки», в боте `/export` или кнопкой меню.
 
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
 `TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY` и др.) — та же таблица env в
@@ -104,3 +126,12 @@ EMA-бюджет поллинга, RPC-failover при серии ошибок, 
 без публичного URL, Caddy для домена+HTTPS позже) — в каталоге [`deploy/`](deploy/README.md):
 `.env`-шаблон секретов, healthcheck, volume для данных, инструкция по добавлению бота
 и переходу на публичный HTTPS.
+
+## Автор и поддержка
+
+Проект создан и поддерживается **ssrjkk**.
+
+- Telegram-бот автора: [@ssrjkk_bot](https://t.me/ssrjkk_bot)
+- Репозиторий: [github.com/ssrjkk/harvest](https://github.com/ssrjkk/harvest)
+
+Лицензия — [MIT](LICENSE), Copyright © 2026 ssrjkk.

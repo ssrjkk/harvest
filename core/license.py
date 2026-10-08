@@ -233,7 +233,8 @@ class LicenseManager:
             return None
         try:
             req = urllib.request.Request(self.url, headers={"User-Agent": "harvest-license/2.0"})
-            with urllib.request.urlopen(req, timeout=self.timeout) as r:
+            # Схема проверена выше (только https или http на loopback) — B310 неактуален.
+            with urllib.request.urlopen(req, timeout=self.timeout) as r:  # nosec B310
                 if r.status != 200:
                     return None
                 data = r.read(_MAX_LICENSE_BODY)

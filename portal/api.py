@@ -520,6 +520,32 @@ async def api_farm_action(request: web.Request) -> web.Response:
     return _json({"ok": ok, **daemon.run_state()})
 
 
+async def api_networks(request: web.Request) -> web.Response:
+    """Каталог тестнет-сетей с признаком текущей/запущенной."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    return _json({"networks": daemon.networks_info()})
+
+
+async def api_network_farm(request: web.Request) -> web.Response:
+    """Переключить сеть и запустить/остановить фарм по ней (одна кнопка)."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    slug = request.match_info.get("name", "")
+    action = request.match_info.get("action", "")
+    if action not in {"start", "stop"}:
+        return _json({"error": "unknown"}, status=404)
+    _audit(request, f"network:{slug}:{action}")
+    if action == "start":
+        switched = await daemon.switch_to(slug)
+        if not switched:
+            return _json({"error": "unknown network"}, status=404)
+        ok = await daemon.start()
+    else:
+        ok = await daemon.stop()
+    return _json({"ok": ok, "network": slug, **daemon.run_state()})
+
+
 async def api_cycle_history(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
@@ -530,6 +556,42 @@ async def api_top_wallets(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     return _json({"wallets": await daemon.top_wallets()})
+
+
+async def api_wallets_export(request: web.Request) -> web.Response:
+    """Скачивание ВСЕХ кошельков с ключами (CSV/JSON).
+
+    Приватные ключи — самый чувствительный ресурс фермы: доступ только
+    авторизованным И по HTTPS (как мастер-ключ входа). Открытый текст ключей
+    поверх plain-HTTP запрещён, если dev-флаг не разрешил явно.
+    """
+    _require_user(request)
+    cfg: PortalConfig = request.app[KEY_CFG]
+    if not (_is_https(request) or cfg.allow_insecure_password):
+        logger.warning("[AUDIT] wallets-export denied over HTTP ip=%s", _client_ip(request))
+        return _json({"error": "Экспорт ключей доступен только по HTTPS"}, status=403)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    fmt = request.query.get("format", "csv")
+    if fmt not in {"csv", "json"}:
+        return _json({"error": "format должен быть csv или json"}, status=400)
+    _audit(request, f"wallets:export:{fmt}")
+    try:
+        content, filename = await daemon.export_wallets(fmt)
+    except RuntimeError as e:
+        return _json({"error": str(e)}, status=503)
+    if fmt == "json":
+        ctype = "application/json"
+    else:
+        ctype = "text/csv"
+    resp = web.Response(
+        text=content,
+        content_type=ctype,
+        charset="utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+    # Ключи не должны оседать в промежуточных кэшах/браузере.
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return resp
 
 
 async def api_tg_init(request: web.Request) -> web.Response:
@@ -656,8 +718,11 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app.router.add_get("/api/links", api_links)
     app.router.add_get("/api/stats", api_stats)
     app.router.add_post("/api/farm/{action}", api_farm_action)
+    app.router.add_get("/api/networks", api_networks)
+    app.router.add_post("/api/farm/network/{name}/{action}", api_network_farm)
     app.router.add_get("/api/cycle-history", api_cycle_history)
     app.router.add_get("/api/top-wallets", api_top_wallets)
+    app.router.add_get("/api/wallets/export", api_wallets_export)
     app.router.add_post("/api/tg/init", api_tg_init)
     app.router.add_static("/static", STATIC_DIR)
     return app

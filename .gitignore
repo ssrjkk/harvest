@@ -19,6 +19,9 @@ dist/
 # Crash-рекавери state
 state.json
 
+# Рабочее дерево сайта (ветка gh-pages), создаёт publish_dash.py
+.dash-site/
+
 # Логи
 *.log
 logs/
@@ -47,6 +50,7 @@ config_*.yaml
 !config_robinhood.yaml
 !config_flop.yaml
 !config_arc.yaml
+!config_vibevibe.yaml
 !config.simple.yaml
 portal_config.yaml
 portal_secret.key
@@ -63,5 +67,15 @@ license.json
 .env
 deploy/.env
 
+# Локальный запуск: скрипт с секретами и логи портала
+start_portal.ps1
+harvest_autostart.vbs
+.portal_env.ps1
+portal.out*.log
+portal.err*.log
+
 # Артефакты покрытия
 .coverage
+start_all.ps1
+start_publish.ps1
+*.state.json

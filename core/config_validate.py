@@ -38,6 +38,10 @@ VALID_ACTION_TYPES = frozenset(
         "arc_launch",
         "arc_trade",
         "arc_add_liquidity",
+        # VibePassMarket (EIP-712 buy/sell через tradeSigner) и VibeLoungeRegistry
+        "vibevibe_buy",
+        "vibevibe_sell",
+        "vibevibe_register",
     }
 )
 
@@ -179,7 +183,8 @@ def validate_config(config: dict) -> None:
         if not rpc:
             errors.append("network.rpc_url: не задан")
         elif isinstance(rpc, list):
-            if len(rpc) == 0 or not all(isinstance(u, str) and u for u in rpc):
+            # Пустой список уже отсечён проверкой `if not rpc` выше.
+            if not all(isinstance(u, str) and u for u in rpc):
                 errors.append("network.rpc_url: должен быть строкой или непустым списком строк")
             else:
                 _check_rpc_url("network.rpc_url", rpc, errors)
@@ -284,6 +289,9 @@ def validate_config(config: dict) -> None:
                         errors.append(
                             f"actions[{i}].method: для contract_call ожидается 4-байт селектор (0x+8 hex) или пусто"
                         )
+                elif atype in ("vibevibe_buy", "vibevibe_sell", "vibevibe_register"):
+                    # Метод жёстко задан в коде (buy/sell/registerLounge), в конфиге не требуется.
+                    pass
                 else:
                     method = a.get("method", "")
                     if not method:

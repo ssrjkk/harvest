@@ -53,6 +53,7 @@ hiddenimports = [
     'aiohttp.connector',
     'aiohttp.typedefs',
     'aiosqlite',
+    'asyncpg',
     'cryptography',
     'cryptography.hazmat',
     'cryptography.hazmat.primitives',

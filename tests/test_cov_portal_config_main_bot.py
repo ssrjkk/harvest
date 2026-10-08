@@ -143,6 +143,52 @@ class TestConfig(unittest.TestCase):
             cfg = PortalConfig()
         self.assertEqual(cfg.host, "127.0.0.1")
 
+    def test_load_yaml_overrides_applies_values(self):
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "portal_config.yaml"
+            p.write_text(
+                json.dumps(
+                    {
+                        "host": "0.0.0.0",
+                        "port": 9999,
+                        "public_base_url": "https://app.example",
+                        "db": "custom.db",
+                        "farm_config": "config_arc.yaml",
+                        "links": "portal/links2.json",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            with _env(PORTAL_SECRET="s" * 32, PORTAL_HOST=None, PORTAL_CONFIG=str(p)):
+                cfg = PortalConfig()
+            self.assertEqual(cfg.host, "0.0.0.0")
+            self.assertEqual(cfg.port, 9999)
+            self.assertEqual(cfg.public_base_url, "https://app.example")
+            self.assertEqual(cfg.db_path, "custom.db")
+            self.assertEqual(cfg.farm_config, "config_arc.yaml")
+            self.assertEqual(cfg.links_path, "portal/links2.json")
+
+    def test_load_yaml_overrides_respects_explicit_env(self):
+        # env (PORTAL_DB/PORTAL_FARM_CONFIG/PORTAL_LINKS) имеет приоритет над yaml.
+        with tempfile.TemporaryDirectory() as d:
+            p = Path(d) / "portal_config.yaml"
+            p.write_text(
+                json.dumps({"db": "yaml.db", "farm_config": "yaml.yaml", "links": "yaml_links.json"}),
+                encoding="utf-8",
+            )
+            with _env(
+                PORTAL_SECRET="s" * 32,
+                PORTAL_HOST=None,
+                PORTAL_CONFIG=str(p),
+                PORTAL_DB="env.db",
+                PORTAL_FARM_CONFIG="env.yaml",
+                PORTAL_LINKS="env_links.json",
+            ):
+                cfg = PortalConfig()
+            self.assertEqual(cfg.db_path, "env.db")
+            self.assertEqual(cfg.farm_config, "env.yaml")
+            self.assertEqual(cfg.links_path, "env_links.json")
+
     def test_telegram_enabled_true(self):
         cfg = _make_cfg()
         cfg.telegram_token = "wow-token"
@@ -472,14 +518,17 @@ if HAS_BOT:
 
         def test_menu_kb_rows(self):
             self.cfg.public_base_url = ""
-            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 4)
+            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 7)
             self.cfg.public_base_url = "https://app.example"
             kb = bot_telegram._menu_kb(self.cfg)
-            self.assertEqual(len(kb.inline_keyboard), 5)
+            self.assertEqual(len(kb.inline_keyboard), 8)
             self.assertIn("🚀 Открыть Mini App", kb.inline_keyboard[0][0].text)
             self.assertIsNotNone(kb.inline_keyboard[0][0].web_app)
             row_last = kb.inline_keyboard[-1]
-            self.assertEqual([b.callback_data for b in row_last], ["doctor", "history"])
+            self.assertEqual([b.callback_data for b in row_last], ["monitor:toggle", "links"])
+            self.assertIn("Мониторинг: ВЫКЛ", row_last[0].text)
+            kb_on = bot_telegram._menu_kb(self.cfg, monitor_on=True)
+            self.assertIn("Мониторинг: ВКЛ", kb_on.inline_keyboard[-1][0].text)
 
         async def test_start_handler_denies_unknown_user(self):
             cfg = _make_cfg()
@@ -553,6 +602,85 @@ if HAS_BOT:
             self.assertIn("История циклов", text)
             self.assertIn("#5", text)
             self.assertIn("✅", text)
+
+        async def test_wallets_text_command(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.all_wallets = _async_result(
+                [
+                    {"address": "0x1111", "private_key": "0xkey1", "mnemonic": "a b c", "total_actions": 7},
+                    {"address": "0x2222", "private_key": "0xkey2", "mnemonic": "d e f", "total_actions": 0},
+                ]
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123, text="/wallets")
+            await dp.message.handlers[1].callback(msg)
+            args, kwargs = msg.answers[0]
+            text = args[0]
+            self.assertIn("Кошельки", text)
+            self.assertIn("0x1111", text)
+            self.assertIn("0xkey1", text)
+            self.assertIn("a b c", text)
+            self.assertIn("reply_markup", kwargs)
+            m2 = _TgMessage(user_id=123, text="/wallets abc")
+            await dp.message.handlers[1].callback(m2)
+            self.assertTrue(m2.answers)
+
+        async def test_callback_wallets_page(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.all_wallets = _async_result(
+                [
+                    {"address": "0x%04d" % i, "private_key": "0xk%d" % i, "mnemonic": "w%d" % i, "total_actions": i}
+                    for i in range(6)
+                ]
+            )
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            call = _TgCallback(user_id=123, data="wallets:page:2", message=_TgMessage(user_id=123))
+            await dp.callback_query.handlers[0].callback(call)
+            args, kwargs = call.message.edits[0]
+            text = args[0]
+            self.assertIn("стр. 2/2", text)
+            self.assertIn("0x0004", text)
+            self.assertIn("reply_markup", kwargs)
+            call_bad = _TgCallback(user_id=123, data="wallets:page:99", message=_TgMessage(user_id=123))
+            await dp.callback_query.handlers[0].callback(call_bad)
+            self.assertTrue(call_bad.message.edits)
+
+        async def test_progress_bar_format(self):
+            bar = bot_telegram._progress_bar(5, 10, "тест")
+            self.assertIn("▰▰▰▰▰▱▱▱▱▱ 50% (5/10)", bar)
+            bar0 = bot_telegram._progress_bar(0, 0, "x")
+            self.assertIn("0% (0/0)", bar0)
+            bar100 = bot_telegram._progress_bar(10, 10, "x", 5)
+            self.assertIn("▰▰▰▰▰ 100% (10/10)", bar100)
+            bad = bot_telegram._progress_bar("a", "<b>x</b>", "x")
+            self.assertIn("0% (0/0)", bad)
+
+        async def test_wallets_page_formatting(self):
+            w = [
+            {"address": "0x%04d" % i, "private_key": "0xk%d" % i, "mnemonic": "w%d" % i, "total_actions": i}
+            for i in range(5)
+        ]
+            text, pages = bot_telegram._fmt_wallets_page(w, 1, 4)
+            self.assertEqual(pages, 2)
+            self.assertIn("#1", text)
+            self.assertIn("<spoiler>", text)
+            self.assertIn("стр. 1/2", text)
+            text2, pages2 = bot_telegram._fmt_wallets_page(w, 99, 4)
+            self.assertEqual(pages2, 2)
+            self.assertIn("стр. 2/2", text2)
+            text3, pages3 = bot_telegram._fmt_wallets_page([], 1, 4)
+            self.assertEqual(pages3, 1)
+            self.assertIn("Кошельков пока нет", text3)
+            kb1 = bot_telegram._wallets_kb(1, 1)
+            self.assertEqual(kb1.inline_keyboard, [])
+            kb2 = bot_telegram._wallets_kb(1, 2)
+            self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wallets:page:2")
+            kb3 = bot_telegram._wallets_kb(2, 2)
+            self.assertEqual(kb3.inline_keyboard[0][0].callback_data, "wallets:page:1")
 
         async def test_callback_denied_unknown_user(self):
             cfg = _make_cfg()
@@ -784,6 +912,37 @@ if HAS_BOT:
             self.assertEqual(m_bot.call_args.kwargs["token"], "12345:ABC-def")
             dp.start_polling.assert_awaited_once()
             self.assertIs(dp.start_polling.call_args.args[0], m_bot.return_value)
+
+        async def test_run_bot_sends_public_url_to_owner(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = "12345:ABC-def"
+            cfg.public_base_url = "https://x.trycloudflare.com"
+            daemon = mock.Mock()
+            dp = mock.Mock()
+            dp.start_polling = mock.AsyncMock()
+            with mock.patch.object(bot_telegram, "Bot") as _mb, mock.patch.object(
+                bot_telegram, "Dispatcher", return_value=dp
+            ), mock.patch.object(bot_telegram, "notify_owner", new=mock.AsyncMock()) as no:
+                await bot_telegram.run_bot(cfg, daemon)
+            no.assert_awaited_once()
+            self.assertIn("https://x.trycloudflare.com", no.await_args.args[1])
+
+        async def test_run_bot_notify_failure_swallowed(self):
+            cfg = _make_cfg()
+            cfg.telegram_token = "12345:ABC-def"
+            cfg.public_base_url = "https://x.trycloudflare.com"
+            daemon = mock.Mock()
+            dp = mock.Mock()
+            dp.start_polling = mock.AsyncMock()
+            with mock.patch.object(bot_telegram, "Bot") as _mb, mock.patch.object(
+                bot_telegram, "Dispatcher", return_value=dp
+            ), mock.patch.object(
+                bot_telegram, "notify_owner", new=mock.AsyncMock(side_effect=RuntimeError("tg down"))
+            ):
+                with self.assertLogs("portal.bot_telegram", level="WARNING") as cm:
+                    await bot_telegram.run_bot(cfg, daemon)
+            self.assertTrue(any("Не удалось отправить адрес" in line for line in cm.output))
+            dp.start_polling.assert_awaited_once()
 
 
 if __name__ == "__main__":

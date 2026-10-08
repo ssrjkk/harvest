@@ -119,7 +119,9 @@ proxy:
 
 # ---------- База данных ----------
 database:
-  path: "farming_state.db"     # SQLite для хранения прогресса
+  path: "farming_state.db"     # SQLite-файл (по умолчанию) ИЛИ PostgreSQL DSN:
+                               #   postgres://user:pass@host:5432/harvest
+                               #   postgresql://user:pass@host:5432/harvest
   master_key: "master.key"     # файл ключа для шифрования seed-данных в БД (или env FARMER_MASTER_KEY, 64 hex)
   log_keep: 200000             # сколько последних записей actions_log хранить (подрезка)
 

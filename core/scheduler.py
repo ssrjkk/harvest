@@ -7,7 +7,7 @@
 import asyncio
 import json
 import logging
-from datetime import datetime, time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
