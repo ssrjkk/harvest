@@ -12,6 +12,12 @@
 Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив через
 PyInstaller) · [полная документация](DOCUMENTATION.md)
 
+
+
+## Screenshots
+
+<!-- TODO: Add demo screenshot -->
+
 ## Быстрый старт
 
 ```powershell
@@ -25,13 +31,13 @@ python auto.py --doctor        # самодиагностика
 
 | Сеть | Конфиг | chain_id | Валюта |
 |---|---|---|---|
-| Robinhood Chain | [config_robinhood.yaml](config_robinhood.yaml) | 46630 | ETH |
-| Flop Labs | [config_flop.yaml](config_flop.yaml) | 99999 (заглушка) | FLOP |
-| Arc (Minara.Fun) | [config_arc.yaml](config_arc.yaml) | 5042002 | ARC |
-| vibe/vibe (Robinhood testnet) | [config_vibevibe.yaml](config_vibevibe.yaml) | 46630 | ETH |
+| Robinhood Chain | [config_robinhood.yaml](configs/config_robinhood.yaml) | 46630 | ETH |
+| Flop Labs | [config_flop.yaml](configs/config_flop.yaml) | 99999 (заглушка) | FLOP |
+| Arc (Minara.Fun) | [config_arc.yaml](configs/config_arc.yaml) | 5042002 | ARC |
+| vibe/vibe (Robinhood testnet) | [config_vibevibe.yaml](configs/config_vibevibe.yaml) | 46630 | ETH |
 
 Пресет «только трансферы» для пачного фарма без контрактных адресов —
-[config.simple.yaml](config.simple.yaml) (одна сеть Robinhood, отдельная БД
+[config.simple.yaml](configs/config.simple.yaml) (одна сеть Robinhood, отдельная БД
 `farming_simple.db`, `gas_limit: 21000`):
 
 ```powershell
@@ -51,7 +57,7 @@ VibeItems, VibeFuelStaking, VibeFuelRewards). Реализован EIP-712 фл�
 python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
 ```
 
-Базовый шаблон для своего конфига — [config.example.yaml](config.example.yaml).
+Базовый шаблон для своего конфига — [config.example.yaml](configs/config.example.yaml).
 
 ### Авто-режим (CLI)
 
@@ -135,3 +141,18 @@ EMA-бюджет поллинга, RPC-failover при серии ошибок, 
 - Репозиторий: [github.com/ssrjkk/harvest](https://github.com/ssrjkk/harvest)
 
 Лицензия — [MIT](LICENSE), Copyright © 2026 ssrjkk.
+
+
+## Installation
+
+```bash
+git clone https://github.com/ssrjkk/harvest.git
+cd harvest
+pip install -r requirements.txt
+```
+
+## Usage
+
+```bash
+python main.py
+```
