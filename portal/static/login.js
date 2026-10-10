@@ -1,25 +1,16 @@
-/* HARVEST PORTAL — страница входа.
- * Внешний файл: inline-скрипты запрещены политикой CSP (script-src 'self').
- */
+/* HARVEST — login page */
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);
   const err = $("err");
-  const THEMES = ["dark", "light"];
 
-  function applyTheme(t) {
-    if (t !== "light") t = "dark";
-    document.documentElement.setAttribute("data-bs-theme", t);
-    localStorage.setItem("harvest_theme", t);
-    if ($("thDark")) $("thDark").classList.toggle("active", t === "dark");
-    if ($("thLight")) $("thLight").classList.toggle("active", t === "light");
+  const glowEl = $("mouseGlow");
+  if (glowEl) {
+    document.addEventListener("mousemove", e => {
+      glowEl.style.left = e.clientX + "px";
+      glowEl.style.top = e.clientY + "px";
+    });
   }
-  const saved = localStorage.getItem("harvest_theme") || "dark";
-  applyTheme(saved);
-  THEMES.forEach((th) => {
-    const el = $("th" + th[0].toUpperCase() + th.slice(1));
-    if (el) el.addEventListener("click", () => applyTheme(th));
-  });
 
   function showErr(msg) {
     err.style.display = "block";
@@ -30,6 +21,10 @@
     const t = document.createElement("div");
     t.className = "toast";
     t.textContent = msg;
+    Object.assign(t.style, {
+      position: "fixed", bottom: "16px", left: "50%", transform: "translateX(-50%)",
+      zIndex: "9999"
+    });
     document.body.appendChild(t);
     setTimeout(() => t.remove(), 4000);
   }
@@ -65,12 +60,10 @@
     if (passwordOn) {
       $("pwForm").style.display = "block";
       if (!window.isSecureContext) {
-        // http://localhost считается secure context; удалённый HTTP — нет.
-        // Сервер всё равно откажет — не пускаем мастер-ключ по открытому HTTP.
         $("pw").disabled = true;
         $("pwSubmit").disabled = true;
-        $("pwSubmit").textContent = "Вход по паролю доступен только по HTTPS";
-        showErr("Страница открыта по незащищённому соединению — мастер-ключ не отправляется.");
+        $("pwSubmit").textContent = "Только по HTTPS";
+        showErr("Незащищённое соединение — мастер-ключ не отправляется.");
       }
     }
   })();
@@ -85,7 +78,7 @@
       body: JSON.stringify({ password: $("pw").value })
     });
     const body = await res.json().catch(() => ({}));
-    if (res.ok) { location.href = "/"; }
-    else { showErr(body.error || "Ошибка"); }
+    if (res.ok) location.href = "/";
+    else showErr(body.error || "Ошибка");
   });
 })();

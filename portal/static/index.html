@@ -1,176 +1,338 @@
 <!DOCTYPE html>
-<html lang="ru" data-bs-theme="dark">
+<html lang="ru">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>HARVEST — пульт фермы</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>HARVEST</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
-  <link rel="stylesheet" href="/static/vendor/tabler.min.css">
   <link rel="stylesheet" href="/static/vendor/tabler-icons.min.css">
-  <link rel="stylesheet" href="/static/app.css?v=6">
+  <link rel="stylesheet" href="/static/app.css?v=9">
 </head>
 <body>
-  <div class="page">
-    <aside class="navbar navbar-vertical navbar-expand-lg" data-bs-theme="dark">
-      <div class="container-fluid">
-        <h1 class="navbar-brand navbar-brand-autodark mb-0">
-          <span class="hx-brand"><span class="mark">H</span><span>HARVEST<small>FARM CONTROL</small></span></span>
-        </h1>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidebar-menu"><span class="navbar-toggler-icon"></span></button>
-        <div class="collapse navbar-collapse" id="sidebar-menu">
-          <ul class="navbar-nav pt-lg-3">
-            <li class="nav-item active" data-nav="overview"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-layout-dashboard"></i></span><span class="nav-link-title">Обзор</span></a></li>
-            <li class="nav-item" data-nav="networks"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-world"></i></span><span class="nav-link-title">Сети</span></a></li>
-            <li class="nav-item" data-nav="howto"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-help"></i></span><span class="nav-link-title">Как начать</span></a></li>
-            <li class="nav-item" data-nav="wallets"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-wallet"></i></span><span class="nav-link-title">Кошельки</span></a></li>
-            <li class="nav-item" data-nav="history"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-history"></i></span><span class="nav-link-title">История</span></a></li>
-            <li class="nav-item" data-nav="links"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-link"></i></span><span class="nav-link-title">Ссылки</span></a></li>
-          </ul>
-          <div class="mt-auto pb-3">
-            <ul class="navbar-nav">
-              <li class="nav-item" id="navLogout"><a class="nav-link"><span class="nav-link-icon"><i class="ti ti-power"></i></span><span class="nav-link-title">Выйти</span></a></li>
-            </ul>
-          </div>
+  <div id="mouseGlow"></div>
+  <div class="app">
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="logo">H</div>
+        <div>
+          <div class="brand-text">HARVEST</div>
+          <div class="brand-sub">Farm Control</div>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-group-label">Dashboard</div>
+        <div class="nav-item active" data-nav="overview">
+          <i class="ti ti-layout-dashboard"></i> Обзор
+        </div>
+        <div class="nav-item" data-nav="networks">
+          <i class="ti ti-world"></i> Сети
+        </div>
+        <div class="nav-item" data-nav="scheduler">
+          <i class="ti ti-calendar-time"></i> Расписание
+        </div>
+
+        <div class="nav-group-label">Данные</div>
+        <div class="nav-item" data-nav="wallets">
+          <i class="ti ti-wallet"></i> Кошельки
+        </div>
+        <div class="nav-item" data-nav="groups">
+          <i class="ti ti-tags"></i> Группы
+        </div>
+        <div class="nav-item" data-nav="history">
+          <i class="ti ti-history"></i> История
+        </div>
+
+        <div class="nav-group-label">Диагностика</div>
+        <div class="nav-item" data-nav="rpc">
+          <i class="ti ti-antenna"></i> RPC Health
+        </div>
+        <div class="nav-item" data-nav="alerts">
+          <i class="ti ti-bell"></i> Алерты
+        </div>
+
+        <div class="nav-group-label">Инфо</div>
+        <div class="nav-item" data-nav="howto">
+          <i class="ti ti-help-circle"></i> Как начать
+        </div>
+        <div class="nav-item" data-nav="links">
+          <i class="ti ti-link"></i> Ссылки
+        </div>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="nav-item" id="navLogout">
+          <i class="ti ti-power"></i> Выйти
         </div>
       </div>
     </aside>
 
-    <div class="page-wrapper">
-      <header class="navbar navbar-expand-md d-print-none">
-        <div class="container-xl">
-          <div class="navbar-nav flex-row order-md-last">
-            <div class="nav-item d-flex align-items-center me-2">
-              <span class="text-secondary mono me-2 d-none d-sm-inline" id="who"></span>
-            </div>
-            <div class="nav-item">
-              <div class="btn-group">
-                <button class="btn btn-sm" id="thDark" title="Тёмная"><i class="ti ti-moon"></i></button>
-                <button class="btn btn-sm" id="thLight" title="Светлая"><i class="ti ti-sun"></i></button>
-              </div>
-            </div>
-          </div>
-          <div class="page-pretitle mono" id="pagePretitle">сеть —</div>
-          <h2 class="page-title">Пульт фермы</h2>
+    <!-- MAIN -->
+    <div class="main">
+      <header class="header">
+        <div class="header-left">
+          <span class="header-title">Пульт фермы</span>
+          <span class="header-network" id="headerNet">—</span>
+        </div>
+        <div class="header-right">
+          <span class="header-user" id="who"></span>
         </div>
       </header>
 
-      <div class="page-body"><div class="container-xl">
-        <!-- network picker / status -->
-        <div class="card mb-3">
-          <div class="card-body">
-            <div class="row g-2 align-items-center">
-              <div class="col-auto">
-                <select class="form-select" id="netSelect" style="min-width:220px"></select>
+      <div class="content">
+        <div class="content-inner">
+          <!-- STATUS BAR -->
+          <div class="status-bar">
+            <span class="status-seg"><span class="status-dot on" id="dot"></span><b id="statusText">—</b></span>
+            <span class="status-seg">сеть <b id="netName">—</b></span>
+            <span class="status-seg">health <b id="healthText">—</b></span>
+            <span class="status-seg">обновлено <b id="updatedText">—</b></span>
+            <span class="status-seg" id="feedSeg" title="Источник обновлений"><span class="feed-dot" id="feedDot"></span><b id="feedText">—</b></span>
+          </div>
+
+          <!-- ═══ OVERVIEW ═══ -->
+          <section class="section active" id="sec-overview">
+            <!-- CONTROLS -->
+            <div class="controls-bar">
+              <select class="net-select" id="netSelect"></select>
+              <button class="btn btn-primary btn-sm" id="btnNetStart"><i class="ti ti-player-play"></i> Фармить</button>
+              <button class="btn btn-danger btn-sm" id="btnNetStop"><i class="ti ti-player-stop"></i> Стоп</button>
+              <span class="net-meta" id="netMeta"></span>
+            </div>
+
+            <!-- KPI ROW -->
+            <div class="kpi-grid">
+              <div class="kpi-card accent-purple">
+                <div class="kpi-header">
+                  <span class="kpi-label">Действий</span>
+                  <i class="ti ti-bolt kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="cActions">0</div>
+                <div class="kpi-sub" id="sActions">—</div>
               </div>
-              <div class="col-auto">
-                <button class="btn btn-primary" id="btnNetStart"><i class="ti ti-player-play me-1"></i>Фармить</button>
-                <button class="btn btn-danger" id="btnNetStop"><i class="ti ti-player-stop me-1"></i>Стоп</button>
+              <div class="kpi-card accent-green">
+                <div class="kpi-header">
+                  <span class="kpi-label">Успешность</span>
+                  <i class="ti ti-check kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="sRate">—</div>
+                <div class="kpi-sub" id="sRateSub">—</div>
               </div>
-              <div class="col-auto ms-auto">
-                <span class="mono text-secondary" id="netMeta">—</span>
+              <div class="kpi-card accent-red">
+                <div class="kpi-header">
+                  <span class="kpi-label">Ошибок</span>
+                  <i class="ti ti-alert-triangle kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="cErrors">0</div>
+                <div class="kpi-sub" id="sErrors">—</div>
+              </div>
+              <div class="kpi-card accent-cyan">
+                <div class="kpi-header">
+                  <span class="kpi-label">Циклов</span>
+                  <i class="ti ti-reload kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="cCycles">0</div>
+                <div class="kpi-sub" id="sCycles">—</div>
               </div>
             </div>
-            <div class="row mt-2"><div class="col-12" id="netDesc" style="font-size:13px"></div></div>
-          </div>
+
+            <!-- SECONDARY METRICS -->
+            <div class="metrics-grid">
+              <div class="metric-card">
+                <div class="metric-label">Кошельков</div>
+                <div class="metric-value" id="cWallets">—</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Обработано</div>
+                <div class="metric-value" id="cProcessed">0</div>
+                <div class="metric-sub" id="sProcessed">—</div>
+              </div>
+              <div class="metric-card">
+                <div class="metric-label">Воркеры</div>
+                <div class="metric-value" id="cWorkers">—</div>
+                <div class="metric-sub" id="sWorkers">—</div>
+              </div>
+            </div>
+
+            <!-- SUCCESS RATE PROGRESS -->
+            <div class="panel" style="margin-bottom:16px">
+              <div class="panel-body padded">
+                <div class="progress-row">
+                  <span class="metric-label" style="margin:0">Успешность</span>
+                  <span class="metric-label" id="progressPct" style="margin:0;color:var(--purple-bright)">0%</span>
+                </div>
+                <div class="progress-track">
+                  <div class="progress-fill" id="successBar" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- CHARTS -->
+            <div class="charts-grid">
+              <div class="chart-card">
+                <div class="chart-title">Действия / Ошибки <span id="chartLegend1"></span></div>
+                <canvas class="chart-canvas" id="chartMain"></canvas>
+              </div>
+              <div class="chart-card">
+                <div class="chart-title">Обработка <span id="chartLegend2"></span></div>
+                <canvas class="chart-canvas" id="chartProc"></canvas>
+              </div>
+            </div>
+
+            <!-- NET DESCRIPTION -->
+            <div class="panel">
+              <div class="panel-body padded" id="netDesc" style="font-size:12px;color:var(--text-2)"></div>
+            </div>
+          </section>
+
+          <!-- ═══ NETWORKS ═══ -->
+          <section class="section" id="sec-networks">
+            <div class="net-grid" id="netCards"></div>
+          </section>
+
+          <!-- ═══ HOW TO ═══ -->
+          <section class="section" id="sec-howto">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Как начать фармить</span>
+              </div>
+              <div class="panel-body padded">
+                <ol class="howto-list">
+                  <li>Вверху выбери тестнет (vibe/vibe, Robinhood, Flop, Arc) — увидишь описание и награды сети.</li>
+                  <li>Нажми <span class="badge badge-info">Фармить</span> — портал переключится на сеть, создаст кошельки и начнёт все активности сети (трансферы, стейкинг, торговлю, клейм).</li>
+                  <li>Баланс пополняется с крана сети автоматически. Если кран недоступен — закинь тестовые токены вручную (адреса кошельков в разделе «Кошельки»).</li>
+                  <li>Мониторь метрики на «Обзор» и в Telegram-боте: <code>/status</code>, живой мониторинг <code>/monitor</code>.</li>
+                  <li>Забирай кошельки с приватными ключами: «Кошельки» → CSV/JSON (или <code>/export</code> в боте).</li>
+                  <li>Смена сети одной кнопкой: выбери другую сеть → «Фармить». У каждой сети своя БД кошельков.</li>
+                </ol>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ WALLETS ═══ -->
+          <section class="section" id="sec-wallets">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Топ кошельков</span>
+                <span style="font-family:var(--font-data);font-size:9px;color:var(--text-3)">клик — копировать</span>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead>
+                  <tbody id="tWallets"><tr><td colspan="3" style="color:var(--text-3)">загрузка...</td></tr></tbody>
+                </table>
+              </div>
+              <div class="panel-footer">
+                <button class="btn btn-ghost btn-sm" id="btnExportCsv"><i class="ti ti-download"></i> CSV</button>
+                <button class="btn btn-ghost btn-sm" id="btnExportJson"><i class="ti ti-download"></i> JSON</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ HISTORY ═══ -->
+          <section class="section" id="sec-history">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">История циклов</span>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>#</th><th>Статус</th><th>Действий</th><th>Ошибок</th><th>Время, с</th><th>Кошельков</th><th>Когда</th></tr></thead>
+                  <tbody id="tHistory"><tr><td colspan="7" style="color:var(--text-3)">загрузка...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ SCHEDULER ═══ -->
+          <section class="section" id="sec-scheduler">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Планировщик задач</span>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-primary btn-sm" id="btnSchedStart"><i class="ti ti-player-play"></i> Старт</button>
+                  <button class="btn btn-danger btn-sm" id="btnSchedStop"><i class="ti ti-player-stop"></i> Стоп</button>
+                  <button class="btn btn-ghost btn-sm" id="btnSchedAdd"><i class="ti ti-plus"></i> Задача</button>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>ID</th><th>Имя</th><th>Интервал</th><th>Циклы</th><th>Последний</th><th>Следующий</th><th>Статус</th><th></th></tr></thead>
+                  <tbody id="tScheduler"><tr><td colspan="8" style="color:var(--text-3)">загрузка...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ GROUPS ═══ -->
+          <section class="section" id="sec-groups">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Группы кошельков</span>
+                <button class="btn btn-primary btn-sm" id="btnGroupAdd"><i class="ti ti-plus"></i> Группа</button>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>Цвет</th><th>Имя</th><th>Кошельков</th><th>Создана</th><th></th></tr></thead>
+                  <tbody id="tGroups"><tr><td colspan="5" style="color:var(--text-3)">загрузка...</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ RPC HEALTH ═══ -->
+          <section class="section" id="sec-rpc">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">RPC Health</span>
+                <button class="btn btn-ghost btn-sm" id="btnRpcRefresh"><i class="ti ti-refresh"></i> Обновить</button>
+              </div>
+              <div class="panel-body padded" id="rpcHealth">
+                <div style="color:var(--text-3)">загрузка...</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ ALERTS ═══ -->
+          <section class="section" id="sec-alerts">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title">Мониторинг балансов</span>
+              </div>
+              <div class="panel-body padded">
+                <div style="display:flex;flex-direction:column;gap:14px">
+                  <label style="display:flex;align-items:center;gap:10px">
+                    <input type="checkbox" id="chkBalanceAlerts" style="width:16px;height:16px;accent-color:var(--purple)">
+                    <span style="font-size:12.5px">Включить мониторинг балансов</span>
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:12px;color:var(--text-2)">Порог баланса (ETH):</span>
+                    <input type="number" id="inpBalanceThreshold" step="0.0001" min="0" max="100" value="0.001" style="width:140px;padding:7px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-0);font-family:var(--font-data);font-size:12px;outline:none">
+                  </label>
+                  <button class="btn btn-primary btn-sm" id="btnSaveAlerts" style="align-self:flex-start"><i class="ti ti-check"></i> Сохранить</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ═══ LINKS ═══ -->
+          <section class="section" id="sec-links">
+            <div class="panel">
+              <div class="panel-header">
+                <span class="panel-title" id="linksTitle">Ссылки</span>
+              </div>
+              <div class="panel-body padded" id="links"></div>
+            </div>
+          </section>
         </div>
+      </div>
 
-        <!-- terminal status -->
-        <div class="hx-term">
-          <span class="seg"><span class="hx-dot on" id="dot"></span><b id="statusText">—</b></span>
-          <span class="seg">сеть <b id="netName">—</b></span>
-          <span class="seg">health <b id="healthText">—</b></span>
-          <span class="seg">обновлено <b id="updatedText">—</b></span>
-          <span class="hx-cursor"></span>
-        </div>
-
-        <!-- OVERVIEW -->
-        <section class="hx-section active" id="sec-overview">
-          <div class="row row-deck row-cards mb-3">
-            <div class="col-6 col-lg-3"><div class="card kpi acc"><div class="card-body"><div class="d-flex justify-content-between"><span class="k">Действий</span><i class="ti ti-bolt ico"></i></div><div class="v" id="cActions">0</div><div class="sub" id="sActions">—</div></div></div></div>
-            <div class="col-6 col-lg-3"><div class="card kpi grn"><div class="card-body"><div class="d-flex justify-content-between"><span class="k">Обработано</span><i class="ti ti-check ico"></i></div><div class="v" id="cProcessed">0</div><div class="sub" id="sProcessed">—</div></div></div></div>
-            <div class="col-6 col-lg-3"><div class="card kpi red"><div class="card-body"><div class="d-flex justify-content-between"><span class="k">Ошибок</span><i class="ti ti-alert-triangle ico"></i></div><div class="v" id="cErrors">0</div><div class="sub" id="sErrors">—</div></div></div></div>
-            <div class="col-6 col-lg-3"><div class="card kpi ylw"><div class="card-body"><div class="d-flex justify-content-between"><span class="k">Циклов</span><i class="ti ti-reload ico"></i></div><div class="v" id="cCycles">0</div><div class="sub" id="sCycles">—</div></div></div></div>
-          </div>
-          <div class="row row-cards mb-3">
-            <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="k text-secondary mono">Кошельков</div><div class="v num" style="font-size:24px;font-weight:700" id="cWallets">—</div></div></div></div>
-            <div class="col-6 col-lg-3"><div class="card"><div class="card-body"><div class="k text-secondary mono">Воркеры</div><div class="v num" style="font-size:24px;font-weight:700" id="cWorkers">—</div><div class="sub" id="sWorkers">—</div></div></div></div>
-            <div class="col-12 col-lg-6"><div class="card"><div class="card-body"><div class="d-flex justify-content-between"><span class="k text-secondary mono">Успешность</span><span class="num" id="sRate">—</span></div><div class="progress progress-sm mt-3"><div class="progress-bar" id="successBar" style="width:0%"></div></div></div></div></div>
-          </div>
-          <div class="row row-cards mb-3">
-            <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title mono">Действия / ошибки <span class="text-secondary" id="chartLegend1"></span></h3></div><div class="card-body"><canvas class="chart-canvas" id="chartMain"></canvas></div></div></div>
-            <div class="col-lg-6"><div class="card"><div class="card-header"><h3 class="card-title mono">Обработка <span class="text-secondary" id="chartLegend2"></span></h3></div><div class="card-body"><canvas class="chart-canvas" id="chartProc"></canvas></div></div></div>
-          </div>
-        </section>
-
-        <!-- NETWORKS -->
-        <section class="hx-section" id="sec-networks">
-          <div class="row row-cards" id="netCards"></div>
-        </section>
-
-        <!-- HOW TO -->
-        <section class="hx-section" id="sec-howto">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title mono">Как начать фармить</h3></div>
-            <div class="card-body">
-              <ol class="lead" style="line-height:1.9">
-                <li>Вверху выбери тестнет (vibe/vibe, Robinhood, Flop, Arc) — увидишь описание и награды сети.</li>
-                <li>Нажми <span class="badge bg-primary">▶ Фармить</span> — портал переключится на сеть, создаст кошельки и начнёт все активности сети (трансферы, стейкинг, торговлю, клейм).</li>
-                <li>Баланс пополняется с крана сети автоматически. Если кран недоступен — закинь тестовые токены вручную (адреса кошельков в разделе «Кошельки»).</li>
-                <li>Мониторь метрики на «Обзор» и в Telegram-боте: <code>/status</code>, живой мониторинг <code>/monitor</code>.</li>
-                <li>Забирай кошельки с приватными ключами: «Кошельки» → CSV/JSON (или <code>/export</code> в боте).</li>
-                <li>Смена сети одной кнопкой: выбери другую сеть → «Фармить». У каждой сети своя БД кошельков.</li>
-              </ol>
-            </div>
-          </div>
-        </section>
-
-        <!-- WALLETS -->
-        <section class="hx-section" id="sec-wallets">
-          <div class="card">
-            <div class="card-header d-flex justify-content-between">
-              <h3 class="card-title mono">Топ кошельков</h3>
-              <span class="text-secondary mono" style="font-size:11px">клик — копировать</span>
-            </div>
-            <div class="table-responsive">
-              <table class="table table-vcenter card-table">
-                <thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead>
-                <tbody id="tWallets"><tr><td colspan="3" class="text-secondary">загрузка…</td></tr></tbody>
-              </table>
-            </div>
-            <div class="card-footer btn-list">
-              <button class="btn" id="btnExportCsv"><i class="ti ti-download me-1"></i>CSV</button>
-              <button class="btn" id="btnExportJson"><i class="ti ti-download me-1"></i>JSON</button>
-            </div>
-          </div>
-        </section>
-
-        <!-- HISTORY -->
-        <section class="hx-section" id="sec-history">
-          <div class="card">
-            <div class="card-header"><h3 class="card-title mono">История циклов</h3></div>
-            <div class="table-responsive">
-              <table class="table table-vcenter card-table">
-                <thead><tr><th>#</th><th>Статус</th><th>Действий</th><th>Ошибок</th><th>Время, с</th><th>Кошельков</th><th>Когда</th></tr></thead>
-                <tbody id="tHistory"><tr><td colspan="7" class="text-secondary">загрузка…</td></tr></tbody>
-              </table>
-            </div>
-          </div>
-        </section>
-
-        <!-- LINKS -->
-        <section class="hx-section" id="sec-links">
-          <div class="card"><div class="card-header"><h3 class="card-title mono" id="linksTitle">Ссылки</h3></div><div class="card-body" id="links"></div></div>
-        </section>
-      </div></div>
-
-      <footer class="footer footer-transparent d-print-none">
-        <div class="container-xl"><div class="text-secondary mono" style="font-size:11px">HARVEST v2.3 · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
-      </footer>
+      <footer class="footer">HARVEST v2.3 · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></footer>
     </div>
   </div>
 
-  <script src="/static/vendor/tabler.min.js"></script>
-  <script src="/static/app.js?v=6"></script>
+  <script src="/static/app.js?v=9"></script>
 </body>
 </html>

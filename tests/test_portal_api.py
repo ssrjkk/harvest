@@ -1,7 +1,10 @@
 """Офлайн end-to-end тесты HTTP-API портала (aiohttp TestClient, без сети)."""
 
+import asyncio
+import json
 import os
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from typing import cast
@@ -19,6 +22,14 @@ from portal.farm import FarmDaemon
 
 class _StubDaemon:
     running = True
+
+    def __init__(self) -> None:
+        self.metrics_limits: list[int] = []
+        self.groups: list[dict] = [{"id": 1, "name": "main", "color": "#007bff", "count": 0}]
+        self.switched: list[str] = []
+        self.scheduler_tasks: dict[str, dict] = {}
+        self.scheduler_running = False
+        self.balance = {"enabled": False, "threshold": 0.001}
 
     def run_state(self) -> dict:
         return {"running": True, "paused": False}
@@ -48,6 +59,79 @@ class _StubDaemon:
 
     async def cycle_history(self, limit=12) -> list:
         return [{"id": 1, "actions_ok": 5, "errors": 0, "duration_s": 10.0, "wallets": 4}]
+
+    async def metrics_history(self, limit: int = 100) -> list:
+        self.metrics_limits.append(limit)
+        return [{"id": 1, "actions": 3, "errors": 0}]
+
+    def networks_info(self) -> list:
+        return [{"slug": "vibevibe", "name": "VibeVibe", "current": True, "running": False}]
+
+    async def switch_to(self, slug: str) -> bool:
+        self.switched.append(slug)
+        return slug == "vibevibe"
+
+    async def list_groups(self) -> list:
+        return self.groups
+
+    async def create_group(self, name: str, color: str = "#007bff") -> dict:
+        if any(g["name"] == name for g in self.groups):
+            raise ValueError("Group '%s' already exists" % name)
+        group = {"id": len(self.groups) + 1, "name": name, "color": color, "count": 0}
+        self.groups.append(group)
+        return group
+
+    async def delete_group(self, group_id: int) -> bool:
+        before = len(self.groups)
+        self.groups = [g for g in self.groups if g["id"] != group_id]
+        return len(self.groups) < before
+
+    async def add_wallet_to_group(self, address: str, group_id: int) -> bool:
+        return group_id == 1
+
+    async def remove_wallet_from_group(self, address: str, group_id: int) -> bool:
+        return group_id == 1
+
+    def scheduler_state(self) -> dict:
+        return {
+            "initialized": True,
+            "running": self.scheduler_running,
+            "tasks": list(self.scheduler_tasks.values()),
+        }
+
+    async def add_scheduler_task(self, task_id: str, **kwargs) -> dict:
+        task = {"task_id": task_id, "cycles": kwargs.get("cycles", 1)}
+        task.update({k: v for k, v in kwargs.items() if k not in task})
+        self.scheduler_tasks[task_id] = task
+        return task
+
+    async def update_scheduler_task(self, task_id: str, **kwargs) -> dict | None:
+        task = self.scheduler_tasks.get(task_id)
+        if task is None:
+            return None
+        task.update(kwargs)
+        return task
+
+    async def remove_scheduler_task(self, task_id: str) -> bool:
+        return self.scheduler_tasks.pop(task_id, None) is not None
+
+    async def start_scheduler(self) -> bool:
+        self.scheduler_running = True
+        return True
+
+    async def stop_scheduler(self) -> bool:
+        self.scheduler_running = False
+        return True
+
+    def balance_alerts_state(self) -> dict:
+        return dict(self.balance)
+
+    async def set_balance_alerts(self, enabled: bool, threshold: float) -> dict:
+        self.balance = {"enabled": enabled, "threshold": max(0.0, threshold)}
+        return dict(self.balance)
+
+    async def rpc_health(self) -> dict:
+        return {"nodes": [{"url": "https://rpc.test", "latency_ms": 42, "healthy": True}]}
 
 
 def _make_cfg(
@@ -538,6 +622,481 @@ class TestGlobalChoke(unittest.TestCase):
             api._choke_allowed_global("tg_init")
         # Другой бакет ещё свободен (лимиты не пересекаются).
         self.assertTrue(api._choke_allowed_global("google_cb"))
+
+
+def _raiser(exc: BaseException):
+    """statistics() демона, всегда бросающий exc — для веток ошибок в /ws."""
+
+    async def boom() -> dict:
+        raise exc
+
+    return boom
+
+
+class TestWebSocket(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """Живая лента /ws: периодический пуш статуса + рассылка событий фермы."""
+
+    async def _login(self, client: TestClient) -> None:
+        resp = await client.post("/api/login/password", json={"password": "k" * 64})
+        self.assertEqual(resp.status, 200)
+
+    def _fast_push(self) -> None:
+        self.addCleanup(setattr, api, "WS_PUSH_S", api.WS_PUSH_S)
+        api.WS_PUSH_S = 0.05
+
+    async def _frame(self, ws, want: str) -> dict:
+        """Ждёт кадр нужного типа: статус-пуш идёт параллельно с событиями."""
+        deadline = time.monotonic() + 2.0
+        while time.monotonic() < deadline:
+            msg = await ws.receive(timeout=1.0)
+            if msg.type is not web.WSMsgType.TEXT:
+                self.fail("socket closed before %r frame: %s" % (want, msg.type))
+            frame = json.loads(msg.data)
+            if frame.get("type") == want:
+                return frame
+        self.fail("no %r frame within deadline" % want)
+
+    async def test_anonymous_socket_is_refused(self):
+        client, _app = await self._client()
+        async with client:
+            ws = await client.ws_connect("/ws")
+            msg = await ws.receive()
+            self.assertIs(msg.type, web.WSMsgType.CLOSE)
+            self.assertEqual(int(msg.data), 4001)
+
+    async def test_status_frames_keep_coming(self):
+        # Регрессия на «один кадр и молчание»: дашборд живёт из потока статуса.
+        self._fast_push()
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                for _ in range(3):
+                    frame = await self._frame(ws, "status")
+                    self.assertEqual(frame["pool"]["actions"], 7)
+                    self.assertEqual(frame["db"]["cycles"], 2)
+
+    async def test_clients_set_empties_on_disconnect(self):
+        self._fast_push()
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                await self._frame(ws, "status")
+                self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 1)
+            deadline = time.monotonic() + 1.0
+            while app[api.KEY_WS_CLIENTS] and time.monotonic() < deadline:
+                await asyncio.sleep(0.02)
+            self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 0)
+
+    async def test_farm_action_is_broadcast(self):
+        self._fast_push()
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                resp = await client.post("/api/farm/start")
+                self.assertEqual(resp.status, 200)
+                frame = await self._frame(ws, "farm")
+                self.assertEqual(frame["action"], "start")
+                self.assertTrue(frame["ok"])
+                self.assertTrue(frame["running"])
+
+    async def test_network_action_is_broadcast(self):
+        self._fast_push()
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                resp = await client.post("/api/farm/network/vibevibe/stop")
+                self.assertEqual(resp.status, 200)
+                frame = await self._frame(ws, "network")
+                self.assertEqual(frame["network"], "vibevibe")
+                self.assertEqual(frame["action"], "stop")
+
+    async def test_token_in_query_authenticates(self):
+        # Браузер не отдаёт cookie при handshake WebSocket, поэтому токен
+        # живёт в query — проверяем, что он принимается так же, как cookie.
+        self._fast_push()
+        client, app = await self._client()
+        token = auth.sign_token(app[api.KEY_CFG].secret, "tester", "Тест")
+        async with client:
+            async with client.ws_connect("/ws?token=" + token) as ws:
+                frame = await self._frame(ws, "status")
+                self.assertEqual(frame["pool"]["actions"], 7)
+
+    async def test_broken_token_in_query_is_refused(self):
+        client, app = await self._client()
+        async with client:
+            ws = await client.ws_connect("/ws?token=%25%25not-a-token")
+            msg = await ws.receive(timeout=2.0)
+            self.assertIs(msg.type, web.WSMsgType.CLOSE)
+            self.assertEqual(int(msg.data), 4001)
+            self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 0)
+
+    async def _expect_socket_death(self, exc: BaseException) -> tuple[set, int]:
+        """Открывает сокет демоном, статистика которого бросает exc."""
+        client, app = await self._client()
+        app[api.KEY_DAEMON].statistics = _raiser(exc)
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                msg = await ws.receive(timeout=2.0)
+        return app[api.KEY_WS_CLIENTS], msg.type
+
+    async def test_connection_reset_ends_socket_and_cleans_up(self):
+        clients, msg_type = await self._expect_socket_death(ConnectionResetError("gone"))
+        self.assertIs(msg_type, web.WSMsgType.CLOSE)
+        self.assertEqual(len(clients), 0)
+
+    async def test_runtime_error_ends_socket_and_cleans_up(self):
+        clients, msg_type = await self._expect_socket_death(RuntimeError("pool exploded"))
+        self.assertIs(msg_type, web.WSMsgType.CLOSE)
+        self.assertEqual(len(clients), 0)
+
+    async def test_unexpected_error_is_logged_not_raised(self):
+        # Неожиданная ошибка пула не должна уходить в aiohttp-трейс: handler
+        # ловит её сам, логует и корректно закрывает сокет.
+        client, app = await self._client()
+        app[api.KEY_DAEMON].statistics = _raiser(ValueError("bad stats"))
+        async with client:
+            await self._login(client)
+            with self.assertLogs("portal.api", level="WARNING") as cm:
+                async with client.ws_connect("/ws") as ws:
+                    msg = await ws.receive(timeout=2.0)
+        self.assertIs(msg.type, web.WSMsgType.CLOSE)
+        self.assertTrue(any("[WS] exception" in line for line in cm.output))
+        self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 0)
+
+    async def test_broadcast_drops_dead_clients(self):
+        class _Dead:
+            def __init__(self) -> None:
+                self.sent = 0
+
+            async def send_str(self, _msg: str) -> None:
+                self.sent += 1
+                raise ConnectionResetError("socket gone")
+
+        self._fast_push()
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            async with client.ws_connect("/ws") as ws:
+                await self._frame(ws, "status")
+                dead = _Dead()
+                app[api.KEY_WS_CLIENTS].add(dead)
+                await api.broadcast_ws(app, "farm", {"action": "start", "ok": True})
+                self.assertEqual(dead.sent, 1)
+                self.assertNotIn(dead, app[api.KEY_WS_CLIENTS])
+                # Живой клиент событие получил.
+                frame = await self._frame(ws, "farm")
+                self.assertEqual(frame["action"], "start")
+                self.assertTrue(frame["ok"])
+
+
+_BAD_JSON = {"data": "{", "headers": {"Content-Type": "application/json"}}
+
+
+class TestNetworkRoutes(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """Каталог сетей и «переключить+запустить» одной кнопкой."""
+
+    async def _login(self, client: TestClient) -> None:
+        self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
+
+    async def test_anonymous_networks_401(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.get("/api/networks")).status, 401)
+            self.assertEqual((await client.post("/api/farm/network/vibevibe/start")).status, 401)
+
+    async def test_networks_catalog(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            body = await (await client.get("/api/networks")).json()
+            self.assertEqual(body["networks"], app[api.KEY_DAEMON].networks_info())
+            self.assertTrue(body["networks"][0]["current"])
+
+    async def test_network_action_unknown_verb_404(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            resp = await client.post("/api/farm/network/vibevibe/restart")
+            self.assertEqual(resp.status, 404)
+            self.assertEqual(await resp.json(), {"error": "unknown"})
+
+    async def test_network_start_rejects_unknown_network(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            resp = await client.post("/api/farm/network/nosuch/start")
+            self.assertEqual(resp.status, 404)
+            self.assertEqual(await resp.json(), {"error": "unknown network"})
+            self.assertEqual(app[api.KEY_DAEMON].switched, ["nosuch"])
+
+    async def test_network_start_and_stop(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            started = await (await client.post("/api/farm/network/vibevibe/start")).json()
+            self.assertTrue(started["ok"])
+            self.assertEqual(started["network"], "vibevibe")
+            stopped = await (await client.post("/api/farm/network/vibevibe/stop")).json()
+            self.assertTrue(stopped["ok"])
+            self.assertEqual(app[api.KEY_DAEMON].switched, ["vibevibe"])
+
+
+class TestMetricsEndpoint(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """limit временного ряда зажат в [1; 1000], мусор в query не роняет портал."""
+
+    async def _login(self, client: TestClient) -> None:
+        self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
+
+    async def test_limit_clamped(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            daemon = app[api.KEY_DAEMON]
+            for query, want in (("", 100), ("?limit=99999", 1000), ("?limit=0", 1), ("?limit=abc", 100)):
+                resp = await client.get("/api/metrics" + query)
+                self.assertEqual(resp.status, 200)
+            self.assertEqual(daemon.metrics_limits, [100, 1000, 1, 100])
+
+    async def test_payload_shape(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            body = await (await client.get("/api/metrics?limit=5")).json()
+            self.assertEqual(body, {"metrics": [{"id": 1, "actions": 3, "errors": 0}]})
+
+
+class TestGroupsEndpoints(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """CRUD групп кошельков: валидация тела, конфликт имени, привязка адресов."""
+
+    async def _login(self, client: TestClient) -> None:
+        self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
+
+    async def test_anonymous_groups_401(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.get("/api/groups")).status, 401)
+            self.assertEqual((await client.post("/api/groups", json={"name": "x"})).status, 401)
+            self.assertEqual((await client.delete("/api/groups/1")).status, 401)
+            resp = await client.post("/api/groups/wallet", json={"address": "0x1", "group_id": 1})
+            self.assertEqual(resp.status, 401)
+            self.assertEqual((await client.delete("/api/groups/1/wallet/0x1")).status, 401)
+
+    async def test_list_groups(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            body = await (await client.get("/api/groups")).json()
+            self.assertEqual(body, {"groups": [{"id": 1, "name": "main", "color": "#007bff", "count": 0}]})
+
+    async def test_create_group_ok_and_conflict(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            resp = await client.post("/api/groups", json={"name": "whales", "color": "#ff0000"})
+            self.assertEqual(resp.status, 200)
+            body = await resp.json()
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["group"]["name"], "whales")
+            self.assertEqual(body["group"]["color"], "#ff0000")
+
+            dup = await client.post("/api/groups", json={"name": "whales"})
+            self.assertEqual(dup.status, 409)
+            self.assertIn("already exists", (await dup.json())["error"])
+
+    async def test_create_group_validation(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            bad_json = await client.post("/api/groups", **_BAD_JSON)
+            self.assertEqual(bad_json.status, 400)
+            self.assertEqual(await bad_json.json(), {"error": "ожидается application/json"})
+            for payload in ({"name": ""}, {"name": "   "}, {"name": "n" * 101}, {}):
+                resp = await client.post("/api/groups", json=payload)
+                self.assertEqual(resp.status, 400, payload)
+                self.assertEqual(await resp.json(), {"error": "name required (max 100 chars)"})
+
+    async def test_delete_group(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            self.assertEqual(await (await client.delete("/api/groups/1")).json(), {"ok": True})
+            self.assertEqual(await (await client.delete("/api/groups/77")).json(), {"ok": False})
+            bad = await client.delete("/api/groups/not-an-id")
+            self.assertEqual(bad.status, 400)
+            self.assertEqual(await bad.json(), {"error": "invalid group id"})
+
+    async def test_add_wallet_to_group(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            added = await client.post("/api/groups/wallet", json={"address": "0xaaa", "group_id": 1})
+            self.assertEqual(await added.json(), {"ok": True})
+            ghost = await client.post("/api/groups/wallet", json={"address": "0xaaa", "group_id": 9})
+            self.assertEqual(await ghost.json(), {"ok": False})
+            self.assertEqual((await client.post("/api/groups/wallet", **_BAD_JSON)).status, 400)
+            for payload in ({"address": "0xaaa"}, {"group_id": 1}, {"address": " ", "group_id": 1}, {}):
+                self.assertEqual((await client.post("/api/groups/wallet", json=payload)).status, 400, payload)
+            bad_gid = await client.post("/api/groups/wallet", json={"address": "0xaaa", "group_id": "abc"})
+            self.assertEqual(bad_gid.status, 400)
+            self.assertEqual(await bad_gid.json(), {"error": "invalid group_id"})
+
+    async def test_remove_wallet_from_group(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            self.assertEqual(await (await client.delete("/api/groups/1/wallet/0xaaa")).json(), {"ok": True})
+            self.assertEqual(await (await client.delete("/api/groups/5/wallet/0xaaa")).json(), {"ok": False})
+            bad = await client.delete("/api/groups/abc/wallet/0xaaa")
+            self.assertEqual(bad.status, 400)
+            self.assertEqual(await bad.json(), {"error": "invalid group id"})
+
+
+class TestSchedulerEndpoints(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """Планировщик: состояние, задачи, старт/стоп; cycles валидируется на входе."""
+
+    async def _login(self, client: TestClient) -> None:
+        self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
+
+    async def test_anonymous_scheduler_401(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.get("/api/scheduler")).status, 401)
+            self.assertEqual((await client.post("/api/scheduler/tasks", json={"task_id": "t"})).status, 401)
+            self.assertEqual((await client.put("/api/scheduler/tasks/t", json={})).status, 401)
+            self.assertEqual((await client.delete("/api/scheduler/tasks/t")).status, 401)
+            self.assertEqual((await client.post("/api/scheduler/start")).status, 401)
+            self.assertEqual((await client.post("/api/scheduler/stop")).status, 401)
+
+    async def test_add_update_delete_and_state(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            empty = await (await client.get("/api/scheduler")).json()
+            self.assertEqual(empty, {"initialized": True, "running": False, "tasks": []})
+
+            added = await client.post(
+                "/api/scheduler/tasks",
+                json={"task_id": "nightly", "name": "Ночной цикл", "interval_hours": 8, "cycles": 3},
+            )
+            self.assertEqual(added.status, 200)
+            body = await added.json()
+            self.assertTrue(body["ok"])
+            self.assertEqual(body["task"]["task_id"], "nightly")
+            self.assertEqual(body["task"]["cycles"], 3)
+
+            updated = await client.put(
+                "/api/scheduler/tasks/nightly",
+                json={
+                    "name": "  Вечерний  ",
+                    "interval_hours": 1.5,
+                    "interval_minutes": 30,
+                    "run_at_time": "23:00",
+                    "cycles": 5,
+                    "enabled": False,
+                },
+            )
+            self.assertEqual(updated.status, 200)
+            task = (await updated.json())["task"]
+            self.assertEqual(task["name"], "Вечерний")
+            self.assertEqual(task["interval_hours"], 1.5)
+            self.assertEqual(task["cycles"], 5)
+            self.assertFalse(task["enabled"])
+
+            state = await (await client.get("/api/scheduler")).json()
+            self.assertEqual(len(state["tasks"]), 1)
+
+            self.assertEqual(await (await client.delete("/api/scheduler/tasks/nightly")).json(), {"ok": True})
+            self.assertEqual(await (await client.delete("/api/scheduler/tasks/nightly")).json(), {"ok": False})
+
+    async def test_add_task_validation(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            self.assertEqual((await client.post("/api/scheduler/tasks", **_BAD_JSON)).status, 400)
+            for payload in ({"task_id": ""}, {"task_id": "t" * 101}, {}):
+                resp = await client.post("/api/scheduler/tasks", json=payload)
+                self.assertEqual(resp.status, 400, payload)
+                self.assertEqual(await resp.json(), {"error": "task_id required (max 100 chars)"})
+            for cycles in (0, -1, 1001):
+                resp = await client.post("/api/scheduler/tasks", json={"task_id": "t", "cycles": cycles})
+                self.assertEqual(resp.status, 400, cycles)
+                self.assertEqual(await resp.json(), {"error": "cycles must be 1-1000"})
+
+    async def test_update_task_validation(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            self.assertEqual((await client.put("/api/scheduler/tasks/t", **_BAD_JSON)).status, 400)
+            bad_cycles = await client.put("/api/scheduler/tasks/t", json={"cycles": 0})
+            self.assertEqual(bad_cycles.status, 400)
+            self.assertEqual(await bad_cycles.json(), {"error": "cycles must be 1-1000"})
+            missing = await client.put("/api/scheduler/tasks/ghost", json={"name": "x"})
+            self.assertEqual(missing.status, 404)
+            self.assertEqual(await missing.json(), {"error": "task not found"})
+
+    async def test_start_and_stop(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            self.assertEqual(await (await client.post("/api/scheduler/start")).json(), {"ok": True})
+            self.assertTrue(app[api.KEY_DAEMON].scheduler_running)
+            self.assertEqual(await (await client.post("/api/scheduler/stop")).json(), {"ok": True})
+            self.assertFalse(app[api.KEY_DAEMON].scheduler_running)
+
+
+class TestBalanceAlertsAndRpc(PortalApiTest, unittest.IsolatedAsyncioTestCase):
+    """Мониторинг балансов и диагностика RPC: порог валидируется, health отдаётся как есть."""
+
+    async def _login(self, client: TestClient) -> None:
+        self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
+
+    async def test_anonymous_401(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.get("/api/balance-alerts")).status, 401)
+            self.assertEqual((await client.post("/api/balance-alerts", json={"enabled": True})).status, 401)
+            self.assertEqual((await client.get("/api/rpc-health")).status, 401)
+
+    async def test_get_state_then_toggle(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            state = await (await client.get("/api/balance-alerts")).json()
+            self.assertEqual(state, {"enabled": False, "threshold": 0.001})
+            resp = await client.post("/api/balance-alerts", json={"enabled": True, "threshold": 0.5})
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(await resp.json(), {"ok": True, "enabled": True, "threshold": 0.5})
+            self.assertEqual(
+                await (await client.get("/api/balance-alerts")).json(),
+                {"enabled": True, "threshold": 0.5},
+            )
+
+    async def test_toggle_defaults_and_validation(self):
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            toggled = await client.post("/api/balance-alerts", json={})
+            self.assertEqual(
+                await toggled.json(), {"ok": True, "enabled": False, "threshold": 0.001}
+            )
+            self.assertEqual((await client.post("/api/balance-alerts", **_BAD_JSON)).status, 400)
+            for threshold in (-1, 101):
+                resp = await client.post("/api/balance-alerts", json={"threshold": threshold})
+                self.assertEqual(resp.status, 400, threshold)
+                self.assertEqual(await resp.json(), {"error": "threshold must be 0-100"})
+
+    async def test_rpc_health(self):
+        client, app = await self._client()
+        async with client:
+            await self._login(client)
+            body = await (await client.get("/api/rpc-health")).json()
+            self.assertEqual(body, await app[api.KEY_DAEMON].rpc_health())
+            self.assertTrue(body["nodes"][0]["healthy"])
 
 
 if __name__ == "__main__":

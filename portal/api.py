@@ -31,9 +31,12 @@ COOKIE_NAME = "harvest_session"
 SECURE_COOKIE_NAME = "__Host-harvest_session"
 COOKIE_TTL = 7 * 24 * 3600
 OAUTH_COOKIE = "oauth_state"
+# Интервал push-кадров статуса в /ws (секунды).
+WS_PUSH_S = 3.0
 
 KEY_CFG = web.AppKey("cfg", PortalConfig)
 KEY_DAEMON = web.AppKey("daemon", FarmDaemon)
+KEY_WS_CLIENTS = web.AppKey("ws_clients", set)
 
 _SESSION_TG = "tg"
 
@@ -41,8 +44,9 @@ _SESSION_TG = "tg"
 # Рабочий интерфейс: фреймы разрешены только self + Telegram. Страница входа
 # в фреймах не нужна вообще (frame-ancestors 'none') — против clickjacking.
 _CSP_BASE = (
-    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; "
-    "img-src 'self' data:; font-src 'self'; connect-src 'self'; "
+    "default-src 'self'; script-src 'self'; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+    "img-src 'self' data:; font-src 'self' https://fonts.gstatic.com; connect-src 'self'; "
     "base-uri 'self'; form-action 'self'; object-src 'none'"
 )
 _CSP_FRAME_APP = "frame-ancestors 'self' https://t.me https://telegram.me"
@@ -508,6 +512,7 @@ async def api_farm_action(request: web.Request) -> web.Response:
                 logger.exception("[AUDIT] stop task failed")
 
         task.add_done_callback(_stop_done)
+        await broadcast_ws(request.app, "farm", {"action": action, "stopping": True, **daemon.run_state()})
         return _json({"ok": True, "stopping": True, **daemon.run_state()})
     if action == "start":
         ok = await daemon.start()
@@ -517,6 +522,7 @@ async def api_farm_action(request: web.Request) -> web.Response:
         ok = await daemon.pause()
     else:
         ok = await daemon.resume()
+    await broadcast_ws(request.app, "farm", {"action": action, "ok": ok, **daemon.run_state()})
     return _json({"ok": ok, **daemon.run_state()})
 
 
@@ -543,6 +549,7 @@ async def api_network_farm(request: web.Request) -> web.Response:
         ok = await daemon.start()
     else:
         ok = await daemon.stop()
+    await broadcast_ws(request.app, "network", {"network": slug, "action": action, "ok": ok, **daemon.run_state()})
     return _json({"ok": ok, "network": slug, **daemon.run_state()})
 
 
@@ -550,6 +557,17 @@ async def api_cycle_history(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     return _json({"history": await daemon.cycle_history()})
+
+
+async def api_metrics(request: web.Request) -> web.Response:
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        limit = int(request.query.get("limit", "100"))
+    except ValueError:
+        limit = 100
+    limit = max(1, min(limit, 1000))
+    return _json({"metrics": await daemon.metrics_history(limit)})
 
 
 async def api_top_wallets(request: web.Request) -> web.Response:
@@ -632,6 +650,280 @@ async def api_tg_init(request: web.Request) -> web.Response:
     return resp
 
 
+async def api_groups_list(request: web.Request) -> web.Response:
+    """Список всех групп кошельков."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    return _json({"groups": await daemon.list_groups()})
+
+
+async def api_groups_create(request: web.Request) -> web.Response:
+    """Создать новую группу кошельков."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    name = str(body.get("name", "")).strip()
+    if not name or len(name) > 100:
+        return _json({"error": "name required (max 100 chars)"}, status=400)
+    color = str(body.get("color", "#007bff")).strip()[:20]
+    try:
+        group = await daemon.create_group(name, color)
+        _audit(request, f"group:create id={group.get('id')}")
+        return _json({"ok": True, "group": group})
+    except ValueError as e:
+        return _json({"error": str(e)}, status=409)
+
+
+async def api_groups_delete(request: web.Request) -> web.Response:
+    """Удалить группу кошельков."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    group_id = request.match_info.get("id", "")
+    try:
+        gid = int(group_id)
+    except ValueError:
+        return _json({"error": "invalid group id"}, status=400)
+    ok = await daemon.delete_group(gid)
+    if ok:
+        _audit(request, f"group:delete id={gid}")
+    return _json({"ok": ok})
+
+
+async def api_groups_add_wallet(request: web.Request) -> web.Response:
+    """Добавить кошелёк в группу."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    address = str(body.get("address", "")).strip()
+    group_id = body.get("group_id")
+    if not address or group_id is None:
+        return _json({"error": "address and group_id required"}, status=400)
+    try:
+        gid = int(group_id)
+    except (TypeError, ValueError):
+        return _json({"error": "invalid group_id"}, status=400)
+    ok = await daemon.add_wallet_to_group(address, gid)
+    return _json({"ok": ok})
+
+
+async def api_groups_remove_wallet(request: web.Request) -> web.Response:
+    """Удалить кошелёк из группы."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    group_id = request.match_info.get("id", "")
+    address = request.match_info.get("address", "")
+    try:
+        gid = int(group_id)
+    except ValueError:
+        return _json({"error": "invalid group id"}, status=400)
+    ok = await daemon.remove_wallet_from_group(address, gid)
+    return _json({"ok": ok})
+
+
+async def api_scheduler_state(request: web.Request) -> web.Response:
+    """Состояние планировщика и список задач."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    return _json(daemon.scheduler_state())
+
+
+async def api_scheduler_add_task(request: web.Request) -> web.Response:
+    """Добавить задачу в планировщик."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    task_id = str(body.get("task_id", "")).strip()
+    if not task_id or len(task_id) > 100:
+        return _json({"error": "task_id required (max 100 chars)"}, status=400)
+    name = str(body.get("name", "")).strip()[:200]
+    interval_hours = float(body.get("interval_hours", 0))
+    interval_minutes = float(body.get("interval_minutes", 0))
+    run_at_time = body.get("run_at_time")
+    cycles = int(body.get("cycles", 1))
+    if cycles < 1 or cycles > 1000:
+        return _json({"error": "cycles must be 1-1000"}, status=400)
+    task = await daemon.add_scheduler_task(
+        task_id,
+        name=name,
+        interval_hours=interval_hours,
+        interval_minutes=interval_minutes,
+        run_at_time=run_at_time,
+        cycles=cycles,
+    )
+    _audit(request, f"scheduler:add task={task_id}")
+    return _json({"ok": True, "task": task})
+
+
+async def api_scheduler_update_task(request: web.Request) -> web.Response:
+    """Обновить задачу планировщика."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    task_id = request.match_info.get("task_id", "")
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    updates = {}
+    if "name" in body:
+        updates["name"] = str(body["name"]).strip()[:200]
+    if "interval_hours" in body:
+        updates["interval_hours"] = float(body["interval_hours"])
+    if "interval_minutes" in body:
+        updates["interval_minutes"] = float(body["interval_minutes"])
+    if "run_at_time" in body:
+        updates["run_at_time"] = body["run_at_time"]
+    if "cycles" in body:
+        cycles = int(body["cycles"])
+        if cycles < 1 or cycles > 1000:
+            return _json({"error": "cycles must be 1-1000"}, status=400)
+        updates["cycles"] = cycles
+    if "enabled" in body:
+        updates["enabled"] = bool(body["enabled"])
+    task = await daemon.update_scheduler_task(task_id, **updates)
+    if task is None:
+        return _json({"error": "task not found"}, status=404)
+    _audit(request, f"scheduler:update task={task_id}")
+    return _json({"ok": True, "task": task})
+
+
+async def api_scheduler_delete_task(request: web.Request) -> web.Response:
+    """Удалить задачу из планировщика."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    task_id = request.match_info.get("task_id", "")
+    ok = await daemon.remove_scheduler_task(task_id)
+    if ok:
+        _audit(request, f"scheduler:delete task={task_id}")
+    return _json({"ok": ok})
+
+
+async def api_scheduler_start(request: web.Request) -> web.Response:
+    """Запустить планировщик."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    await daemon.start_scheduler()
+    _audit(request, "scheduler:start")
+    return _json({"ok": True})
+
+
+async def api_scheduler_stop(request: web.Request) -> web.Response:
+    """Остановить планировщик."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    ok = await daemon.stop_scheduler()
+    if ok:
+        _audit(request, "scheduler:stop")
+    return _json({"ok": ok})
+
+
+async def api_balance_alerts(request: web.Request) -> web.Response:
+    """Состояние мониторинга балансов."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    return _json(daemon.balance_alerts_state())
+
+
+async def api_set_balance_alerts(request: web.Request) -> web.Response:
+    """Включить/выключить мониторинг балансов."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    enabled = bool(body.get("enabled", False))
+    threshold = float(body.get("threshold", 0.001))
+    if threshold < 0 or threshold > 100:
+        return _json({"error": "threshold must be 0-100"}, status=400)
+    result = await daemon.set_balance_alerts(enabled, threshold)
+    _audit(request, f"balance_alerts:enabled={enabled} threshold={threshold}")
+    return _json({"ok": True, **result})
+
+
+async def api_rpc_health(request: web.Request) -> web.Response:
+    """Диагностика RPC: задержки, ошибки, circuit breaker, здоровье нод."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    return _json(await daemon.rpc_health())
+
+
+async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
+    """WebSocket для real-time обновлений (статус, логи, события).
+
+    Аутентификация: токен сессии в query-param (ws?token=...) или cookie.
+    Cookie не работает для WebSocket из-за CORS/браузерных ограничений,
+    поэтому поддерживаем query-param (токен одноразовый, живёт 60 сек).
+    """
+    cfg: PortalConfig = request.app[KEY_CFG]
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    clients: set = request.app[KEY_WS_CLIENTS]
+
+    ws = web.WebSocketResponse(heartbeat=30.0)
+    await ws.prepare(request)
+
+    token = request.query.get("token", "")
+    cookie = _get_session_cookie(request)
+    user = None
+    if token:
+        user = auth.read_token(cfg.secret, token)
+    elif cookie:
+        user = auth.read_token(cfg.secret, cookie)
+
+    if user is None or _is_revoked(user.get("jti")):
+        await ws.close(code=4001, message=b"unauthorized")
+        return ws
+
+    clients.add(ws)
+    logger.info("[WS] client connected (sub=%s), total=%d", user.get("sub"), len(clients))
+
+    try:
+        # Пушим статус с фиксированным шагом: клиент рисует дашборд из этих
+        # кадров и переключается на HTTP-опрос только при обрыве сокета.
+        while not ws.closed:
+            stats = await daemon.statistics()
+            await ws.send_json({"type": "status", **stats})
+            try:
+                msg = await ws.receive(timeout=WS_PUSH_S)
+            except asyncio.TimeoutError:
+                continue
+            if msg.type not in (web.WSMsgType.TEXT, web.WSMsgType.BINARY):
+                break
+    except (ConnectionResetError, RuntimeError):
+        logger.info("[WS] client gone")
+    except Exception as e:
+        logger.warning("[WS] exception: %s", e)
+    finally:
+        clients.discard(ws)
+        logger.info("[WS] client disconnected, total=%d", len(clients))
+
+    return ws
+
+
+async def broadcast_ws(app: web.Application, event_type: str, data: dict) -> None:
+    """Рассылает событие всем подключённым WebSocket-клиентам."""
+    clients: set = app.get(KEY_WS_CLIENTS, set())
+    if not clients:
+        return
+    msg = json.dumps({"type": event_type, **data})
+    dead = []
+    for ws in clients:
+        try:
+            await ws.send_str(msg)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        clients.discard(ws)
+
+
 async def healthz(request: web.Request) -> web.Response:
     cfg: PortalConfig = request.app[KEY_CFG]
     # Не отдаём daemon_running анонимам: статус фермера уходит только
@@ -706,6 +998,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app = web.Application(client_max_size=1024 * 1024, middlewares=[security_headers, error_handler, origin_guard])
     app[KEY_CFG] = cfg
     app[KEY_DAEMON] = daemon
+    app[KEY_WS_CLIENTS] = set()
 
     app.router.add_get("/", index)
     app.router.add_get("/login", login_page)
@@ -721,8 +1014,24 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app.router.add_get("/api/networks", api_networks)
     app.router.add_post("/api/farm/network/{name}/{action}", api_network_farm)
     app.router.add_get("/api/cycle-history", api_cycle_history)
+    app.router.add_get("/api/metrics", api_metrics)
     app.router.add_get("/api/top-wallets", api_top_wallets)
     app.router.add_get("/api/wallets/export", api_wallets_export)
+    app.router.add_get("/api/groups", api_groups_list)
+    app.router.add_post("/api/groups", api_groups_create)
+    app.router.add_delete("/api/groups/{id}", api_groups_delete)
+    app.router.add_post("/api/groups/wallet", api_groups_add_wallet)
+    app.router.add_delete("/api/groups/{id}/wallet/{address}", api_groups_remove_wallet)
+    app.router.add_get("/api/scheduler", api_scheduler_state)
+    app.router.add_post("/api/scheduler/tasks", api_scheduler_add_task)
+    app.router.add_put("/api/scheduler/tasks/{task_id}", api_scheduler_update_task)
+    app.router.add_delete("/api/scheduler/tasks/{task_id}", api_scheduler_delete_task)
+    app.router.add_post("/api/scheduler/start", api_scheduler_start)
+    app.router.add_post("/api/scheduler/stop", api_scheduler_stop)
+    app.router.add_get("/api/balance-alerts", api_balance_alerts)
+    app.router.add_post("/api/balance-alerts", api_set_balance_alerts)
+    app.router.add_get("/api/rpc-health", api_rpc_health)
+    app.router.add_get("/ws", websocket_endpoint)
     app.router.add_post("/api/tg/init", api_tg_init)
     app.router.add_static("/static", STATIC_DIR)
     return app

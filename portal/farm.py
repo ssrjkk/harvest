@@ -22,6 +22,7 @@ from core.config import load_config
 from core.crypto import resolve_master_key
 from core.database import Database
 from core.pool import FarmerPool
+from core.scheduler import Scheduler
 from core.single_instance import SingleInstance, default_lock_path
 from portal.networks import DEFAULT_NETWORK, NETWORKS, network_by_slug
 
@@ -69,8 +70,13 @@ class FarmDaemon:
         self.config: dict | None = None
         self.db: Database | None = None
         self.pool: FarmerPool | None = None
+        self.scheduler: Scheduler | None = None
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._balance_alerts_task: asyncio.Task | None = None
+        self._balance_alerts_enabled: bool = False
+        self._balance_threshold: float = 0.001
+        self._metrics_task: asyncio.Task | None = None
         # Сериализатор управления: одновременные start()/stop() из разных хендлеров
         # (двойной клик, rest-api + бот-команда) иначе перезаписывали бы _task и
         # оставляли за спиной утечку второго пула. Все управляющие операции —
@@ -107,6 +113,10 @@ class FarmDaemon:
             self.db = Database(self.db_path, master_key=key)
             await self.db.init()
         self.pool = FarmerPool(self.config, self.db)
+        if self._metrics_task is None:
+            self._metrics_task = asyncio.create_task(self._metrics_recorder_loop())
+        # Планировщик инициализируется лениво (при первом обращении или старте),
+        # чтобы не загружать задачи, если пользователь не использует расписание.
 
     @property
     def running(self) -> bool:
@@ -248,6 +258,13 @@ class FarmDaemon:
     async def close(self) -> None:
         if self.running:
             await self.stop()
+        if self._metrics_task is not None:
+            self._metrics_task.cancel()
+            try:
+                await self._metrics_task
+            except asyncio.CancelledError:
+                pass
+            self._metrics_task = None
         await self._shutdown_pool()
         if self.db is not None:
             await self.db.close()
@@ -295,6 +312,205 @@ class FarmDaemon:
         if self.db is None:
             return []
         return await self.db.get_all_wallets()
+
+    async def rpc_health(self) -> dict:
+        """Диагностика RPC: задержки, ошибки, circuit breaker (для UI)."""
+        if self.pool is None:
+            return {"error": "pool not initialized"}
+        return self.pool.network.diagnostics()
+
+    async def list_groups(self) -> list[dict]:
+        """Все группы кошельков с количеством адресов."""
+        if self.db is None:
+            return []
+        gm = self.db.get_group_manager()
+        db_conn = await self.db._connect()
+        gm.set_db(db_conn)
+        return await gm.get_all_groups()
+
+    async def create_group(self, name: str, color: str = "#007bff") -> dict:
+        """Создать новую группу кошельков."""
+        if self.db is None:
+            raise RuntimeError("DB not connected")
+        gm = self.db.get_group_manager()
+        db_conn = await self.db._connect()
+        gm.set_db(db_conn)
+        return await gm.create_group(name, color)
+
+    async def delete_group(self, group_id: int) -> bool:
+        """Удалить группу кошельков."""
+        if self.db is None:
+            return False
+        gm = self.db.get_group_manager()
+        db_conn = await self.db._connect()
+        gm.set_db(db_conn)
+        return await gm.delete_group(group_id)
+
+    async def add_wallet_to_group(self, address: str, group_id: int) -> bool:
+        """Добавить кошелёк в группу."""
+        if self.db is None:
+            return False
+        gm = self.db.get_group_manager()
+        db_conn = await self.db._connect()
+        gm.set_db(db_conn)
+        return await gm.add_wallet_to_group(address, group_id)
+
+    async def remove_wallet_from_group(self, address: str, group_id: int) -> bool:
+        """Удалить кошелёк из группы."""
+        if self.db is None:
+            return False
+        gm = self.db.get_group_manager()
+        db_conn = await self.db._connect()
+        gm.set_db(db_conn)
+        return await gm.remove_wallet_from_group(address, group_id)
+
+    async def init_scheduler(self) -> None:
+        """Инициализирует планировщик (загрузка задач, установка callback)."""
+        if self.scheduler is not None:
+            return
+        self.scheduler = Scheduler()
+        await self.scheduler.load()
+        self.scheduler.set_run_callback(self._scheduled_farm)
+        await self.scheduler.start()
+
+    async def _scheduled_farm(self, cycles: int) -> None:
+        """Callback для планировщика: запуск фарма на N циклов."""
+        if self.running:
+            logger.info("Scheduled farm skipped: already running")
+            return
+        logger.info("Scheduled farm: starting %d cycles", cycles)
+        await self.start()
+
+    def scheduler_state(self) -> dict:
+        """Состояние планировщика для UI."""
+        if self.scheduler is None:
+            return {"initialized": False, "running": False, "tasks": []}
+        return {
+            "initialized": True,
+            "running": self.scheduler.is_running,
+            "tasks": self.scheduler.get_all_tasks(),
+        }
+
+    async def add_scheduler_task(self, task_id: str, **kwargs) -> dict:
+        """Добавить задачу в планировщик."""
+        if self.scheduler is None:
+            await self.init_scheduler()
+        assert self.scheduler is not None
+        task = self.scheduler.add_task(task_id, **kwargs)
+        return task.to_dict()
+
+    async def update_scheduler_task(self, task_id: str, **kwargs) -> dict | None:
+        """Обновить задачу планировщика."""
+        if self.scheduler is None:
+            return None
+        task = self.scheduler.update_task(task_id, **kwargs)
+        return task.to_dict() if task else None
+
+    async def remove_scheduler_task(self, task_id: str) -> bool:
+        """Удалить задачу из планировщика."""
+        if self.scheduler is None:
+            return False
+        return self.scheduler.remove_task(task_id)
+
+    async def start_scheduler(self) -> bool:
+        """Запустить планировщик."""
+        if self.scheduler is None:
+            await self.init_scheduler()
+        assert self.scheduler is not None
+        await self.scheduler.start()
+        return True
+
+    async def stop_scheduler(self) -> bool:
+        """Остановить планировщик."""
+        if self.scheduler is None:
+            return False
+        await self.scheduler.stop()
+        return True
+
+    def balance_alerts_state(self) -> dict:
+        """Состояние мониторинга балансов."""
+        return {
+            "enabled": self._balance_alerts_enabled,
+            "threshold": self._balance_threshold,
+        }
+
+    async def set_balance_alerts(self, enabled: bool, threshold: float) -> dict:
+        """Включить/выключить мониторинг балансов."""
+        self._balance_alerts_enabled = enabled
+        self._balance_threshold = max(0.0, threshold)
+        if enabled and self._balance_alerts_task is None:
+            self._balance_alerts_task = asyncio.create_task(self._balance_monitor_loop())
+        elif not enabled and self._balance_alerts_task is not None:
+            self._balance_alerts_task.cancel()
+            try:
+                await self._balance_alerts_task
+            except asyncio.CancelledError:
+                pass
+            self._balance_alerts_task = None
+        return {"enabled": self._balance_alerts_enabled, "threshold": self._balance_threshold}
+
+    async def _balance_monitor_loop(self) -> None:
+        """Фоновый мониторинг балансов кошельков."""
+        logger.info("Balance monitor started (threshold=%.6f)", self._balance_threshold)
+        while self._balance_alerts_enabled:
+            try:
+                if self.pool is not None and self.db is not None:
+                    wallets = await self.db.get_all_wallets()
+                    low_balance = []
+                    for w in wallets[:100]:
+                        addr = w.get("address", "")
+                        if not addr:
+                            continue
+                        try:
+                            bal = await self.pool.network.get_balance(addr)
+                            if bal < self._balance_threshold:
+                                low_balance.append({"address": addr, "balance": bal})
+                        except Exception:
+                            pass
+                    if low_balance:
+                        logger.warning(
+                            "Balance alert: %d wallets below %.6f",
+                            len(low_balance),
+                            self._balance_threshold,
+                        )
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Balance monitor error: %s", e)
+                await asyncio.sleep(30)
+        logger.info("Balance monitor stopped")
+
+    async def _metrics_recorder_loop(self) -> None:
+        """Фоновая запись снимков метрик для временного ряда (дашборд)."""
+        logger.info("Metrics recorder started")
+        while not self._stop.is_set():
+            try:
+                if self.pool is not None and self.db is not None:
+                    stats = self.pool.live_stats()
+                    health = self.pool.network.concurrency_factor()
+                    await self.db.record_metrics_snapshot(
+                        actions=int(stats.get("actions", 0)),
+                        errors=int(stats.get("errors", 0)),
+                        processed=int(stats.get("processed", 0)),
+                        cycles=int(stats.get("cycles", 0)),
+                        wallets=await self.wallet_count(),
+                        dyn_workers=float(stats.get("dyn_workers", 0)),
+                        health_factor=float(health),
+                    )
+                await asyncio.sleep(30)
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error("Metrics recorder error: %s", e)
+                await asyncio.sleep(15)
+        logger.info("Metrics recorder stopped")
+
+    async def metrics_history(self, limit: int = 100) -> list[dict]:
+        """Временной ряд метрик для дашборда."""
+        if self.db is None:
+            return []
+        return await self.db.get_metrics_history(limit)
 
     async def export_wallets(self, fmt: str = "csv") -> tuple[str, str]:
         """Экспорт ВСЕХ кошельков с расшифрованными ключами для скачивания/бота.
