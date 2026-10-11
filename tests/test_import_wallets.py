@@ -15,7 +15,7 @@ try:
 except ImportError:
     HAS_ETH = False
 
-import main as main_mod
+from cli.screens.wallets import import_wallets
 from core.database import Database
 
 
@@ -51,7 +51,7 @@ class TestImportWallets(unittest.IsolatedAsyncioTestCase):
             ),
             encoding="utf-8",
         )
-        await main_mod.import_wallets(_cfg(str(wf)), self.db)
+        await import_wallets(_cfg(str(wf)), self.db)
         wallets = await self.db.get_all_wallets()
         self.assertEqual(len(wallets), 2)
         addrs = {w["address"].lower() for w in wallets}
@@ -76,13 +76,13 @@ class TestImportWallets(unittest.IsolatedAsyncioTestCase):
             ),
             encoding="utf-8",
         )
-        await main_mod.import_wallets(_cfg(str(wf)), self.db)
+        await import_wallets(_cfg(str(wf)), self.db)
         wallets = await self.db.get_all_wallets()
         self.assertEqual(len(wallets), 1)
         self.assertEqual(wallets[0]["address"].lower(), acc.address.lower())
 
     async def test_import_file_missing(self):
-        await main_mod.import_wallets(_cfg(str(self.dir / "nope.json")), self.db)
+        await import_wallets(_cfg(str(self.dir / "nope.json")), self.db)
         self.assertEqual(await self.db.get_all_wallets(), [])
 
 

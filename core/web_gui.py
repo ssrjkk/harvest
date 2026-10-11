@@ -6,17 +6,20 @@ FastAPI backend + статический frontend. Управление чере
 """
 
 import asyncio
+import hmac
 import json
 import logging
 import os
+import secrets
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from core.config import load_config
 from core.crypto import resolve_master_key
@@ -51,6 +54,46 @@ _state: dict[str, Any] = {
 }
 
 MAX_LOGS = 200
+
+MASTER_KEY = os.environ.get("FARMER_MASTER_KEY", "").strip()
+SESSION_TTL = 86400
+_sessions: dict[str, float] = {}
+
+
+def _require_auth() -> bool:
+    return bool(MASTER_KEY)
+
+
+def _check_session(cookie: str | None) -> bool:
+    if not cookie or cookie not in _sessions:
+        return False
+    if time.time() > _sessions[cookie]:
+        del _sessions[cookie]
+        return False
+    return True
+
+
+def _issue_session() -> tuple[str, int]:
+    token = secrets.token_hex(32)
+    _sessions[token] = time.time() + SESSION_TTL
+    return token, SESSION_TTL
+
+
+async def _verify_request_auth(request: Request):
+    if not _require_auth():
+        return
+    session = request.cookies.get("harvest_sid")
+    if not _check_session(session):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+async def _verify_ws_auth(websocket: WebSocket):
+    if not _require_auth():
+        return
+    session = websocket.cookies.get("harvest_sid")
+    if not _check_session(session):
+        await websocket.close(code=1008, reason="Unauthorized")
+        raise WebSocketDisconnect(code=1008)
 
 
 class WebSocketLogHandler(logging.Handler):
@@ -144,7 +187,7 @@ def _scan_networks() -> list[str]:
 
 
 class CreateWalletsRequest(BaseModel):
-    count: int = 10
+    count: int = Field(default=10, ge=1, le=100)
     group_id: int | None = None
 
 
@@ -163,7 +206,7 @@ class ScheduleCreateRequest(BaseModel):
     interval_hours: float = 0
     interval_minutes: float = 0
     run_at_time: str | None = None
-    cycles: int = 1
+    cycles: int = Field(default=1, ge=1, le=1000)
 
 
 class ScheduleUpdateRequest(BaseModel):
@@ -184,6 +227,47 @@ class BalanceAlertsRequest(BaseModel):
     threshold: float = 0.0
 
 
+class LoginRequest(BaseModel):
+    key: str
+
+
+@app.post("/api/auth/login")
+async def auth_login(req: LoginRequest):
+    if not MASTER_KEY:
+        return JSONResponse({"ok": True, "message": "Auth disabled"}, status_code=200)
+    if not hmac.compare_digest(req.key, MASTER_KEY):
+        return JSONResponse({"ok": False, "message": "Invalid key"}, status_code=401)
+    token, max_age = _issue_session()
+    resp = JSONResponse({"ok": True})
+    resp.set_cookie(
+        key="harvest_sid",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=max_age,
+        secure=False,
+    )
+    return resp
+
+
+@app.get("/api/auth/check")
+async def auth_check(request: Request):
+    if not _require_auth():
+        return {"ok": True, "auth_required": False}
+    session = request.cookies.get("harvest_sid")
+    return {"ok": True, "auth_required": True, "authenticated": _check_session(session)}
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request):
+    session = request.cookies.get("harvest_sid")
+    if session and session in _sessions:
+        del _sessions[session]
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie("harvest_sid")
+    return resp
+
+
 @app.get("/", response_class=HTMLResponse)
 async def root():
     html_path = static_dir / "index.html"
@@ -193,7 +277,7 @@ async def root():
 
 
 @app.get("/api/status")
-async def get_status():
+async def get_status(_: None = Depends(_verify_request_auth)):
     stats = await _state["db"].get_stats() if _state["db"] else {}
     return {
         "is_farming": _state["is_farming"],
@@ -213,7 +297,7 @@ async def get_status():
 
 
 @app.post("/api/init")
-async def init_system():
+async def init_system(_: None = Depends(_verify_request_auth)):
     try:
         if _state["config"] is not None:
             return {"ok": True, "message": "Already initialized"}
@@ -260,7 +344,7 @@ async def init_system():
 
 
 @app.post("/api/wallets/create")
-async def create_wallets(req: CreateWalletsRequest):
+async def create_wallets(req: CreateWalletsRequest, _: None = Depends(_verify_request_auth)):
     try:
         if _state["wallet_manager"] is None:
             return {"ok": False, "message": "Not initialized"}
@@ -277,7 +361,7 @@ async def create_wallets(req: CreateWalletsRequest):
 
 
 @app.post("/api/faucet/request")
-async def request_faucet():
+async def request_faucet(_: None = Depends(_verify_request_auth)):
     try:
         if _state["faucet"] is None:
             return {"ok": False, "message": "Faucet not configured"}
@@ -302,7 +386,7 @@ async def request_faucet():
 
 
 @app.post("/api/farming/start")
-async def start_farming():
+async def start_farming(_: None = Depends(_verify_request_auth)):
     try:
         if _state["is_farming"]:
             return {"ok": False, "message": "Already farming"}
@@ -315,15 +399,24 @@ async def start_farming():
         pool = FarmerPool(_state["config"], _state["db"], _state["network"])
         _state["pool"] = pool
 
+        cycle_num = 0
+
         async def farming_loop():
+            nonlocal cycle_num
             try:
                 _state["is_farming"] = True
                 await broadcast_status()
                 logger.info("Farming started")
                 while _state["is_farming"]:
-                    await pool.run_cycle()
+                    cycle_num += 1
+                    wallets = await _state["db"].get_all_wallets()
+                    if not wallets:
+                        logger.warning("No wallets to farm")
+                        await asyncio.sleep(5)
+                        continue
+                    all_addresses = [w["address"] for w in wallets]
+                    await pool.run_once(wallets, all_addresses, cycle_number=cycle_num)
                     await broadcast_status()
-                    await asyncio.sleep(1)
             except asyncio.CancelledError:
                 logger.info("Farming cancelled")
             except Exception as e:
@@ -340,7 +433,7 @@ async def start_farming():
 
 
 @app.post("/api/farming/stop")
-async def stop_farming():
+async def stop_farming(_: None = Depends(_verify_request_auth)):
     try:
         if not _state["is_farming"]:
             return {"ok": False, "message": "Not farming"}
@@ -361,7 +454,7 @@ async def stop_farming():
 
 
 @app.get("/api/stats")
-async def get_stats():
+async def get_stats(_: None = Depends(_verify_request_auth)):
     try:
         if _state["db"] is None:
             return {"ok": False, "message": "DB not initialized"}
@@ -375,7 +468,7 @@ async def get_stats():
 
 
 @app.get("/api/rpc/health")
-async def rpc_health():
+async def rpc_health(_: None = Depends(_verify_request_auth)):
     try:
         if _state["network"] is None:
             return {"ok": False, "message": "Network not initialized"}
@@ -408,7 +501,7 @@ async def rpc_health():
 
 
 @app.get("/api/networks")
-async def list_networks():
+async def list_networks(_: None = Depends(_verify_request_auth)):
     return {
         "ok": True,
         "current": _state["current_network"],
@@ -417,7 +510,7 @@ async def list_networks():
 
 
 @app.post("/api/networks/switch")
-async def switch_network(req: SwitchNetworkRequest):
+async def switch_network(req: SwitchNetworkRequest, _: None = Depends(_verify_request_auth)):
     try:
         if _state["is_farming"]:
             return {"ok": False, "message": "Stop farming before switching network"}
@@ -453,14 +546,14 @@ async def switch_network(req: SwitchNetworkRequest):
 
 
 @app.get("/api/scheduler/tasks")
-async def list_schedule_tasks():
+async def list_schedule_tasks(_: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     return {"ok": True, "tasks": _state["scheduler"].get_all_tasks()}
 
 
 @app.post("/api/scheduler/tasks")
-async def create_schedule_task(req: ScheduleCreateRequest):
+async def create_schedule_task(req: ScheduleCreateRequest, _: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     try:
@@ -479,7 +572,7 @@ async def create_schedule_task(req: ScheduleCreateRequest):
 
 
 @app.put("/api/scheduler/tasks/{task_id}")
-async def update_schedule_task(task_id: str, req: ScheduleUpdateRequest):
+async def update_schedule_task(task_id: str, req: ScheduleUpdateRequest, _: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     updates = {k: v for k, v in req.model_dump().items() if v is not None}
@@ -491,7 +584,7 @@ async def update_schedule_task(task_id: str, req: ScheduleUpdateRequest):
 
 
 @app.delete("/api/scheduler/tasks/{task_id}")
-async def delete_schedule_task(task_id: str):
+async def delete_schedule_task(task_id: str, _: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     ok = _state["scheduler"].remove_task(task_id)
@@ -502,7 +595,7 @@ async def delete_schedule_task(task_id: str):
 
 
 @app.post("/api/scheduler/start")
-async def start_scheduler():
+async def start_scheduler(_: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     await _state["scheduler"].start()
@@ -511,7 +604,7 @@ async def start_scheduler():
 
 
 @app.post("/api/scheduler/stop")
-async def stop_scheduler():
+async def stop_scheduler(_: None = Depends(_verify_request_auth)):
     if not _state["scheduler"]:
         return {"ok": False, "message": "Scheduler not initialized"}
     await _state["scheduler"].stop()
@@ -535,7 +628,12 @@ async def _scheduled_farm(cycles: int):
             if not _state["is_farming"]:
                 break
             logger.info("Scheduled cycle %d/%d", i + 1, cycles)
-            await pool.run_cycle()
+            wallets = await _state["db"].get_all_wallets()
+            if not wallets:
+                logger.warning("Scheduled farm: no wallets")
+                break
+            all_addresses = [w["address"] for w in wallets]
+            await pool.run_once(wallets, all_addresses, cycle_number=i + 1)
             await broadcast_status()
     except Exception as e:
         logger.error("Scheduled farm error: %s", e)
@@ -545,7 +643,7 @@ async def _scheduled_farm(cycles: int):
 
 
 @app.get("/api/balance-alerts")
-async def get_balance_alerts():
+async def get_balance_alerts(_: None = Depends(_verify_request_auth)):
     return {
         "ok": True,
         "enabled": _state["balance_alerts_enabled"],
@@ -554,7 +652,7 @@ async def get_balance_alerts():
 
 
 @app.post("/api/balance-alerts")
-async def set_balance_alerts(req: BalanceAlertsRequest):
+async def set_balance_alerts(req: BalanceAlertsRequest, _: None = Depends(_verify_request_auth)):
     _state["balance_alerts_enabled"] = req.enabled
     _state["balance_threshold"] = req.threshold
     if req.enabled and not _state["balance_alerts_task"]:
@@ -607,7 +705,7 @@ async def _balance_monitor_loop():
 
 
 @app.get("/api/groups")
-async def list_groups():
+async def list_groups(_: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     groups = await _state["group_manager"].get_all_groups()
@@ -615,7 +713,7 @@ async def list_groups():
 
 
 @app.post("/api/groups")
-async def create_group(req: GroupCreateRequest):
+async def create_group(req: GroupCreateRequest, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     try:
@@ -628,7 +726,7 @@ async def create_group(req: GroupCreateRequest):
 
 
 @app.delete("/api/groups/{group_id}")
-async def delete_group(group_id: int):
+async def delete_group(group_id: int, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     ok = await _state["group_manager"].delete_group(group_id)
@@ -636,7 +734,7 @@ async def delete_group(group_id: int):
 
 
 @app.post("/api/groups/{group_id}/wallets")
-async def add_wallets_to_group(group_id: int, req: GroupAssignRequest):
+async def add_wallets_to_group(group_id: int, req: GroupAssignRequest, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     count = await _state["group_manager"].add_bulk_to_group(req.addresses, group_id)
@@ -644,7 +742,7 @@ async def add_wallets_to_group(group_id: int, req: GroupAssignRequest):
 
 
 @app.delete("/api/groups/{group_id}/wallets")
-async def remove_wallets_from_group(group_id: int, req: GroupAssignRequest):
+async def remove_wallets_from_group(group_id: int, req: GroupAssignRequest, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     removed = 0
@@ -655,7 +753,7 @@ async def remove_wallets_from_group(group_id: int, req: GroupAssignRequest):
 
 
 @app.get("/api/groups/{group_id}/wallets")
-async def get_group_wallets(group_id: int):
+async def get_group_wallets(group_id: int, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     addresses = await _state["group_manager"].get_group_addresses(group_id)
@@ -663,7 +761,7 @@ async def get_group_wallets(group_id: int):
 
 
 @app.get("/api/wallets/{address}/groups")
-async def get_wallet_groups(address: str):
+async def get_wallet_groups(address: str, _: None = Depends(_verify_request_auth)):
     if not _state["group_manager"]:
         return {"ok": False, "message": "Not initialized"}
     groups = await _state["group_manager"].get_wallet_groups(address)
@@ -672,6 +770,7 @@ async def get_wallet_groups(address: str):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    await _verify_ws_auth(websocket)
     await websocket.accept()
     _state["clients"].append(websocket)
     try:
@@ -693,5 +792,12 @@ async def websocket_endpoint(websocket: WebSocket):
 def start_gui(host: str = "127.0.0.1", port: int = 8080):
     import uvicorn
 
+    if not MASTER_KEY:
+        logger.warning(
+            "FARMER_MASTER_KEY not set — API is open without authentication. "
+            "Set FARMER_MASTER_KEY to enable access control."
+        )
+    else:
+        logger.info("Authentication enabled (FARMER_MASTER_KEY)")
     logger.info(f"Starting GUI on http://{host}:{port}")
     uvicorn.run(app, host=host, port=port, log_level="info")

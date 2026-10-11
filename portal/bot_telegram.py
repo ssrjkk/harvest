@@ -658,7 +658,7 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
         try:
             await notify_owner(
                 cfg,
-                "🌾 HARVEST запущен.\nСайт: " + cfg.public_base_url + "\nЛогин: мастер-ключ (FARMER_MASTER_KEY)",
+                "🌾 HARVEST запущен.\nСайт: " + cfg.public_base_url,
             )
         except Exception:  # noqa: BLE001
             logger.warning("Не удалось отправить адрес владельцу", exc_info=True)

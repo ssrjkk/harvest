@@ -541,6 +541,23 @@ class Database:
             if col not in existing_cycle_cols:
                 await db.execute(f"ALTER TABLE cycle_history ADD COLUMN {col} {ddl}")
 
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS metrics_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                actions INTEGER DEFAULT 0,
+                errors INTEGER DEFAULT 0,
+                processed INTEGER DEFAULT 0,
+                cycles INTEGER DEFAULT 0,
+                wallets INTEGER DEFAULT 0,
+                dyn_workers REAL DEFAULT 0,
+                health_factor REAL DEFAULT 1.0
+            )
+            """
+        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_metrics_ts ON metrics_snapshots(ts)")
+
         from core.groups import GroupManager
 
         gm = GroupManager(self.path)
@@ -1085,3 +1102,63 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка чтения статистики циклов: {e}")
             return {"cycles": 0, "wallets": 0, "actions": 0, "duration_s": 0.0, "last_started_at": None}
+
+    async def record_metrics_snapshot(
+        self,
+        actions: int,
+        errors: int,
+        processed: int,
+        cycles: int,
+        wallets: int,
+        dyn_workers: float,
+        health_factor: float,
+    ) -> None:
+        """Записывает снимок метрик для временного ряда (дашборд)."""
+        try:
+            db = await self._connect()
+            await db.execute(
+                """
+                INSERT INTO metrics_snapshots
+                    (actions, errors, processed, cycles, wallets, dyn_workers, health_factor)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (actions, errors, processed, cycles, wallets, dyn_workers, health_factor),
+            )
+            await db.execute(
+                "DELETE FROM metrics_snapshots "
+                "WHERE id NOT IN (SELECT id FROM metrics_snapshots ORDER BY id DESC LIMIT 1000)"
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка записи снимка метрик: {e}")
+
+    async def get_metrics_history(self, limit: int = 100) -> list[dict]:
+        """Временной ряд метрик (свежие последними)."""
+        rows: list[dict] = []
+        try:
+            db = await self._connect()
+            async with db.execute(
+                """
+                SELECT ts, actions, errors, processed, cycles, wallets, dyn_workers, health_factor
+                FROM metrics_snapshots
+                ORDER BY id ASC
+                LIMIT ?
+                """,
+                (limit,),
+            ) as cur:
+                for row in await cur.fetchall():
+                    rows.append(
+                        {
+                            "ts": row[0],
+                            "actions": int(row[1] or 0),
+                            "errors": int(row[2] or 0),
+                            "processed": int(row[3] or 0),
+                            "cycles": int(row[4] or 0),
+                            "wallets": int(row[5] or 0),
+                            "dyn_workers": float(row[6] or 0),
+                            "health_factor": float(row[7] or 1.0),
+                        }
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка чтения истории метрик: {e}")
+        return rows

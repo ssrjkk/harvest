@@ -13,10 +13,10 @@ publish_dash.py с твоего ПК). Кошельки с ключами и с�
   TELEGRAM_OPEN_ACCESS=1 — сознательно открыть доступ всем (не рекомендуется)
 """
 
-import json
+import asyncio
 import os
-import urllib.request
 
+import aiohttp
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
@@ -50,14 +50,14 @@ def esc(v):
     return str(v or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def fetch_state():
-    req = urllib.request.Request(STATE_URL)
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read().decode())
+async def fetch_state():
+    async with aiohttp.ClientSession() as session:
+        async with session.get(STATE_URL, timeout=aiohttp.ClientTimeout(total=20)) as r:
+            return await r.json()
 
 
-def fetch_wallets():
-    """Кошельки из MotherDuck (облако). None если токена нет."""
+def _fetch_wallets_sync():
+    """Синхронная версия: duckdb не async, поэтому вызываем через to_thread."""
     if not os.environ.get("MOTHERDUCK_TOKEN"):
         return None
     import duckdb
@@ -72,6 +72,13 @@ def fetch_wallets():
         {"address": r[0], "private_key": r[1], "mnemonic": r[2], "total_actions": r[3]}
         for r in rows
     ]
+
+
+async def fetch_wallets():
+    """Кошельки из MotherDuck (облако). None если токена нет."""
+    if not os.environ.get("MOTHERDUCK_TOKEN"):
+        return None
+    return await asyncio.to_thread(_fetch_wallets_sync)
 
 
 def progress_bar(done, total, width=10):
@@ -163,11 +170,11 @@ async def main():
         text = (m.text or "").strip()
         if text == "/status":
             try:
-                await m.answer(fmt_status(fetch_state()), parse_mode=ParseMode.HTML)
+                await m.answer(fmt_status(await fetch_state()), parse_mode=ParseMode.HTML)
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить состояние фермы.", parse_mode=ParseMode.HTML)
         elif text == "/wallets":
-            wallets = fetch_wallets()
+            wallets = await fetch_wallets()
             if wallets is None:
                 await m.answer(
                     "💼 Кошельки доступны из облака, когда ПК включён.\n"
@@ -196,7 +203,7 @@ async def main():
         if not cb.data.startswith("wl:"):
             return
         page = int(cb.data.split(":")[1])
-        wallets = fetch_wallets()
+        wallets = await fetch_wallets()
         if wallets is None:
             await cb.answer("Кошельки недоступны", show_alert=True)
             return

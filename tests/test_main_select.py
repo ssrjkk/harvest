@@ -1,4 +1,4 @@
-"""Тесты стартового экрана выбора тестнета (main._find_configs)."""
+"""Тесты стартового экрана выбора тестнета (cli.session._find_configs)."""
 
 import os
 import sys
@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import main as main_mod
+from cli.session import _find_configs
 
 
 class TestFindConfigs(unittest.TestCase):
@@ -38,7 +38,7 @@ class TestFindConfigs(unittest.TestCase):
         self._write_config("config_robinhood.yaml", "Robinhood Chain Testnet")
         self._write_config("config_flop.yaml", "Flop Labs Testnet")
         self._write_config("config.yaml", "Main")
-        found = main_mod._find_configs()
+        found = _find_configs()
         self.assertEqual(len(found), 3)
         labels = [label for _, label in found]
         self.assertTrue(any("Robinhood Chain Testnet" in label for label in labels))
@@ -46,12 +46,12 @@ class TestFindConfigs(unittest.TestCase):
 
     def test_broken_yaml_uses_filename(self):
         (self.dir / "config_bad.yaml").write_text("::: not yaml :::", encoding="utf-8")
-        found = main_mod._find_configs()
+        found = _find_configs()
         self.assertEqual(len(found), 1)
         self.assertIn("config_bad.yaml", found[0][1])
 
     def test_nothing_found(self):
-        self.assertEqual(main_mod._find_configs(), [])
+        self.assertEqual(_find_configs(), [])
 
 
 if __name__ == "__main__":

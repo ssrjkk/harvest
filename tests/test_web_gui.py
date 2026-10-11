@@ -331,7 +331,13 @@ class TestWebGuiFarming(unittest.TestCase):
         mock_db.get_all_wallets = AsyncMock(return_value=[{"address": "0x1"}])
         mock_network = MagicMock()
         mock_pool = AsyncMock()
-        mock_pool.run_cycle = AsyncMock()
+
+        # AsyncMock не блокируется нигде: без остановки цикла farming_loop()
+        # крутится плотным бесконечным циклом и вешает портал TestClient.
+        async def run_once(*_args, **_kwargs):
+            _state["is_farming"] = False
+
+        mock_pool.run_once = run_once
         mock_pool_cls.return_value = mock_pool
 
         _state["db"] = mock_db
@@ -377,7 +383,7 @@ class TestWebGuiInit(unittest.TestCase):
         }
         mock_db = AsyncMock()
         mock_db.init = AsyncMock()
-        mock_db.get_group_manager = MagicMock(return_value=AsyncMock())
+        mock_db.get_group_manager = MagicMock(return_value=MagicMock())
         mock_db_cls.return_value = mock_db
 
         mock_network = AsyncMock()
@@ -697,16 +703,19 @@ class TestScheduledFarm(unittest.TestCase):
     def test_scheduled_farm_success(self, mock_pool_cls):
         import asyncio
         mock_pool = AsyncMock()
-        mock_pool.run_cycle = AsyncMock()
         mock_pool_cls.return_value = mock_pool
 
+        db = AsyncMock()
+        db.get_all_wallets = AsyncMock(return_value=[{"address": "0xabc"}])
         _state["is_farming"] = False
-        _state["db"] = MagicMock()
+        _state["db"] = db
         _state["network"] = MagicMock()
         _state["config"] = {"test": True}
 
         asyncio.run(web_gui._scheduled_farm(2))
-        self.assertEqual(mock_pool.run_cycle.call_count, 2)
+        self.assertEqual(mock_pool.run_once.await_count, 2)
+        self.assertEqual(mock_pool.run_once.await_args.kwargs["cycle_number"], 2)
+        self.assertFalse(_state["is_farming"])
 
 
 class TestNetworkSwitch(unittest.TestCase):

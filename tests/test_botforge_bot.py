@@ -5,6 +5,7 @@
 для проверяемых чистых функций не требуются.
 """
 
+import asyncio
 import importlib
 import os
 import unittest
@@ -80,7 +81,8 @@ class TestFormatting(unittest.TestCase):
         self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wl:2")
 
     def test_fetch_wallets_without_token(self):
-        self.assertIsNone(bot.fetch_wallets())
+        result = asyncio.run(bot.fetch_wallets())
+        self.assertIsNone(result)
 
 
 if __name__ == "__main__":
