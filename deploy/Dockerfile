@@ -1,6 +1,6 @@
 # HARVEST PORTAL — контейнер для Linux VPS.
 # Сборка: docker build -f deploy/Dockerfile -t harvest-portal:latest .
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
