@@ -138,6 +138,7 @@ EMA-бюджет поллинга, RPC-failover при серии ошибок, 
 Проект создан и поддерживается **ssrjkk**.
 
 - Telegram-бот автора: [@ssrjkk_bot](https://t.me/ssrjkk_bot)
+- Telegram-бот фермы: [@harvest_testnet_bot](https://t.me/harvest_testnet_bot)
 - Репозиторий: [github.com/ssrjkk/harvest](https://github.com/ssrjkk/harvest)
 
 Лицензия — [MIT](LICENSE), Copyright © 2026 ssrjkk.
