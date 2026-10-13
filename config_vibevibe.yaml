@@ -1,0 +1,36 @@
+# vibe/vibe (Robinhood Chain testnet, 46630) — автогенерация для Waifly.
+# Проверено по tests/test_config_validate.py::good_config.
+network:
+  rpc_url: https://rpc.testnet.chain.robinhood.com
+  chain_id: 46630
+wallets:
+  count: 3
+  seed: ""
+faucet:
+  enabled: true
+  min_balance: 0.005
+  target_balance: 0.05
+  retries: 2
+  strategies:
+    - type: direct
+      url: https://faucet.testnet.chain.robinhood.com/claim
+actions:
+  - type: transfer
+    target: random_wallet
+    weight: 1.0
+    min_amount: 0.0001
+    max_amount: 0.001
+farming:
+  actions_per_cycle: [3, 8]
+  delay_between_actions: [5, 20]
+  delay_between_cycles: [3600, 7200]
+  skip_cycle_probability: 0.05
+advanced:
+  gas_limit: 100000
+  min_gas_for_action: 0.003
+threading:
+  max_workers: 20
+  timeout_per_wallet: 0
+database:
+  path: farming_state.db
+  master_key: master.key
