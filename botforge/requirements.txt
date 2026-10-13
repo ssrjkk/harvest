@@ -1,2 +1,2 @@
-aiogram>=3.10,<4
+aiogram>=3.31.0,<4
 duckdb>=1.0,<2
