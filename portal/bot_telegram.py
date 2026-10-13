@@ -383,6 +383,9 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
                 ),
                 InlineKeyboardButton(text="🔗 Ссылки", callback_data="links"),
             ],
+            [
+                InlineKeyboardButton(text="🌐 Сети", callback_data="network:list"),
+            ],
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -396,6 +399,7 @@ _HELP_TEXT = (
     "• /monitor — живой мониторинг с алертами (периодический статус + алерт об остановке)\n"
     "• Старт / Стоп фермы\n"
     "• Пауза / Резюм\n"
+    "• /network — переключение тестнет-сети (кнопки Старт/Стоп)\n"
     "• Кошельки — экспорт всех кошельков с ключами (CSV/JSON)\n"
     "• /wallets — список кошельков с ключами и сид-фразами\n"
     "• Ссылки\n"
@@ -406,6 +410,45 @@ _HELP_TEXT = (
     "/start — главное меню\n/help — эта справка\n\n"
     + _AUTHOR_LINK
 )
+
+
+def _fmt_networks(networks: list[dict]) -> str:
+    """Список тестнет-сетей с пометками текущей/активной (для /network)."""
+    lines = ["🌐 <b>Тестнет-сети</b>", ""]
+    for n in networks or []:
+        if n.get("running"):
+            mark = "▶️"
+        elif n.get("current"):
+            mark = "✅"
+        else:
+            mark = "▫️"
+        name = _esc(n.get("name") or n.get("slug", "?"))
+        tagline = _esc(n.get("tagline") or "")
+        line = f"{mark} <b>{name}</b> — {tagline}" if tagline else f"{mark} <b>{name}</b>"
+        lines.append(line)
+    lines += ["", "Кнопка под сетью — переключить и запустить фарм."]
+    return "\n".join(lines)
+
+
+def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
+    """Кнопки сетей: старт по слагу, стоп, обновить."""
+    rows = []
+    for n in networks or []:
+        slug = str(n.get("slug", ""))
+        label = ("⏹ " if n.get("running") else "▶️ ") + str(n.get("name") or slug)
+        rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"network:start:{slug}")])
+    rows.append(
+        [
+            InlineKeyboardButton(text="⏹ Стоп", callback_data="network:stop"),
+            InlineKeyboardButton(text="🔄 Обновить", callback_data="network:list"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _networks_view(daemon: FarmDaemon) -> tuple[str, InlineKeyboardMarkup]:
+    networks = daemon.networks_info()
+    return _fmt_networks(networks), _networks_kb(networks)
 
 
 def _toggle_monitor(
@@ -509,6 +552,9 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             except Exception:  # noqa: BLE001
                 logger.warning("Экспорт кошельков через /export упал", exc_info=True)
                 await message.answer("⚠️ Не удалось сформировать файл кошельков.")
+        elif text == "/network":
+            answer, kb = _networks_view(daemon)
+            await message.answer(answer, parse_mode=ParseMode.HTML, reply_markup=kb)
         elif text.startswith("/"):
             await message.answer("Неизвестная команда. /help — список возможностей.")
 
@@ -616,6 +662,47 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 except Exception:  # noqa: BLE001
                     logger.warning("Экспорт кошельков (кнопка) упал", exc_info=True)
                     await call.message.answer("⚠️ Не удалось сформировать файл кошельков.")
+                return
+
+            if data == "network:list":
+                answer, kb = _networks_view(daemon)
+                await call.message.edit_text(
+                    answer,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                    link_preview_options=_NO_PREVIEW,
+                )
+                return
+
+            if data.startswith("network:start:"):
+                slug = data.split(":", 2)[2]
+                switched = await daemon.switch_to(slug)
+                if not switched:
+                    await call.message.answer("⚠️ Неизвестная сеть.")
+                    return
+                ok = await daemon.start()
+                await call.message.answer(
+                    f"{'✅' if ok else '⚠️'} Фарм {_esc(slug)}: {'запущен' if ok else 'не запустился'}"
+                )
+                answer, kb = _networks_view(daemon)
+                await call.message.edit_text(
+                    answer,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                    link_preview_options=_NO_PREVIEW,
+                )
+                return
+
+            if data == "network:stop":
+                ok = await daemon.stop()
+                await call.message.answer("✅ Ферма остановлена." if ok else "⚠️ Остановить не удалось.")
+                answer, kb = _networks_view(daemon)
+                await call.message.edit_text(
+                    answer,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=kb,
+                    link_preview_options=_NO_PREVIEW,
+                )
                 return
 
             actions = {

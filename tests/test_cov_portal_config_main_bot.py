@@ -518,17 +518,20 @@ if HAS_BOT:
 
         def test_menu_kb_rows(self):
             self.cfg.public_base_url = ""
-            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 7)
+            self.assertEqual(len(bot_telegram._menu_kb(self.cfg).inline_keyboard), 8)
             self.cfg.public_base_url = "https://app.example"
             kb = bot_telegram._menu_kb(self.cfg)
-            self.assertEqual(len(kb.inline_keyboard), 8)
+            self.assertEqual(len(kb.inline_keyboard), 9)
             self.assertIn("🚀 Открыть Mini App", kb.inline_keyboard[0][0].text)
             self.assertIsNotNone(kb.inline_keyboard[0][0].web_app)
-            row_last = kb.inline_keyboard[-1]
+            row_nets = kb.inline_keyboard[-1]
+            self.assertEqual([b.callback_data for b in row_nets], ["network:list"])
+            self.assertIn("Сети", row_nets[0].text)
+            row_last = kb.inline_keyboard[-2]
             self.assertEqual([b.callback_data for b in row_last], ["monitor:toggle", "links"])
             self.assertIn("Мониторинг: ВЫКЛ", row_last[0].text)
             kb_on = bot_telegram._menu_kb(self.cfg, monitor_on=True)
-            self.assertIn("Мониторинг: ВКЛ", kb_on.inline_keyboard[-1][0].text)
+            self.assertIn("Мониторинг: ВКЛ", kb_on.inline_keyboard[-2][0].text)
 
         async def test_start_handler_denies_unknown_user(self):
             cfg = _make_cfg()

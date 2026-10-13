@@ -300,9 +300,9 @@ class TestMenuMonitorFlag(unittest.TestCase):
     def test_menu_shows_monitor_state(self):
         cfg = _cfg()
         off = _menu_kb(cfg, monitor_on=False)
-        self.assertIn("Мониторинг: ВЫКЛ", off.inline_keyboard[-1][0].text)
+        self.assertIn("Мониторинг: ВЫКЛ", off.inline_keyboard[-2][0].text)
         on = _menu_kb(cfg, monitor_on=True)
-        self.assertIn("Мониторинг: ВКЛ", on.inline_keyboard[-1][0].text)
+        self.assertIn("Мониторинг: ВКЛ", on.inline_keyboard[-2][0].text)
 
 
 if __name__ == "__main__":
