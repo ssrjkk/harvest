@@ -171,6 +171,30 @@ Mini App (дашборд в Telegram) открывается по `PORTAL_BASE_U
 > Кошельки: HF-контейнер их не генерирует. Создайте их локально в ту же
 > PostgreSQL (запустите портал с тем же `PORTAL_DB`) или через `auto.py`.
 
+## 4.6. Игровой хостинг — Waifly/Pterodactyl (Python egg)
+
+Точка входа — [`waifly_main.py`](../waifly_main.py): читает порт из `PORT` /
+`SERVER_PORT`, поднимает портал (веб + бот) на `0.0.0.0`, `.env` рядом со
+скриптом подхватывается автоматически (панель env-файлы не экспортирует).
+
+1. В даше Waifly: **Create Server** → имя `harvest`, Egg **Python 3.12**,
+   слоты по вкусу (хватает 1: 300 MB / 30% / 1 GB), локация любая.
+2. В панели сервера (**Startup**): `STARTUP_CMD` = `pip install -r requirements.txt -r requirements-portal.txt`,
+   `SECOND_CMD` = `python -u waifly_main.py >boot.log 2>&1` (лог — в `boot.log`,
+   читается через Files; без редиректа причину падения не видно).
+3. Залейте файлы: `core/`, `portal/`, `abi/`, `cli/`, `*.py` в корне,
+   `config_*.yaml`, `requirements*.txt`, `waifly_main.py` + `.env`:
+   `FARMER_MASTER_KEY` (64-hex, генерируется один раз — от него зависит
+   расшифровка кошельков!), `PORTAL_SECRET`, `TELEGRAM_BOT_TOKEN`,
+   `TELEGRAM_ALLOW_IDS`. Остальное (`PORTAL_DB`, `PORTAL_FARM_CONFIG`)
+   уже забито по умолчанию (`farming_state.db`, `config_vibevibe.yaml`).
+4. **Power → Start.** Проверка: сервер `running`, в корне появляются
+   `farming_state.db` и `portal_secret.key`, бот отвечает на `/doctor`.
+5. Ограничения панели: внешнего HTTP-порта нет (портал слушает игровой
+   порт; Mini App без HTTPS-домена не взлетит), расписаний с экшенами
+   через API нет, SFTP — по паролю панели. Бэкап БД: скачать
+   `farming_state.db` через Files, хранить вместе с `FARMER_MASTER_KEY`.
+
 ## 5. Обновление
 
 ```bash
