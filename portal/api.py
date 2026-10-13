@@ -657,6 +657,28 @@ async def api_groups_list(request: web.Request) -> web.Response:
     return _json({"groups": await daemon.list_groups()})
 
 
+async def api_wallets_create(request: web.Request) -> web.Response:
+    """Создать N кошельков (1..50)."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    try:
+        count = int(body.get("count", 3))
+    except (TypeError, ValueError):
+        return _json({"error": "count must be 1..50"}, status=400)
+    if not 1 <= count <= 50:
+        return _json({"error": "count must be 1..50"}, status=400)
+    try:
+        created = await daemon.create_wallets(count)
+    except RuntimeError as e:
+        return _json({"error": str(e)}, status=500)
+    _audit(request, f"wallets:create count={len(created)}")
+    return _json({"ok": True, "created": len(created), **daemon.run_state()})
+
+
 async def api_groups_create(request: web.Request) -> web.Response:
     """Создать новую группу кошельков."""
     _require_user(request)
@@ -1016,6 +1038,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app.router.add_get("/api/cycle-history", api_cycle_history)
     app.router.add_get("/api/metrics", api_metrics)
     app.router.add_get("/api/top-wallets", api_top_wallets)
+    app.router.add_post("/api/wallets", api_wallets_create)
     app.router.add_get("/api/wallets/export", api_wallets_export)
     app.router.add_get("/api/groups", api_groups_list)
     app.router.add_post("/api/groups", api_groups_create)

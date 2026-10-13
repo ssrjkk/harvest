@@ -512,6 +512,17 @@ class FarmDaemon:
             return []
         return await self.db.get_metrics_history(limit)
 
+    async def create_wallets(self, count: int) -> list[dict]:
+        """Создать N кошельков (UI/бот). Требуется подключённая БД."""
+        if self.db is None or self.config is None:
+            raise RuntimeError("БД фермы не подключена")
+        count = max(1, min(int(count), 50))
+        from core.wallet import WalletManager
+
+        async with self._mgmt:
+            wm = WalletManager(self.config, self.db)
+            return await wm.create_wallets(count)
+
     async def export_wallets(self, fmt: str = "csv") -> tuple[str, str]:
         """Экспорт ВСЕХ кошельков с расшифрованными ключами для скачивания/бота.
 

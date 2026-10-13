@@ -287,7 +287,7 @@ async function loadWallets() {
         <td class="num">${fmt(w.actions)}</td>
       </tr>`
     ).join("");
-    $("tWallets").innerHTML = rows || '<tr><td colspan="3" style="color:var(--text-3)">кошельков нет</td></tr>';
+    $("tWallets").innerHTML = rows || '<tr><td colspan="3" style="color:var(--text-3)">кошельков нет — создайте кнопкой «Создать» ниже</td></tr>';
     document.querySelectorAll(".copyable").forEach(el =>
       el.addEventListener("click", () =>
         navigator.clipboard?.writeText(el.getAttribute("data-addr")).then(() => toast("Адрес скопирован"))));
@@ -402,6 +402,21 @@ function toast(msg) {
 
 /* ── EXPORT ─────────────────────────────────────────────────── */
 function exportWallets(fmt) { window.location.href = "/api/wallets/export?format=" + fmt; }
+
+async function createWallets() {
+  const input = $("inWalletCount");
+  const n = Math.max(1, Math.min(50, parseInt((input && input.value) || "3", 10) || 3));
+  try {
+    const d = await j("/api/wallets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ count: n }),
+    });
+    toast(`Создано кошельков: ${d.created}`);
+    await loadWallets();
+    await tick();
+  } catch (e) { if (e.message !== "unauth") toast("Не удалось создать: " + e.message); }
+}
 
 /* ── SCHEDULER ──────────────────────────────────────────────── */
 async function loadScheduler() {
@@ -635,6 +650,7 @@ async function init() {
   $("netSelect").onchange = renderNetMeta;
   $("btnExportCsv").onclick = () => exportWallets("csv");
   $("btnExportJson").onclick = () => exportWallets("json");
+  if ($("btnWalletCreate")) $("btnWalletCreate").onclick = createWallets;
 
   if ($("btnSchedStart")) $("btnSchedStart").onclick = startScheduler;
   if ($("btnSchedStop")) $("btnSchedStop").onclick = stopScheduler;

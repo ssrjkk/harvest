@@ -227,7 +227,7 @@ def _fmt_wallets_page(wallets: list[dict], page: int = 1, per_page: int = 4) -> 
     chunk = wallets[start : start + per_page]
     lines = [f"💼 <b>Кошельки</b> · всего {total} · стр. {page}/{pages}", ""]
     if not chunk:
-        lines.append("Кошельков пока нет — запусти фарм в боте, он создаст.")
+        lines.append("Кошельков пока нет — создайте кнопкой «➕ Создать» ниже.")
     for i, w in enumerate(chunk, start + 1):
         addr = _esc(w.get("address", ""))
         acts = _esc(w.get("total_actions", 0))
@@ -248,6 +248,12 @@ def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
     if page < pages:
         row.append(InlineKeyboardButton(text="▶", callback_data=f"wallets:page:{page+1}"))
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else InlineKeyboardMarkup(inline_keyboard=[])
+
+
+def _wallets_empty_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="➕ Создать", callback_data="wallets:create")]]
+    )
 
 
 class LiveMonitor:
@@ -541,7 +547,8 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
             wallets = await daemon.all_wallets()
             content, pages = _fmt_wallets_page(wallets, page)
-            await message.answer(content, parse_mode=ParseMode.HTML, reply_markup=_wallets_kb(page, pages))
+            kb = _wallets_kb(page, pages) if wallets else _wallets_empty_kb()
+            await message.answer(content, parse_mode=ParseMode.HTML, reply_markup=kb)
         elif text.startswith("/monitor"):
             _toggle_monitor(message.bot, message.from_user.id, daemon, monitor, message.answer)
         elif text.startswith("/export"):
@@ -606,7 +613,24 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 page = int(data.split(":")[2])
                 wallets = await daemon.all_wallets()
                 content, pages = _fmt_wallets_page(wallets, page)
-                kb = _wallets_kb(page, pages)
+                kb = _wallets_kb(page, pages) if wallets else _wallets_empty_kb()
+                await call.message.edit_text(content, parse_mode=ParseMode.HTML, reply_markup=kb)
+                return
+
+            if data == "wallets:create":
+                try:
+                    n = int(((daemon.config or {}).get("wallets") or {}).get("count", 3))
+                except (TypeError, ValueError, AttributeError):
+                    n = 3
+                try:
+                    created = await daemon.create_wallets(n)
+                except RuntimeError:
+                    await call.message.answer("⚠️ БД фермы не подключена.")
+                    return
+                await call.message.answer(f"✅ Создано кошельков: {len(created)}")
+                wallets = await daemon.all_wallets()
+                content, pages = _fmt_wallets_page(wallets, 1)
+                kb = _wallets_kb(1, pages) if wallets else _wallets_empty_kb()
                 await call.message.edit_text(content, parse_mode=ParseMode.HTML, reply_markup=kb)
                 return
 

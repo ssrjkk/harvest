@@ -125,17 +125,28 @@ class _C:
 
 
 class _NetDaemon:
+    config = {"wallets": {"count": 3}}
+
     def __init__(self):
         self.running = False
         self.current = "vibevibe"
         self.started = 0
         self.stopped = 0
+        self._wallets = []
 
     def networks_info(self):
         return [
             {"slug": "vibevibe", "name": "vibe/vibe", "tagline": "L", "current": True, "running": self.running},
             {"slug": "robinhood", "name": "RH", "tagline": "", "current": False, "running": False},
         ]
+
+    async def all_wallets(self):
+        return list(self._wallets)
+
+    async def create_wallets(self, count):
+        made = [{"address": f"0x{i:040x}"} for i in range(count)]
+        self._wallets.extend(made)
+        return made
 
     async def switch_to(self, slug):
         if slug == "vibevibe":
@@ -220,6 +231,58 @@ class TestNetworkCallbacks(unittest.IsolatedAsyncioTestCase):
         call = _C(uid=999, data="network:list")
         await dp.callback_query.handlers[0].callback(call)
         self.assertEqual(call.message.edits, [])
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
+    def test_empty_kb(self):
+        from portal.bot_telegram import _wallets_empty_kb
+
+        kb = _wallets_empty_kb()
+        self.assertEqual(
+            [b.callback_data for b in kb.inline_keyboard[0]], ["wallets:create"]
+        )
+
+    async def test_wallets_empty_renders_create(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/wallets")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(len(msg.answers), 1)
+        self.assertIn("Создать", msg.answers[0][0][0])
+        kb = msg.answers[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("wallets:create", payloads)
+
+    async def test_create_ok(self):
+        daemon = _NetDaemon()
+        dp = build_dispatcher(_cfg(), daemon)
+        call = _C(uid=123, data="wallets:create")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertTrue(any("Создано кошельков: 3" in a[0][0] for a in call.message.answers))
+        self.assertEqual(len(daemon._wallets), 3)
+        self.assertEqual(len(call.message.edits), 1)
+
+    async def test_create_no_db(self):
+        class _Dead:
+            config = None
+
+            async def create_wallets(self, count):
+                raise RuntimeError("БД фермы не подключена")
+
+        dp = build_dispatcher(_cfg(), _Dead())
+        call = _C(uid=123, data="wallets:create")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertTrue(any("не подключена" in a[0][0] for a in call.message.answers))
+        self.assertEqual(call.message.edits, [])
+
+    async def test_create_bad_config_count_falls_back(self):
+        daemon = _NetDaemon()
+        daemon.config = {"wallets": {"count": object()}}
+        dp = build_dispatcher(_cfg(), daemon)
+        call = _C(uid=123, data="wallets:create")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(len(daemon._wallets), 3)
+        self.assertTrue(any("Создано кошельков: 3" in a[0][0] for a in call.message.answers))
 
 
 if __name__ == "__main__":
