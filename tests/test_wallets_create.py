@@ -56,6 +56,37 @@ def _make_cfg() -> PortalConfig:
                 os.environ[k] = v
 
 
+class TestFarmWalletBalances(unittest.IsolatedAsyncioTestCase):
+    async def test_ok_and_rpc_error(self):
+        with tempfile.TemporaryDirectory() as td:
+            daemon = FarmDaemon("config.yaml", str(Path(td) / "t.db"))
+            daemon.db = mock.Mock()
+            daemon.db.get_all_wallets = _async_result(
+                [{"address": "0xa"}, {"address": ""}, {"address": "0xb"}]
+            )
+            net = mock.Mock()
+            net.get_balance = mock.AsyncMock(side_effect=[1.25, RuntimeError("rpc down")])
+            daemon.pool = mock.Mock()
+            daemon.pool.network = net
+            out = await daemon.wallet_balances()
+            self.assertEqual(
+                out,
+                [{"address": "0xa", "balance": 1.25}, {"address": "0xb", "balance": None}],
+            )
+
+    async def test_no_db_or_pool(self):
+        with tempfile.TemporaryDirectory() as td:
+            daemon = FarmDaemon("config.yaml", str(Path(td) / "t.db"))
+            daemon.db = None
+            daemon.pool = mock.Mock()
+            with self.assertRaises(RuntimeError):
+                await daemon.wallet_balances()
+            daemon.db = mock.Mock()
+            daemon.pool = None
+            with self.assertRaises(RuntimeError):
+                await daemon.wallet_balances()
+
+
 class TestFarmCreateWallets(unittest.IsolatedAsyncioTestCase):
     async def test_ok_and_clamped(self):
         with tempfile.TemporaryDirectory() as td:

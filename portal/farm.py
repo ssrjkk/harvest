@@ -523,6 +523,23 @@ class FarmDaemon:
             wm = WalletManager(self.config, self.db)
             return await wm.create_wallets(count)
 
+    async def wallet_balances(self, limit: int = 20) -> list[dict]:
+        """Балансы первых N кошельков (для /balance). Ошибка RPC — balance None."""
+        if self.db is None or self.pool is None:
+            raise RuntimeError("Ферма не запущена")
+        wallets = await self.db.get_all_wallets()
+        out = []
+        for w in wallets[: max(1, min(int(limit), 50))]:
+            addr = w.get("address", "")
+            if not addr:
+                continue
+            try:
+                bal = await self.pool.network.get_balance(addr)
+            except Exception:  # noqa: BLE001
+                bal = None
+            out.append({"address": addr, "balance": bal})
+        return out
+
     async def export_wallets(self, fmt: str = "csv") -> tuple[str, str]:
         """Экспорт ВСЕХ кошельков с расшифрованными ключами для скачивания/бота.
 

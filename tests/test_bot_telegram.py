@@ -285,5 +285,49 @@ class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("Создано кошельков: 3" in a[0][0] for a in call.message.answers))
 
 
+class _BalDaemon:
+    async def wallet_balances(self):
+        return [
+            {"address": "0xabc", "balance": 1.5},
+            {"address": "0xdef", "balance": None},
+        ]
+
+
+class _BalDead:
+    async def wallet_balances(self):
+        raise RuntimeError("Ферма не запущена")
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestBalanceCommand(unittest.IsolatedAsyncioTestCase):
+    def test_fmt(self):
+        from portal.bot_telegram import _fmt_balances
+
+        s = _fmt_balances([{"address": "0xabc", "balance": 1.5}, {"address": "0x<script>", "balance": None}])
+        self.assertIn("0xabc", s)
+        self.assertIn("1.5000 ETH", s)
+        self.assertIn("Итого: 1.5000 ETH", s)
+        self.assertIn("&lt;script&gt;", s)
+        self.assertNotIn("<script>", s)
+
+    def test_fmt_empty(self):
+        from portal.bot_telegram import _fmt_balances
+
+        self.assertIn("Кошельков пока нет", _fmt_balances([]))
+
+    async def test_command_ok(self):
+        dp = build_dispatcher(_cfg(), _BalDaemon())
+        msg = _M(uid=123, text="/balance")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(len(msg.answers), 1)
+        self.assertIn("1.5000 ETH", msg.answers[0][0][0])
+
+    async def test_command_not_running(self):
+        dp = build_dispatcher(_cfg(), _BalDead())
+        msg = _M(uid=123, text="/balance")
+        await dp.message.handlers[1].callback(msg)
+        self.assertTrue(any("не запущена" in a[0][0] for a in msg.answers))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

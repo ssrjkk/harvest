@@ -250,6 +250,28 @@ def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else InlineKeyboardMarkup(inline_keyboard=[])
 
 
+def _fmt_balances(bals: list[dict]) -> str:
+    """Балансы кошельков + итог (для /balance)."""
+    if not bals:
+        return "💰 <b>Балансы</b>\n\nКошельков пока нет — создайте кнопкой «➕ Создать» в /wallets."
+    lines = ["💰 <b>Балансы</b>", ""]
+    total = 0.0
+    unknown = 0
+    for b in bals:
+        bal = b.get("balance")
+        addr = _esc(b.get("address", ""))
+        if bal is None:
+            unknown += 1
+            lines.append(f"• <code>{addr}</code> — ?")
+        else:
+            total += float(bal)
+            lines.append(f"• <code>{addr}</code> — {float(bal):.4f} ETH")
+    lines += ["", f"<b>Итого: {total:.4f} ETH</b>"]
+    if unknown:
+        lines.append(f"({unknown} — не прочитались, RPC недоступен)")
+    return "\n".join(lines)
+
+
 def _wallets_empty_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[[InlineKeyboardButton(text="➕ Создать", callback_data="wallets:create")]]
@@ -406,6 +428,7 @@ _HELP_TEXT = (
     "• Старт / Стоп фермы\n"
     "• Пауза / Резюм\n"
     "• /network — переключение тестнет-сети (кнопки Старт/Стоп)\n"
+    "• /balance — балансы кошельков\n"
     "• Кошельки — экспорт всех кошельков с ключами (CSV/JSON)\n"
     "• /wallets — список кошельков с ключами и сид-фразами\n"
     "• Ссылки\n"
@@ -562,6 +585,13 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         elif text == "/network":
             answer, kb = _networks_view(daemon)
             await message.answer(answer, parse_mode=ParseMode.HTML, reply_markup=kb)
+        elif text == "/balance":
+            try:
+                bals = await daemon.wallet_balances()
+            except RuntimeError:
+                await message.answer("⚠️ Ферма не запущена.")
+                return
+            await message.answer(_fmt_balances(bals), parse_mode=ParseMode.HTML)
         elif text.startswith("/"):
             await message.answer("Неизвестная команда. /help — список возможностей.")
 
