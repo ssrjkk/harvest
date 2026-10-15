@@ -1,0 +1,25 @@
+{
+  "name": "harvest — поле фермы",
+  "short_name": "harvest",
+  "description": "EVM testnet farmer: живое поле, конструкторы, демо-зона.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14110A",
+  "theme_color": "#14110A",
+  "lang": "ru",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
