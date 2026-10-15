@@ -133,6 +133,16 @@ $("#langEn").addEventListener("click",()=>setLang("en"));
 snapRU();
 if(lang==="en")applyLang();
 
+/* ---------- nav (burger ≤900px) ---------- */
+const navToggle=$("#navToggle"), mainNav=$("#mainNav");
+function closeNav(){if(!mainNav||!navToggle)return;mainNav.classList.remove("open");navToggle.setAttribute("aria-expanded","false");}
+navToggle?.addEventListener("click",()=>{
+  const open=mainNav.classList.toggle("open");
+  navToggle.setAttribute("aria-expanded",String(open));
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")closeNav();});
+mainNav?.addEventListener("click",e=>{if(e.target.closest("a"))closeNav();});
+
 /* ---------- tabs ---------- */
 $$(".play-tabs button").forEach(b=>b.addEventListener("click",()=>{
   $$(".play-tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
