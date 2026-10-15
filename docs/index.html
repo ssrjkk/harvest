@@ -210,14 +210,79 @@ python deploy/publish_dash.py   # state.json → пульт сайта<button cl
 <section class="block" id="app">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">05</span><h2 data-i18n="s4_h">Пользоваться здесь — демо-зона</h2></div>
-    <p class="sec-sub" data-i18n="s4_sub">Всё выполняется локально в вашем браузере, без сервера. Ончейн-исполнение остаётся за Python-фермером — здесь вы готовите конфиг и команды, проверяете логику на симуляторе и управляете кошельками для тестнетов.</p>
-    <div class="play">
+    <p class="sec-sub" data-i18n="s4_sub">Два режима: «Новичок» проведёт за руку за 3 шага, «Про» даст все ручки и справочник параметров. Всё выполняется локально в вашем браузере, без сервера. Ончейн-исполнение остаётся за Python-фермером.</p>
+    <div class="toolbar" style="margin-bottom:14px">
+      <div class="seg" role="group" aria-label="Режим">
+        <button id="modeNew" class="on" type="button" data-i18n="mode_new">Новичок</button><button id="modePro" type="button" data-i18n="mode_pro">Про</button>
+      </div>
+      <span class="note" data-i18n="mode_hint">Новичок — 3 шага простыми словами. Про — конструкторы, симулятор и справочник.</span>
+    </div>
+
+    <div id="newView">
+      <div class="steps">
+        <span class="step on" id="st1"><b>1</b> <span data-i18n="w_s1">Сеть</span></span>
+        <span class="step" id="st2"><b>2</b> <span data-i18n="w_s2">Масштаб</span></span>
+        <span class="step" id="st3"><b>3</b> <span data-i18n="w_s3">Запуск</span></span>
+      </div>
+
+      <div class="wstep" id="w1">
+        <p class="wtitle" data-i18n="w_q1">Что будем фармить?</p>
+        <p class="note" data-i18n="w_q1s">Фарм — это автоматические учебные транзакции в тестовой сети. Деньги ненастоящие, всё бесплатно и безопасно.</p>
+        <div class="optgrid">
+          <button class="opt sel" data-net="vibevibe" type="button"><b>vibe/vibe</b><span class="meta">chain 46630 · ETH</span><span class="odesc" data-i18n="wd_v">Токены и запуски. Лучший выбор для старта.</span><span class="pill ok" data-i18n="w_rec">рекомендуем</span></button>
+          <button class="opt" data-net="robinhood" type="button"><b>Robinhood Chain</b><span class="meta">chain 46630 · ETH</span><span class="odesc" data-i18n="wd_r">Основная тестовая сеть: переводы и обмены.</span></button>
+          <button class="opt" data-net="arc" type="button"><b>Arc (Minara)</b><span class="meta">chain 5042002 · ARC</span><span class="odesc" data-i18n="wd_a">Запуски токенов и торговля. Поживее и побыстрее.</span></button>
+          <button class="opt" data-net="flop" type="button"><b>Flop Labs</b><span class="meta">chain 99999 · FLOP</span><span class="odesc" data-i18n="wd_f">Вычисления и стейкинг. Сеть-заглушка для опытов.</span></button>
+        </div>
+      </div>
+
+      <div class="wstep" id="w2" hidden>
+        <p class="wtitle" data-i18n="w_q2">Какой масштаб?</p>
+        <div class="field"><label><span data-i18n="w_wallets">Кошельков</span>: <b class="num" id="wWVal">10</b></label>
+          <input type="range" id="wW" min="1" max="200" value="10" step="1">
+          <p class="note" data-i18n="w_wallets_s">Кошельки создаются сами. Для первой пробы хватит 5–10.</p></div>
+        <div class="field"><label data-i18n="w_cycles">Сколько кругов работы?</label>
+          <div class="seg" id="wC"><button data-c="2" class="on" type="button" data-i18n="w_c2">2 — проба</button><button data-c="5" type="button">5</button><button data-c="0" type="button" data-i18n="w_c0">∞ — без остановки</button></div>
+          <p class="note" data-i18n="w_cycles_s">Один круг — это проход по всем кошелькам: кран, потом транзакции.</p></div>
+        <label class="check"><input type="checkbox" id="wF" checked> <span data-i18n="w_faucet">Пополнять баланс из крана</span></label>
+        <p class="note" data-i18n="w_faucet_s">Кран — бесплатная раздача тестовых монет. Выключите, только если монеты уже есть.</p>
+      </div>
+
+      <div class="wstep" id="w3" hidden>
+        <p class="wtitle" data-i18n="w_q3">Всё готово. Осталась одна команда.</p>
+        <div class="table-wrap"><table class="t">
+          <tr><td data-i18n="w_sum_net">Сеть</td><td class="mono" id="wSumNet">—</td></tr>
+          <tr><td data-i18n="w_sum_w">Кошельков</td><td class="num" id="wSumW">—</td></tr>
+          <tr><td data-i18n="w_sum_c">Кругов</td><td class="num" id="wSumC">—</td></tr>
+          <tr><td data-i18n="w_sum_f">Кран</td><td id="wSumF">—</td></tr>
+        </table></div>
+<pre class="code" id="wCmd">…</pre>
+        <div class="toolbar">
+          <button class="btn accent" id="wCopyCmd" type="button" data-i18n="w_copy">Скопировать команду</button>
+          <button class="btn" id="wDlCfg" type="button" data-i18n="w_dl">Скачать конфиг</button>
+        </div>
+        <ol class="wnext">
+          <li data-i18n="w_n1">Установите Python 3.12 и выполните: pip install -r requirements.txt</li>
+          <li data-i18n="w_n2">Положите скачанный файл-конфиг рядом с auto.py</li>
+          <li data-i18n="w_n3">Вставьте команду в PowerShell и нажмите Enter</li>
+          <li data-i18n="w_n4">Пульт сайта оживёт после: python deploy/publish_dash.py --push</li>
+        </ol>
+      </div>
+
+      <div class="toolbar">
+        <button class="btn" id="wBack" type="button" data-i18n="w_back">← Назад</button>
+        <button class="btn accent" id="wNext" type="button" data-i18n="w_next">Далее →</button>
+      </div>
+    </div>
+
+    <div class="play" id="proView" hidden>
       <div class="play-tabs" role="tablist">
         <button class="on" data-tab="t-config" type="button" data-i18n="tab1">1 · Конфиг</button>
         <button data-tab="t-cmd" type="button" data-i18n="tab2">2 · Команда</button>
         <button data-tab="t-wallet" type="button" data-i18n="tab3">3 · Кошельки</button>
         <button data-tab="t-sim" type="button" data-i18n="tab4">4 · Симулятор</button>
         <button data-tab="t-check" type="button" data-i18n="tab5">5 · Проверка</button>
+        <button data-tab="t-ref" type="button" data-i18n="tab6">6 · Справочник</button>
       </div>
       <div class="play-body">
 
@@ -360,6 +425,60 @@ advanced:
               <p class="note" data-i18n="p_n">Формулы: workers=min(max(20,cpu·2),128) · rpc=min(max(8,cpu·4),128) · gen=min(8,max(2,cpu)) · chunk=max(workers·4,100). RPC-потолок 128, gen-потолок 8.</p>
             </div>
           </div>
+        </div>
+
+        <div id="t-ref" hidden>
+          <div class="label" data-i18n="r_cfg_h">Конфиг YAML — все поля с границами</div>
+          <p class="note" data-i18n="r_cfg_s">Нарушение границ = отказ валидатора и SystemExit(1). Заглушки 0x0 и chain 99999 — не ошибки, а замечания: transfers работают, контрактное пропускается.</p>
+          <div class="table-wrap"><table class="t">
+            <tr><th data-i18n="r_f">Поле</th><th data-i18n="r_b">Границы</th><th data-i18n="r_d">По умолчанию / что делает</th></tr>
+            <tr><td class="mono">network.rpc_url</td><td>https URL или список; http — только 127.0.0.1/localhost/::1</td><td data-i18n="rd_rpc">Мульти-RPC: монитор каждые 30 с выбирает лучшую живую ноду</td></tr>
+            <tr><td class="mono">network.chain_id</td><td class="num">≥ 1; 99999 = маркер-заглушка</td><td>Robinhood/vibe 46630 · Arc 5042002</td></tr>
+            <tr><td class="mono">wallets.count</td><td class="num">≥ 0</td><td data-i18n="rd_w">Сколько добрать при generate_if_missing; 0 в --wallets = взять из конфига</td></tr>
+            <tr><td class="mono">faucet.min_balance → target_balance</td><td>min ≤ target</td><td class="num">0.005 → 0.05 · ensure_balance докупает до target</td></tr>
+            <tr><td class="mono">faucet.retries / max_concurrent</td><td class="num">1..20 / 1..64</td><td class="num">2 · пачка крана --batch 50, пауза 3 с</td></tr>
+            <tr><td class="mono">actions[].type / weight</td><td>тип из набора; weight ≥ 0</td><td data-i18n="rd_aw">transfer, vibevibe_*, flop_*, arc_*. Нулевой вес = действие отключено</td></tr>
+            <tr><td class="mono">transfer.target</td><td>адрес или random_wallet</td><td data-i18n="rd_tt">Обязателен для transfer. Случайный — из пула своих кошельков</td></tr>
+            <tr><td class="mono">contract.action contract/method</td><td>0x-адрес + имя метода; 0x0…0 = заглушка</td><td data-i18n="rd_cm">Заглушка = тихий фолбэк на transfer, buy/sell без signer_key пропускаются адаптивными весами</td></tr>
+            <tr><td class="mono">actions min/max_amount</td><td class="num">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений против сибил-фильтров</td></tr>
+            <tr><td class="mono">farming.actions_per_cycle</td><td>[min, max], min ≤ max</td><td class="num">[3,8] vibe · [5,15] flop · [5,12] arc</td></tr>
+            <tr><td class="mono">farming.delay_between_*</td><td>[min, max] секунд</td><td data-i18n="rd_del">Паузы умножаются на профильные delay_*_scale кошелька</td></tr>
+            <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
+            <tr><td class="mono">advanced.gas_limit</td><td class="num">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num">100000 (21000 в simple-пресете); vibevibe default 300000</td></tr>
+            <tr><td class="mono">advanced.min_gas_for_action</td><td class="num">≥ 0</td><td class="num">0.003 · ниже — действие пропускается</td></tr>
+            <tr><td class="mono">advanced.receipt_timeout</td><td class="num">секунды</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
+            <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num">20 (vibe/robinhood) · 30 (flop/arc); пусто = авто min(max(20,cpu·2),128)</td></tr>
+            <tr><td class="mono">threading.rpc_threads / gen_workers / chunk_size</td><td class="num">1..256 / 1..32 / ≥ 1</td><td data-i18n="rd_th">Авто: max(4,min(workers·3,128)) · min(8,max(2,cpu)) · max(workers·4,100)</td></tr>
+            <tr><td class="mono">cache.rpc_rate_limit / rpc_rate_floor</td><td class="num">1..10000 / 0.05..1</td><td data-i18n="rd_ca">Token-bucket на RPC; ставка плавает от здоровья нод, остаток переносится при смене ноды</td></tr>
+            <tr><td class="mono">database.path / master_key</td><td>без «..»; 64-hex ключ или файл</td><td data-i18n="rd_db">SQLite WAL по умолчанию; DSN postgres:// включает PostgreSQL. Нет ключа при шифрованных сидах = отказ</td></tr>
+            <tr><td class="mono">logging.level</td><td>имя уровня</td><td data-i18n="rd_log">Файл + консоль, ротация с ограничением прав, JSON-формат опционально</td></tr>
+          </table></div>
+
+          <div class="label" style="margin-top:16px" data-i18n="r_env_h">ENV-переопределения фермера (FARMER_*)</div>
+          <div class="table-wrap"><table class="t">
+            <tr><th>env</th><th data-i18n="r_over">Перекрывает</th></tr>
+            <tr><td class="mono">FARMER_RPC_URL</td><td data-i18n="re_rpc">network.rpc_url; список через «;» или запятую</td></tr>
+            <tr><td class="mono">FARMER_CHAIN_ID / FARMER_WALLET_COUNT</td><td>chain_id / wallets.count</td></tr>
+            <tr><td class="mono">FARMER_WORKERS / FARMER_RPC_THREADS / FARMER_GEN_WORKERS / FARMER_CHUNK_SIZE</td><td>threading.*</td></tr>
+            <tr><td class="mono">FARMER_FAUCET_MAX_CONCURRENT / FARMER_RPC_RATE / FARMER_RPC_RATE_FLOOR</td><td>faucet / cache</td></tr>
+            <tr><td class="mono">FARMER_MIN_BALANCE / FARMER_TARGET_BALANCE</td><td>faucet балансы</td></tr>
+            <tr><td class="mono">FARMER_LOG_LEVEL / FARMER_DB_PATH / FARMER_MASTER_KEY</td><td>логи / БД / ключ шифрования</td></tr>
+            <tr><td class="mono">FARMER_VIBE_SIGNER_KEY / CHAINSTACK_API_KEY</td><td data-i18n="re_keys">EIP-712 подпись buy/sell · Bearer-ключ MCP-крана (без него chainstack-стратегия исключается на pre-flight)</td></tr>
+            <tr><td class="mono">LICENSE_PASSWORD / FARMER_CONFIG</td><td data-i18n="re_misc">пароль лицензии (иначе getpass, 3 попытки) · путь к конфигу</td></tr>
+          </table></div>
+
+          <div class="label" style="margin-top:16px" data-i18n="r_tim_h">Жёсткие тайминги ядра</div>
+          <div class="table-wrap"><table class="t">
+            <tr><th data-i18n="r_what">Механизм</th><th data-i18n="r_num">Числа</th></tr>
+            <tr><td data-i18n="rt1">RPC-ретраи с круговым failover</td><td class="num">3 попытки · классификация retryable по тексту ошибки</td></tr>
+            <tr><td data-i18n="rt2">EMA ноды / zombie / circuit breaker</td><td class="num">α 0.7/0.3 · смерть после 3 ошибок · breaker 5 ошибок / 30 с</td></tr>
+            <tr><td data-i18n="rt3">Монитор RPC / проба / супервизор</td><td class="num">30 с · пинг 2500 мс · рестарт с backoff 1с→30с</td></tr>
+            <tr><td data-i18n="rt4">BatchWriter</td><td class="num">flush 2 с / 500 строк · 3 сбоя подряд = дроп батча + cooldown 30 с</td></tr>
+            <tr><td data-i18n="rt5">Лицензия</td><td class="num">таймаут hub 8 с · тело ≤ 1 МБ · офлайн-grace 7 дней · кэш .license_cache</td></tr>
+            <tr><td data-i18n="rt6">Портал: сессии / логин / TG</td><td class="num">сессия 7 дней · логин 5/10 мин per-IP + 20/10 мин глобально · initData 16 КБ, окно 10 мин</td></tr>
+            <tr><td data-i18n="rt7">Планировщик / single-instance</td><td class="num">--schedule ≥ 0.05 ч · лок db_path.lock, один фарм на БД</td></tr>
+          </table></div>
+          <p class="note" data-i18n="r_src">Источник истины — DOCUMENTATION.md (§2–§6) и код core/. Портальные env — в разделе «Портал и Telegram» выше.</p>
         </div>
 
       </div>

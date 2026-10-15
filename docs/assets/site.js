@@ -41,7 +41,7 @@ flags_h:"auto.py flags",flags_d:"Effect",
 fl1:"N wallets (0 = from config; default 50)",fl2:"N cycles (0 = forever)",fl3:"Config file ($FARMER_CONFIG → config.yaml)",fl4:"Skip faucet / farm",fl5:"Pipeline every H hours (min 0.05)",fl6:"Faucet batch · workers · minimal delays",fl7:"Dry run · CSV+JSON export · encrypt",fl8:"Cycle history · diagnostics · version",
 exe_h:"exe build · portal · tests · pulpit publish",menu_h:"main.py menu",
 menu_p:"1 — make wallets · 2 — single cycle · 3 — live console (p pause, q stop) · 4 — balance monitor · 5 — faucet all · 6 — stats · 7/8 — JSON export/import · C — history · 9 — RPC diag · D — doctor · B — backups · L — license · S — switch net · H — help. With args main.py delegates to auto (the exe behaves the same).",
-s4_h:"Use it here — demo zone",s4_sub:"Everything runs locally in your browser, no server. On-chain execution stays with the Python farmer — here you prepare configs and commands, test logic in the simulator, and manage testnet wallets.",
+s4_h:"Use it here — demo zone",s4_sub:"Two modes: 'Beginner' walks you through in 3 steps, 'Pro' gives every knob plus a parameter reference. Everything runs locally in your browser, no server. On-chain execution stays with the Python farmer.",
 tab1:"1 · Config",tab2:"2 · Command",tab3:"3 · Wallets",tab4:"4 · Simulator",tab5:"5 · Check",
 f_rpc:"RPC URL",f_db:"DB / master key file",f_wallets:"Wallets",f_workers:"Workers",f_target:"Faucet: min → target",f_actions:"Actions per cycle [min, max]",f_gas:"gas_limit / min_gas_for_action",
 gen_cfg:"Generate YAML",dl:"Download file",
@@ -78,7 +78,39 @@ q2:"Where are my demo keys?",a_q2:"Only in this tab's memory. The site is static
 q3:"What about 0x0 contracts in config?",a_q3:"Stubs by design: the validator passes them with a remark, runtime falls back to transfer. Fill in real addresses from the Tier-2 docs when ready.",
 q4:"Why is the pulpit empty?",a_q4:"It comes alive after the first publish: run python deploy/publish_dash.py on the farm machine (scheduled every 15–60 min). Everything else already works.",
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
-ft:"EVM testnet farmer · © 2026 ssrjkk · MIT"
+ft:"EVM testnet farmer · © 2026 ssrjkk · MIT",
+mode_new:"Beginner",mode_pro:"Pro",mode_hint:"Beginner — 3 steps in plain words. Pro — builders, simulator, reference.",
+w_s1:"Network",w_s2:"Scale",w_s3:"Launch",
+w_q1:"What are we farming?",w_q1s:"Farming means automatic practice transactions on a test network. The money isn't real — free and safe.",
+wd_v:"Tokens and launches. Best pick to start.",w_rec:"recommended",wd_r:"The main test network: transfers and swaps.",wd_a:"Token launches and trading. Livelier and faster.",wd_f:"Compute and staking. A stub network for experiments.",
+w_q2:"What scale?",w_wallets:"Wallets",w_wallets_s:"Wallets are created automatically. 5–10 is enough for a first try.",
+w_cycles:"How many rounds?",w_c2:"2 — trial",w_c0:"∞ — nonstop",w_cycles_s:"One round walks all wallets: faucet first, then transactions.",
+w_faucet:"Top up balance from the faucet",w_faucet_s:"A faucet is a free giveaway of test coins. Turn off only if you already have coins.",
+w_q3:"All set. One command left.",w_sum_net:"Network",w_sum_w:"Wallets",w_sum_c:"Rounds",w_sum_f:"Faucet",
+w_copy:"Copy command",w_dl:"Download config",w_back:"← Back",w_next:"Next →",
+w_n1:"Install Python 3.12 and run: pip install -r requirements.txt",w_n2:"Put the downloaded config file next to auto.py",w_n3:"Paste the command into PowerShell and press Enter",w_n4:"The site pulpit comes alive after: python deploy/publish_dash.py --push",
+tab6:"6 · Reference",
+r_cfg_h:"Config YAML — every field with bounds",r_cfg_s:"Out-of-bounds = validator refusal and SystemExit(1). 0x0 stubs and chain 99999 are remarks, not errors: transfers work, contract calls are skipped.",
+r_f:"Field",r_b:"Bounds",r_d:"Default / what it does",
+rd_rpc:"Multi-RPC: the monitor picks the best live node every 30s",
+rd_w:"How many to top up when generate_if_missing; 0 in --wallets = take from config",
+rd_aw:"transfer, vibevibe_*, flop_*, arc_*. Zero weight = action disabled",
+rd_tt:"Required for transfer. Random = from your own wallet pool",
+rd_cm:"Stub = silent fallback to transfer; buy/sell without signer_key are skipped by adaptive weights",
+rd_amt:"Amount jitter + odd_amount_prob 'uneven' values vs sybil filters",
+rd_del:"Pauses are multiplied by the wallet's delay_*_scale profile",
+rd_rc:"30 · on expiry wait_for_receipt = None without nonce rollback; 3+ poll errors = node failover",
+rd_th:"Auto: max(4,min(workers·3,128)) · min(8,max(2,cpu)) · max(workers·4,100)",
+rd_ca:"Token bucket over RPC; rate floats with node health, remainder carried to the new node",
+rd_db:"SQLite WAL by default; postgres:// DSN enables PostgreSQL. No key with encrypted seeds = refusal",
+rd_log:"File + console, rotation with restricted permissions, optional JSON format",
+r_env_h:"Farmer ENV overrides (FARMER_*)",r_over:"Overrides",
+re_rpc:"network.rpc_url; list via ';' or comma",
+re_keys:"EIP-712 buy/sell signing · MCP-faucet Bearer key (without it the chainstack strategy drops at pre-flight)",
+re_misc:"license password (else getpass, 3 tries) · config path",
+r_tim_h:"Hard kernel timings",r_what:"Mechanism",r_num:"Numbers",
+rt1:"RPC retries with round-robin failover",rt2:"Node EMA / zombie / circuit breaker",rt3:"RPC monitor / probe / supervisor",rt4:"BatchWriter",rt5:"License",rt6:"Portal: sessions / login / TG",rt7:"Scheduler / single-instance",
+r_src:"Source of truth — DOCUMENTATION.md (§2–§6) and core/ code. Portal env vars are in 'Portal & Telegram' above."
 };
 let lang=localStorage.getItem("hv-lang")||"ru";
 function applyLang(){
@@ -95,7 +127,7 @@ if(lang==="en")applyLang();
 /* ---------- tabs ---------- */
 $$(".play-tabs button").forEach(b=>b.addEventListener("click",()=>{
   $$(".play-tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
-  ["t-config","t-cmd","t-wallet","t-sim","t-check"].forEach(id=>$("#"+id).hidden=id!==b.dataset.tab);
+  ["t-config","t-cmd","t-wallet","t-sim","t-check","t-ref"].forEach(id=>$("#"+id).hidden=id!==b.dataset.tab);
 }));
 
 /* ---------- copy ---------- */
@@ -360,4 +392,61 @@ $("#pRun").addEventListener("click",()=>{
   $("#p1").textContent=Math.min(Math.max(20,cpu*2),128)+(isNaN(wIn)?" (auto)":"");
   $("#p2").textContent=rpc;$("#p3").textContent=gen;$("#p4").textContent=Math.max(w*4,100);
 });
+
+/* ---------- mode: beginner / pro ---------- */
+let mode=localStorage.getItem("hv-mode")||"new";
+function applyMode(){
+  const isNew=mode==="new";
+  $("#modeNew").classList.toggle("on",isNew);
+  $("#modePro").classList.toggle("on",!isNew);
+  $("#newView").hidden=!isNew;
+  $("#proView").hidden=isNew;
+}
+$("#modeNew").addEventListener("click",()=>{mode="new";localStorage.setItem("hv-mode",mode);applyMode();});
+$("#modePro").addEventListener("click",()=>{mode="pro";localStorage.setItem("hv-mode",mode);applyMode();});
+applyMode();
+
+/* ---------- beginner wizard ---------- */
+const WNETS={vibevibe:"vibe/vibe",robinhood:"Robinhood Chain",arc:"Arc (Minara)",flop:"Flop Labs"};
+let wst={step:1,net:"vibevibe",cycles:2};
+$$(".opt").forEach(o=>o.addEventListener("click",()=>{
+  $$(".opt").forEach(x=>x.classList.remove("sel"));o.classList.add("sel");wst.net=o.dataset.net;
+}));
+$("#wW").addEventListener("input",e=>{$("#wWVal").textContent=e.target.value;});
+$$("#wC button").forEach(b=>b.addEventListener("click",()=>{
+  $$("#wC button").forEach(x=>x.classList.remove("on"));b.classList.add("on");wst.cycles=parseInt(b.dataset.c,10);
+}));
+function wStep(n){
+  wst.step=Math.min(3,Math.max(1,n));
+  [1,2,3].forEach(i=>{
+    $("#w"+i).hidden=i!==wst.step;
+    const st=$("#st"+i);st.classList.toggle("on",i===wst.step);st.classList.toggle("done",i<wst.step);
+  });
+  $("#wBack").style.visibility=wst.step===1?"hidden":"visible";
+  $("#wNext").style.visibility=wst.step===3?"hidden":"visible";
+  if(wst.step===3)renderWiz();
+}
+$("#wBack").addEventListener("click",()=>wStep(wst.step-1));
+$("#wNext").addEventListener("click",()=>wStep(wst.step+1));
+function wizCmd(){
+  let c=`python auto.py --config ${NETS[wst.net].file} --wallets ${$("#wW").value} --cycles ${wst.cycles}`;
+  if(!$("#wF").checked)c+=" --skip-faucet";
+  return c;
+}
+function renderWiz(){
+  $("#wSumNet").textContent=`${WNETS[wst.net]} · ${NETS[wst.net].chain}`;
+  $("#wSumW").textContent=$("#wW").value;
+  $("#wSumC").textContent=wst.cycles===0?"∞":String(wst.cycles);
+  $("#wSumF").textContent=$("#wF").checked?(lang==="en"?"on":"вкл"):(lang==="en"?"off":"выкл");
+  $("#wCmd").textContent=wizCmd();
+}
+$("#wCopyCmd").addEventListener("click",()=>{
+  (navigator.clipboard?navigator.clipboard.writeText(wizCmd()):Promise.reject()).then(()=>toast("copied")).catch(()=>toast("select + Ctrl+C"));
+});
+$("#wDlCfg").addEventListener("click",()=>{
+  const n=NETS[wst.net];
+  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: 0.005\n  target_balance: 0.05\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n${n.farm}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: 100000\n  min_gas_for_action: 0.003\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
+  dl(n.file,y,"text/yaml");
+});
+wStep(1);
 })();
