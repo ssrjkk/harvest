@@ -9,8 +9,8 @@ const fmt=n=>{n=Number(n);if(!isFinite(n))return "—";if(Math.abs(n)>=1e6)retur
 /* ---------- theme ---------- */
 const themes=["paper","ink","field"];
 let theme=localStorage.getItem("hv-theme")||"paper";
-function applyTheme(){document.documentElement.dataset.theme=theme;$("#themeBtn").textContent=theme==="paper"?"◐":theme==="ink"?"◑":"◒";drawLive();}
-$("#themeBtn").addEventListener("click",()=>{theme=themes[(themes.indexOf(theme)+1)%themes.length];localStorage.setItem("hv-theme",theme);applyTheme();drawChart();});
+function applyTheme(){document.documentElement.dataset.theme=theme;$("#themeBtn").textContent=theme==="paper"?"◐":theme==="ink"?"◑":"◒";}
+$("#themeBtn").addEventListener("click",()=>{theme=themes[(themes.indexOf(theme)+1)%themes.length];localStorage.setItem("hv-theme",theme);applyTheme();drawLive();drawChart();});
 applyTheme();
 
 /* ---------- i18n ---------- */
@@ -19,11 +19,11 @@ skip:"Skip to content",nav_live:"Live",nav_overview:"Overview",nav_networks:"Net
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm pulpit, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
-th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
+th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1158 · 43 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
 cta_live:"Live pulpit",cta_demo:"Demo zone",
 hero_note:"The pulpit reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
-sl_h:"Pulpit — live farm state",sl_sub:"Metrics are published by deploy/publish_dash.py from the farm machine. Refreshes every minute. If nothing was published yet, the site still fully works — data appears on its own.",
+sl_h:"Pulpit — live farm state",sl_sub:"Metrics are published by publish_dash.py from the farm machine into the gh-pages branch. Refreshes every minute. If nothing was published yet, the site still fully works — data appears on its own.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
 ch1:"Actions / errors over history",ch2:"Wallets processed",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
 s1_h:"What it is and what it does",s1_sub:"One auto.py pipeline pass = four phases: generate/reuse wallets → faucet → farm → export. Each wallet's behavior is deterministic from its address, so restarts don't leak the farm by changing the pattern.",
@@ -40,7 +40,7 @@ s3_h:"Up and running in five minutes",s3_sub:"Primary target: Windows/PowerShell
 flags_h:"auto.py flags",flags_d:"Effect",
 fl1:"N wallets (0 = from config; default 50)",fl2:"N cycles (0 = forever)",fl3:"Config file ($FARMER_CONFIG → config.yaml)",fl4:"Skip faucet / farm",fl5:"Pipeline every H hours (min 0.05)",fl6:"Faucet batch · workers · minimal delays",fl7:"Dry run · CSV+JSON export · encrypt",fl8:"Cycle history · diagnostics · version",
 exe_h:"exe build · portal · tests · pulpit publish",menu_h:"main.py menu",
-menu_p:"1 — make wallets · 2 — single cycle · 3 — live console (p pause, q stop) · 4 — balance monitor · 5 — faucet all · 6 — stats · 7/8 — JSON export/import · C — history · 9 — RPC diag · D — doctor · B — backups · L — license · S — switch net · H — help. With args main.py delegates to auto (the exe behaves the same).",
+menu_p:"1 — make wallets · 2 — single cycle · 3 — live console (p pause, q stop) · 4 — balance monitor · 5 — faucet all · 6 — stats · 7/8 — JSON export/import · C — history · 9 — RPC diag · D — doctor · B — backups · G — local web UI (FastAPI :8080) · L — license · S — switch net · H — help. With args main.py delegates to auto (the exe behaves the same).",
 s4_h:"Use it here — demo zone",s4_sub:"Two modes: 'Beginner' walks you through in 3 steps, 'Pro' gives every knob plus a parameter reference. Everything runs locally in your browser, no server. On-chain execution stays with the Python farmer.",
 tab1:"1 · Config",tab2:"2 · Command",tab3:"3 · Wallets",tab4:"4 · Simulator",tab5:"5 · Check",
 f_rpc:"RPC URL",f_db:"DB / master key file",f_wallets:"Wallets",f_workers:"Workers",f_target:"Faucet: min → target",f_actions:"Actions per cycle [min, max]",f_gas:"gas_limit / min_gas_for_action",
@@ -62,6 +62,7 @@ a3:"2s/500-row flush, dropped_count, 30s cooldown",
 a4:"ABI, EIP-712 TradeIntent, default gas 300000",
 a5:"wallets/actions_log/nonces/cycle_history, VACUUM, backups",
 a6:"Config → key → DB → RPC → faucet → license, exit code",
+a7:"Local FastAPI pulpit: buttons, WebSocket log, top and history (main.py → G, 127.0.0.1:8080)",
 a_n:"Per-layer detail: §3 of DOCUMENTATION.md in the repo (entry points, portal, configs, Tier-2 for real RPCs/contracts).",
 s6_h:"Portal & Telegram",s6_sub:"python -m portal starts aiohttp (web + API) and, with a token, the bot. Secrets via env only. Fail-closed: non-loopback bind with no login method refuses to start.",
 po_d:"Purpose",po1:"Session signing, min 16 chars",po2:"BotFather token",po3:"Default-deny user_id list",po4:"DB master key / web-login PIN",po6:"Farmer DB path / farmer config",
@@ -76,7 +77,7 @@ s8_h:"Tests & questions",t1:"wait_for_receipt: EMA poll budget, failover on erro
 q1:"Is this for mainnet?",a_q1:"No. Testnets and practice activity farming only. Don't use real funds or real keys in the site demo.",
 q2:"Where are my demo keys?",a_q2:"Only in this tab's memory. The site is static, nothing is uploaded — close the tab or press Clear and they're gone. For real storage use the Python-side export + encryption.",
 q3:"What about 0x0 contracts in config?",a_q3:"Stubs by design: the validator passes them with a remark, runtime falls back to transfer. Fill in real addresses from the Tier-2 docs when ready.",
-q4:"Why is the pulpit empty?",a_q4:"It comes alive after the first publish: run python deploy/publish_dash.py on the farm machine (scheduled every 15–60 min). Everything else already works.",
+q4:"Why is the pulpit empty?",a_q4:"It comes alive after the first publish: run python publish_dash.py on the farm machine (scheduled every 15–60 min). Everything else already works.",
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
 ft:"EVM testnet farmer · © 2026 ssrjkk · MIT",
 mode_new:"Beginner",mode_pro:"Pro",mode_hint:"Beginner — 3 steps in plain words. Pro — builders, simulator, reference.",
@@ -88,7 +89,7 @@ w_cycles:"How many rounds?",w_c2:"2 — trial",w_c0:"∞ — nonstop",w_cycles_s
 w_faucet:"Top up balance from the faucet",w_faucet_s:"A faucet is a free giveaway of test coins. Turn off only if you already have coins.",
 w_q3:"All set. One command left.",w_sum_net:"Network",w_sum_w:"Wallets",w_sum_c:"Rounds",w_sum_f:"Faucet",
 w_copy:"Copy command",w_dl:"Download config",w_back:"← Back",w_next:"Next →",
-w_n1:"Install Python 3.12 and run: pip install -r requirements.txt",w_n2:"Put the downloaded config file next to auto.py",w_n3:"Paste the command into PowerShell and press Enter",w_n4:"The site pulpit comes alive after: python deploy/publish_dash.py --push",
+w_n1:"Install Python 3.12 and run: pip install -r requirements.txt",w_n2:"Put the downloaded config file next to auto.py",w_n3:"Paste the command into PowerShell and press Enter",w_n4:"The site pulpit comes alive after: python publish_dash.py",
 tab6:"6 · Reference",
 r_cfg_h:"Config YAML — every field with bounds",r_cfg_s:"Out-of-bounds = validator refusal and SystemExit(1). 0x0 stubs and chain 99999 are remarks, not errors: transfers work, contract calls are skipped.",
 r_f:"Field",r_b:"Bounds",r_d:"Default / what it does",
@@ -113,21 +114,29 @@ rt1:"RPC retries with round-robin failover",rt2:"Node EMA / zombie / circuit bre
 r_src:"Source of truth — DOCUMENTATION.md (§2–§6) and core/ code. Portal env vars are in 'Portal & Telegram' above."
 };
 let lang=localStorage.getItem("hv-lang")||"ru";
+let lastLive=null;
+const RU={};
+function snapRU(){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(!(k in RU))RU[k]=el.innerHTML;});}
+function applyLangStrings(){const D=lang==="en"?EN:RU;$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(D[k]!==undefined)el.innerHTML=D[k];});}
 function applyLang(){
   document.documentElement.lang=lang==="ru"?"ru":"en";
   $("#langRu").classList.toggle("on",lang==="ru");
   $("#langEn").classList.toggle("on",lang==="en");
-  if(lang==="en"){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(EN[k]!==undefined){if(k==="h1")el.innerHTML=EN[k];else el.textContent=EN[k];}});}
+  applyLangStrings();
+  try{renderLive(lastLive);}catch(e){}
+  try{if(wst.step===3)renderWiz();}catch(e){}
 }
-function setLang(l){lang=l;localStorage.setItem("hv-lang",l);if(l==="en"){applyLang();}else{localStorage.setItem("hv-lang","ru");location.reload();}}
+function setLang(l){if(l===lang)return;lang=l;localStorage.setItem("hv-lang",l);applyLang();}
 $("#langRu").addEventListener("click",()=>setLang("ru"));
 $("#langEn").addEventListener("click",()=>setLang("en"));
+snapRU();
 if(lang==="en")applyLang();
 
 /* ---------- tabs ---------- */
 $$(".play-tabs button").forEach(b=>b.addEventListener("click",()=>{
   $$(".play-tabs button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
   ["t-config","t-cmd","t-wallet","t-sim","t-check","t-ref"].forEach(id=>$("#"+id).hidden=id!==b.dataset.tab);
+  if(b.dataset.tab==="t-sim")drawChart();
 }));
 
 /* ---------- copy ---------- */
@@ -142,10 +151,10 @@ $("#cmdCopy")?.addEventListener("click",()=>{const t=$("#cmdOut").textContent;(n
 /* ---------- live pulpit (state.json) ---------- */
 let live={actions:[],errors:[],proc:[]};
 const FALLBACK_NETS=[
- {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",tagline:"Основной тестнет",description:"Переводы и свопы, плотный фарм.",rewards:"—",activities:["transfer","vibevibe_swap","vibevibe_mint"]},
- {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",tagline:"Launchpad, 5% сапплая тестнету",description:"claimRewards и stake всегда; buy/sell — с ключом tradeSigner.",rewards:"5% supply",activities:["transfer","claimRewards","stake","buy/sell*"]},
- {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",tagline:"chain_id — заглушка",description:"compute / validate / stake + transfer.",rewards:"—",activities:["flop_compute","flop_validate","flop_stake"]},
- {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",tagline:"Minara",description:"launch / trade / add_liquidity + transfer.",rewards:"—",activities:["arc_launch","arc_trade","arc_add_liquidity"]}
+ {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",tagline:"Permissionless launchpad на Robinhood Chain",description:"Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",rewards:"5% сапплая VIBE · торговля, стейкинг, клейм наград",activities:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"]},
+ {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",tagline:"Базовый L2-тестнет Robinhood",description:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",rewards:"Базовый тестнет-эирдроп и опыт",activities:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"]},
+ {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",tagline:"Launchpad Flop Labs",description:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",rewards:"Тестнет-баллы и эирдроп",activities:["Compute / validate / stake","Трансферы"]},
+ {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",tagline:"Launchpad Minara.Fun",description:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",rewards:"Тестнет-эирдроп за активности",activities:["Запуск / торговля / добавление ликвидности","Трансферы"]}
 ];
 async function loadState(){
   try{const r=await fetch("state.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;return await r.json();}
@@ -228,29 +237,30 @@ function lineChart(cv,series){
   });
   if(!series.some(d=>d&&d.length)){x.fillStyle=mut;x.font="12px monospace";x.fillText("no data",14,H/2);}
 }
-(async()=>{renderLive(await loadState());})();
+(async()=>{const s=await loadState();lastLive=s;renderLive(s);drawLive();})();
 setInterval(async()=>{const s=await loadState();if(s)renderLive(s);},60000);
 window.addEventListener("resize",drawLive);
 
 /* ---------- config builder ---------- */
 const NETS={
-robinhood:{file:"config_robinhood.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",actions:'  - type: vibevibe_swap\n    contract: 0x0000000000000000000000000000000000000000\n    method: swap\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: transfer\n    target: random_wallet\n    weight: 2.0\n    min_amount: 0.0001\n    max_amount: 0.001',farm:"  actions_per_cycle: [3, 8]\n  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",workers:20},
-vibevibe:{file:"config_vibevibe.yaml",db:"farming_vibevibe.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001',farm:"  actions_per_cycle: [3, 8]\n  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",workers:20},
-flop:{file:"config_flop.yaml",db:"farming_flop.db",chain:99999,rpc:"https://rpc.flop-labs.testnet.example",actions:'  - type: flop_compute\n    contract: 0x0000000000000000000000000000000000000000\n    method: compute\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001',farm:"  actions_per_cycle: [5, 15]\n  delay_between_actions: [3, 15]\n  delay_between_cycles: [1800, 3600]",workers:30},
-arc:{file:"config_arc.yaml",db:"farming_arc.db",chain:5042002,rpc:"https://rpc.arc-testnet.example",actions:'  - type: arc_launch\n    contract: 0x0000000000000000000000000000000000000000\n    method: launch\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001',farm:"  actions_per_cycle: [5, 12]\n  delay_between_actions: [2, 10]\n  delay_between_cycles: [1200, 2400]",workers:30},
-simple:{file:"config.simple.yaml",db:"farming_simple.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001',farm:"  actions_per_cycle: [3, 8]\n  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",workers:20}
+robinhood:{file:"config_robinhood.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"300000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 0.4\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_swap\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_mint\n    contract: "0x0000000000000000000000000000000000000000"\n    method: mint\n    weight: 0.25'},
+vibevibe:{file:"config_vibevibe.yaml",db:"farming_vibevibe.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"100000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001'},
+flop:{file:"config_flop.yaml",db:"farming_flop.db",chain:99999,rpc:"https://rpc.testnet.floplabs.io",faucet:"0.01 → 0.1",lo:5,hi:15,delays:"  delay_between_actions: [3, 15]\n  delay_between_cycles: [1800, 3600]",gas:"300000 / 0.01",workers:30,actions:'  - type: flop_compute\n    contract: "0x0000000000000000000000000000000000000000"\n    method: submitTask\n    weight: 0.4\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: flop_validate\n    contract: "0x0000000000000000000000000000000000000000"\n    method: validateTask\n    weight: 0.25\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: flop_stake\n    contract: "0x0000000000000000000000000000000000000000"\n    method: stake\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.01'},
+arc:{file:"config_arc.yaml",db:"farming_arc.db",chain:5042002,rpc:"https://rpc.testnet.arc.network",faucet:"0.01 → 0.1",lo:5,hi:12,delays:"  delay_between_actions: [2, 10]\n  delay_between_cycles: [1200, 2400]",gas:"200000 / 0.005",workers:30,actions:'  - type: arc_launch\n    contract: "0x0000000000000000000000000000000000000000"\n    method: launchToken\n    weight: 0.3\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: arc_trade\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.003\n  - type: arc_add_liquidity\n    contract: "0x0000000000000000000000000000000000000000"\n    method: addLiquidity\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.005'},
+simple:{file:"config.simple.yaml",db:"farming_simple.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.003 → 0.015",lo:2,hi:4,delays:"  delay_between_actions: [8, 25]\n  delay_between_cycles: [2700, 6300]",gas:"21000 / 0.0006",workers:24,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.00005\n    max_amount: 0.0004'}
 };
 function buildYaml(){
   const key=$("#cfgNet").value, n=NETS[key];
   const rpc=$("#cfgRpc").value.trim()||n.rpc, db=$("#cfgDb").value.trim()||n.db;
   const w=Math.max(1,parseInt($("#cfgWallets").value||"50",10)), wk=Math.max(1,parseInt($("#cfgWorkers").value||String(n.workers),10));
   const f=$("#cfgFaucet").value.split("→").map(s=>s.trim());const fmin=f[0]||"0.005", fmax=f[1]||"0.05";
+  const am=$("#cfgActions").value.replace(/[\[\]]/g,"").split(",").map(s=>s.trim());const alo=am[0]||n.lo, ahi=am[1]||n.hi;
   const g=$("#cfgGas").value.split("/").map(s=>s.trim());const gas=g[0]||"100000", mgas=g[1]||"0.003";
-  return `# HARVEST — ${n.file} (generated in browser)\nnetwork:\n  rpc_url: ${rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${w}\n  seed: ""\nfaucet:\n  enabled: true\n  min_balance: ${fmin}\n  target_balance: ${fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n${n.farm}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${gas}\n  min_gas_for_action: ${mgas}\nthreading:\n  max_workers: ${wk}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${db}\n  master_key: master.key\n`;
+  return `# HARVEST — ${n.file} (generated in browser)\nnetwork:\n  rpc_url: ${rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${w}\n  seed: ""\nfaucet:\n  enabled: true\n  min_balance: ${fmin}\n  target_balance: ${fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${alo}, ${ahi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${gas}\n  min_gas_for_action: ${mgas}\nthreading:\n  max_workers: ${wk}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${db}\n  master_key: master.key\n`;
 }
-$("#cfgNet").addEventListener("change",e=>{const n=NETS[e.target.value];$("#cfgRpc").value=n.rpc;$("#cfgDb").value=n.db;$("#cfgWorkers").value=n.workers;});
+$("#cfgNet").addEventListener("change",e=>{const n=NETS[e.target.value];$("#cfgRpc").value=n.rpc;$("#cfgDb").value=n.db;$("#cfgWorkers").value=n.workers;$("#cfgFaucet").value=n.faucet;$("#cfgActions").value=`[${n.lo}, ${n.hi}]`;$("#cfgGas").value=n.gas;});
 $("#cfgGen").addEventListener("click",()=>{$("#cfgOut").textContent=buildYaml();toast("yaml ready");});
-$("#cfgDl").addEventListener("click",()=>{const y=$("#cfgOut").textContent.startsWith("#")?$("#cfgOut").textContent:buildYaml();$("#cfgOut").textContent=y;const b=new Blob([y],{type:"text/yaml"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=NETS[$("#cfgNet").value].file;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+$("#cfgDl").addEventListener("click",()=>{const y=buildYaml();$("#cfgOut").textContent=y;const b=new Blob([y],{type:"text/yaml"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=NETS[$("#cfgNet").value].file;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
 
 /* ---------- cmd builder ---------- */
 function buildCmd(){
@@ -371,10 +381,10 @@ $("#vRun").addEventListener("click",()=>{
   if(chain===99999)out.push(["warn","chain_id 99999 is a stub marker (config_flop)"]);
   const mm=(t.match(/min_balance:\s*([\d.]+)/)||[])[1], tg=(t.match(/target_balance:\s*([\d.]+)/)||[])[1];
   if(mm!==undefined&&tg!==undefined)out.push(parseFloat(mm)<=parseFloat(tg)?["ok",`faucet ${mm} ≤ ${tg}`]:["bad",`faucet min_balance ${mm} > target ${tg}`]);
-  if(/contract:\s*0x0{40}/.test(t))out.push(["warn","0x0 contract = stub → runtime falls back to transfer; fill a real address for Tier-2"]);
+  if(/contract:\s*"?0x0{40}/.test(t))out.push(["warn","0x0 contract = stub → runtime falls back to transfer; fill a real address for Tier-2"]);
   const gas=parseInt((t.match(/gas_limit:\s*(\d+)/)||[])[1]||"0",10);
   out.push(gas>=1?["ok","gas_limit = "+gas]:["bad","gas_limit must be ≥ 1"]);
-  if(gas<50000&&/contract:\s*0x(?!0{40})[0-9a-fA-F]{40}/.test(t))out.push(["bad","real contract action needs gas_limit ≥ 50000"]);
+  if(gas<50000&&/contract:\s*"?(?!0x0{40})0x[0-9a-fA-F]{40}/.test(t))out.push(["bad","real contract action needs gas_limit ≥ 50000"]);
   const mw=parseInt((t.match(/max_workers:\s*(\d+)/)||[])[1]||"0",10);
   out.push(mw>=1&&mw<=1000?["ok","max_workers = "+mw]:["bad","threading.max_workers must be 1..1000"]);
   const dbp=(t.match(/path:\s*(\S+)/)||[])[1]||"";
@@ -445,7 +455,7 @@ $("#wCopyCmd").addEventListener("click",()=>{
 });
 $("#wDlCfg").addEventListener("click",()=>{
   const n=NETS[wst.net];
-  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: 0.005\n  target_balance: 0.05\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n${n.farm}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: 100000\n  min_gas_for_action: 0.003\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
+  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: 0.005\n  target_balance: 0.05\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${n.lo}, ${n.hi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: 100000\n  min_gas_for_action: 0.003\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
   dl(n.file,y,"text/yaml");
 });
 wStep(1);

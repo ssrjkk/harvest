@@ -55,7 +55,7 @@
           <table>
             <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
             <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-            <tr><td data-i18n="f_tests">Тесты</td><td class="num">732 · 31 файл · зелёный прогон</td></tr>
+            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1158 · 43 файла · зелёный прогон</td></tr>
             <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
             <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
             <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
@@ -67,7 +67,7 @@
           <a class="btn" href="#app" data-i18n="cta_demo">Демо-зона</a>
           <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">Telegram-бот фермы</a>
         </div>
-        <p class="note" data-i18n="hero_note">Пульт читает state.json, который публикует ферма. Остальной сайт полностью статический: квантование приватности — ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
+        <p class="note" data-i18n="hero_note">Пульт читает state.json, который публикует ферма. Остальной сайт полностью статический: ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
       </div>
       <div>
         <div class="terminal" aria-label="Quick commands">
@@ -94,7 +94,7 @@ python auto.py --doctor</pre>
 <section class="block" id="live">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Пульт — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
-    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт deploy/publish_dash.py с машины фермы. Обновление раз в минуту. Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
+    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Обновление раз в минуту. Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
     <div id="liveAlert"></div>
     <div class="termline" id="term">
       <span class="tstat"><i class="dot off" id="dot"></i><b id="status">—</b></span>
@@ -125,6 +125,10 @@ python auto.py --doctor</pre>
     </div>
     <div class="label" style="margin:16px 0 8px" data-i18n="nets_h">Сети</div>
     <div class="grid4" id="nets"></div>
+    <div class="toolbar">
+      <a class="btn small" href="https://explorer.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood explorer</a>
+      <a class="btn small" href="https://faucet.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood faucet</a>
+    </div>
   </div>
 </section>
 
@@ -196,11 +200,11 @@ Unblock-File dist\harvest\harvest.exe
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + бот
 
-python -m pytest tests -q       # 732 теста
+python -m pytest tests -q       # 1158 tests · 43 files
 
-python deploy/publish_dash.py   # state.json → пульт сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
+python publish_dash.py          # state.json → gh-pages → пульт сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
-        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
+        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · G — локальный веб-пульт (FastAPI, 127.0.0.1:8080) · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
       </div>
     </div>
   </div>
@@ -265,7 +269,7 @@ python deploy/publish_dash.py   # state.json → пульт сайта<button cl
           <li data-i18n="w_n1">Установите Python 3.12 и выполните: pip install -r requirements.txt</li>
           <li data-i18n="w_n2">Положите скачанный файл-конфиг рядом с auto.py</li>
           <li data-i18n="w_n3">Вставьте команду в PowerShell и нажмите Enter</li>
-          <li data-i18n="w_n4">Пульт сайта оживёт после: python deploy/publish_dash.py --push</li>
+          <li data-i18n="w_n4">Пульт сайта оживёт после: python publish_dash.py</li>
         </ol>
       </div>
 
@@ -435,19 +439,19 @@ advanced:
             <tr><td class="mono">network.rpc_url</td><td>https URL или список; http — только 127.0.0.1/localhost/::1</td><td data-i18n="rd_rpc">Мульти-RPC: монитор каждые 30 с выбирает лучшую живую ноду</td></tr>
             <tr><td class="mono">network.chain_id</td><td class="num">≥ 1; 99999 = маркер-заглушка</td><td>Robinhood/vibe 46630 · Arc 5042002</td></tr>
             <tr><td class="mono">wallets.count</td><td class="num">≥ 0</td><td data-i18n="rd_w">Сколько добрать при generate_if_missing; 0 в --wallets = взять из конфига</td></tr>
-            <tr><td class="mono">faucet.min_balance → target_balance</td><td>min ≤ target</td><td class="num">0.005 → 0.05 · ensure_balance докупает до target</td></tr>
+            <tr><td class="mono">faucet.min_balance → target_balance</td><td>min ≤ target</td><td class="num">ensure_balance докупает до target · vibe/robinhood 0.005→0.05 · flop/arc 0.01→0.1 · simple 0.003→0.015</td></tr>
             <tr><td class="mono">faucet.retries / max_concurrent</td><td class="num">1..20 / 1..64</td><td class="num">2 · пачка крана --batch 50, пауза 3 с</td></tr>
             <tr><td class="mono">actions[].type / weight</td><td>тип из набора; weight ≥ 0</td><td data-i18n="rd_aw">transfer, vibevibe_*, flop_*, arc_*. Нулевой вес = действие отключено</td></tr>
             <tr><td class="mono">transfer.target</td><td>адрес или random_wallet</td><td data-i18n="rd_tt">Обязателен для transfer. Случайный — из пула своих кошельков</td></tr>
             <tr><td class="mono">contract.action contract/method</td><td>0x-адрес + имя метода; 0x0…0 = заглушка</td><td data-i18n="rd_cm">Заглушка = тихий фолбэк на transfer, buy/sell без signer_key пропускаются адаптивными весами</td></tr>
             <tr><td class="mono">actions min/max_amount</td><td class="num">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений против сибил-фильтров</td></tr>
-            <tr><td class="mono">farming.actions_per_cycle</td><td>[min, max], min ≤ max</td><td class="num">[3,8] vibe · [5,15] flop · [5,12] arc</td></tr>
+            <tr><td class="mono">farming.actions_per_cycle</td><td>[min, max], min ≤ max</td><td class="num">[3,8] vibe/robinhood · [5,15] flop · [5,12] arc · [2,4] simple</td></tr>
             <tr><td class="mono">farming.delay_between_*</td><td>[min, max] секунд</td><td data-i18n="rd_del">Паузы умножаются на профильные delay_*_scale кошелька</td></tr>
             <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
-            <tr><td class="mono">advanced.gas_limit</td><td class="num">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num">100000 (21000 в simple-пресете); vibevibe default 300000</td></tr>
+            <tr><td class="mono">advanced.gas_limit</td><td class="num">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num">300000 robinhood/flop · 200000 arc · 100000 vibe · 21000 simple</td></tr>
             <tr><td class="mono">advanced.min_gas_for_action</td><td class="num">≥ 0</td><td class="num">0.003 · ниже — действие пропускается</td></tr>
             <tr><td class="mono">advanced.receipt_timeout</td><td class="num">секунды</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
-            <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num">20 (vibe/robinhood) · 30 (flop/arc); пусто = авто min(max(20,cpu·2),128)</td></tr>
+            <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num">20 vibe/robinhood · 30 flop/arc · 24 simple; пусто = авто min(max(20,cpu·2),128)</td></tr>
             <tr><td class="mono">threading.rpc_threads / gen_workers / chunk_size</td><td class="num">1..256 / 1..32 / ≥ 1</td><td data-i18n="rd_th">Авто: max(4,min(workers·3,128)) · min(8,max(2,cpu)) · max(workers·4,100)</td></tr>
             <tr><td class="mono">cache.rpc_rate_limit / rpc_rate_floor</td><td class="num">1..10000 / 0.05..1</td><td data-i18n="rd_ca">Token-bucket на RPC; ставка плавает от здоровья нод, остаток переносится при смене ноды</td></tr>
             <tr><td class="mono">database.path / master_key</td><td>без «..»; 64-hex ключ или файл</td><td data-i18n="rd_db">SQLite WAL по умолчанию; DSN postgres:// включает PostgreSQL. Нет ключа при шифрованных сидах = отказ</td></tr>
@@ -519,6 +523,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
           <tr><td class="mono">vibevibe</td><td data-i18n="a4">ABI, EIP-712 TradeIntent, gas default 300000</td></tr>
           <tr><td class="mono">database</td><td data-i18n="a5">wallets/actions_log/nonces/cycle_history, VACUUM, бэкапы</td></tr>
           <tr><td class="mono">doctor</td><td data-i18n="a6">Конфиг → ключ → БД → RPC → кран → лицензия, exit code</td></tr>
+          <tr><td class="mono">web_gui</td><td data-i18n="a7">Локальный FastAPI-пульт: кнопки, WebSocket-лог, топ и история (main.py → G, 127.0.0.1:8080)</td></tr>
         </table></div>
         <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (917 строк: точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
       </div>
@@ -578,7 +583,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
         <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебный фарминг активности. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
         <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вашей вкладки. Сайт статический, отправки на сервер нет — закройте вкладку или нажмите «Очистить», и они исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
         <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime делает фоллбэк на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
-        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему пульт пустой?</span></summary><div class="a" data-i18n="a_q4">Пульт оживает после первой публикации: запустите python deploy/publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут). До этого вся остальная информация и инструменты уже работают.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему пульт пустой?</span></summary><div class="a" data-i18n="a_q4">Пульт оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут, история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
       </div>
     </div>
   </div>

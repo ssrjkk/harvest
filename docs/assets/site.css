@@ -42,6 +42,13 @@ nav.main{display:flex;gap:2px;margin-left:8px;overflow-x:auto;scrollbar-width:no
 nav.main a{font-size:13px;text-decoration:none;color:var(--ink-2);padding:6px 9px;border-radius:var(--r);white-space:nowrap}
 nav.main a:hover{background:var(--paper-2);color:var(--ink)}
 .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+@media(max-width:760px){
+  .topbar-in{flex-wrap:wrap;height:auto;min-height:58px;padding-top:8px;padding-bottom:8px;row-gap:8px}
+  nav.main{order:3;flex-basis:100%;margin-left:0}
+  .topbar .btn.primary{display:none}
+}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+section.block,.hero{scroll-margin-top:76px}
 .btn{font-family:var(--mono);font-size:12.5px;border:1px solid var(--line-2);background:transparent;color:var(--ink);padding:7px 12px;border-radius:var(--r);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px}
 .btn:hover{border-color:var(--ink)}
 .btn.primary{background:var(--ink);color:var(--paper);border-color:var(--ink)}

@@ -1,0 +1,119 @@
+# ============================================================
+#  SIMPLE FARM — только трансферы, запуск большими пачками
+#
+#  python auto.py --config config.simple.yaml --wallets 200 --cycles 2
+#  python auto.py --config config.simple.yaml --wallets 500 --schedule 6
+#  python auto.py --config config.simple.yaml --dry-run --wallets 10 --cycles 1
+#
+#  В actions нет ни одной контрактной заглушки 0x0: воркер не тратит
+#  попытки на вызовы, которые всё равно падают в фоллбэк-трансфер.
+# ============================================================
+
+network:
+  name: "Robinhood Chain Testnet"
+  rpc_url: "https://rpc.testnet.chain.robinhood.com"
+  chain_id: 46630
+  explorer: "https://explorer.testnet.chain.robinhood.com"
+  currency: "ETH"
+
+# ---------- Кошельки ----------
+wallets:
+  count: 100
+  file: "wallets_simple.json"
+  generate_if_missing: true
+
+# ---------- Кран ----------
+faucet:
+  enabled: true
+  min_balance: 0.003
+  target_balance: 0.015
+  retries: 2
+  max_concurrent: 6
+  strategies:
+    # chainstack — MCP-кран: нужен CHAINSTACK_API_KEY в переменных окружения
+    # (https://console.chainstack.com/user/settings/api-keys). Без ключа стратегия
+    # исключается на pre-flight, пополнение идёт только через direct/другие стратегии.
+    - type: "chainstack"
+      url: "https://mcp.chainstack.com/mcp"
+      network_param: "robinhood"
+    - type: "direct"
+      url: "https://faucet.testnet.chain.robinhood.com/claim"
+  delay_between_requests: [5, 15]
+
+# ---------- Действия: ровно одно ----------
+actions:
+  - type: "transfer"
+    weight: 1.0
+    min_amount: 0.00005
+    max_amount: 0.0004
+    target: "random_wallet"
+
+# ---------- Фарминг ----------
+farming:
+  actions_per_cycle: [2, 4]
+  delay_between_actions: [8, 25]
+  delay_between_cycles: [2700, 6300]   # 45-105 минут
+  skip_cycle_probability: 0.08
+
+# ---------- Расширенные настройки ----------
+advanced:
+  check_balance_before_action: true
+  force_farm: false
+  gas_limit: 21000                     # чистый трансфер: контрактный запас не нужен
+  min_gas_for_action: 0.0006           # хватает на 21000 газа + сумму перевода
+  receipt_timeout: 30
+
+# ---------- Индивидуальное поведение (анти-сибил) ----------
+# action_mix опущен: тип действия один, индивидуальные предпочтения не на что влиять.
+behavior:
+  enabled: true
+  activity: [0.5, 1.5]
+  rest_probability: 0.05
+  rest_cycles: [1, 3]
+  action_delay_scale: [0.7, 1.5]
+  cycle_delay_scale: [0.8, 1.8]
+  amount_jitter: 0.3
+  gas_deviation: 0.06
+  odd_amount_prob: 0.2
+  faucet_skip_prob: 0.1
+  daily_window: 0.3
+  burst_prob: 0.05
+  burst_multiplier: 1.6
+  start_delay: [0, 3]
+
+# ---------- Параллелизм ----------
+threading:
+  max_workers: 24
+  chunk_size: 100                      # кошельков на чанк пула (пачка)
+  rpc_threads: 0                       # 0 = авто
+  timeout_per_wallet: 0                # 0 = авто
+  prune_log_every_cycles: 20
+
+# ---------- Кэш RPC-вызовов ----------
+cache:
+  gas_price_ttl: 15
+  balance_ttl: 10
+  nonce_ttl: 30
+  rpc_rate_limit: 50
+  rpc_rate_floor: 0.2
+
+# ---------- Прокси ----------
+proxy:
+  enabled: false
+  list: []
+  rotate: "sequential"
+
+# ---------- База данных ----------
+database:
+  path: "farming_simple.db"            # отдельная БД: не смешивать прогресс с основным фармом
+  master_key: "master.key"
+  log_keep: 200000
+
+# ---------- Логирование ----------
+logging:
+  level: "INFO"
+  file: "logs/farm_simple.log"
+  max_bytes: 10485760
+  backup_count: 3
+  console: true
+  colors: true
