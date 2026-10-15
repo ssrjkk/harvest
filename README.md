@@ -14,9 +14,28 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 
 
 
+## Сайт
+
+Живой сайт проекта: **[ssrjkk.github.io/harvest](https://ssrjkk.github.io/harvest/)** —
+пульт фермы (метрики из `state.json`), полная документация и браузерная
+демо-зона: режимы «Новичок» (мастер за 3 шага) и «Про» (конструктор конфига
+и команд, генератор кошельков, симулятор фарма, проверка конфига,
+справочник параметров). Темы Paper/Ink/Field, языки RU/EN.
+
 ## Screenshots
 
-<!-- TODO: Add demo screenshot -->
+| Хиро | Пульт |
+|---|---|
+| ![HARVEST — главная](docs/screenshots/shot-hero.png) | ![HARVEST — пульт фермы](docs/screenshots/shot-live.png) |
+
+| Мастер новичка | Про-справочник |
+|---|---|
+| ![HARVEST — мастер за 3 шага](docs/screenshots/shot-wizard.png) | ![HARVEST — справочник параметров](docs/screenshots/shot-pro.png) |
+
+Метрики пульта публикует `python publish_dash.py` с машины фермы в
+изолированную ветку `gh-pages` (один amend-коммит, история `master`
+не растёт). Проверка сайта одной командой: `python tools/verify_site.py`,
+скриншоты: `python tools/shoot_site.py`.
 
 ## Быстрый старт
 
@@ -31,13 +50,13 @@ python auto.py --doctor        # самодиагностика
 
 | Сеть | Конфиг | chain_id | Валюта |
 |---|---|---|---|
-| Robinhood Chain | [config_robinhood.yaml](configs/config_robinhood.yaml) | 46630 | ETH |
-| Flop Labs | [config_flop.yaml](configs/config_flop.yaml) | 99999 (заглушка) | FLOP |
-| Arc (Minara.Fun) | [config_arc.yaml](configs/config_arc.yaml) | 5042002 | ARC |
-| vibe/vibe (Robinhood testnet) | [config_vibevibe.yaml](configs/config_vibevibe.yaml) | 46630 | ETH |
+| Robinhood Chain | [config_robinhood.yaml](config_robinhood.yaml) | 46630 | ETH |
+| Flop Labs | [config_flop.yaml](config_flop.yaml) | 99999 (заглушка) | FLOP |
+| Arc (Minara.Fun) | [config_arc.yaml](config_arc.yaml) | 5042002 | ARC |
+| vibe/vibe (Robinhood testnet) | [config_vibevibe.yaml](config_vibevibe.yaml) | 46630 | ETH |
 
 Пресет «только трансферы» для пачного фарма без контрактных адресов —
-[config.simple.yaml](configs/config.simple.yaml) (одна сеть Robinhood, отдельная БД
+[config.simple.yaml](config.simple.yaml) (одна сеть Robinhood, отдельная БД
 `farming_simple.db`, `gas_limit: 21000`):
 
 ```powershell
@@ -57,7 +76,7 @@ VibeItems, VibeFuelStaking, VibeFuelRewards). Реализован EIP-712 фл�
 python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
 ```
 
-Базовый шаблон для своего конфига — [config.example.yaml](configs/config.example.yaml).
+Базовый шаблон для своего конфига — [config.example.yaml](config.example.yaml).
 
 ### Авто-режим (CLI)
 
@@ -84,6 +103,9 @@ health, количество кошельков), старт/стоп/пауза
 топ кошельков и **экспорт всех кошельков с ключами** (CSV/JSON) — в вебе
 кнопкой «Скачать кошельки», в боте `/export` или кнопкой меню.
 
+Локальный веб-пульт (FastAPI + WebSocket-лог, без Telegram): пункт `G`
+в меню `main.py` → http://127.0.0.1:8080 (`core/web_gui.py`).
+
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
 `TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY` и др.) — та же таблица env в
 [§4.1 DOCUMENTATION.md](DOCUMENTATION.md).
@@ -101,19 +123,26 @@ Unblock-File dist\harvest\harvest.exe
 ```
 auto.py        — CLI-автомат (4 фазы пайплайна)
 main.py        — интерактивное меню (Rich)
+config_*.yaml  — конфиги сетей (robinhood/flop/arc/vibevibe) + config.simple.yaml,
+                 config.example.yaml — шаблон
 core/          — ядро: config, network (мульти-RPC/EMA/1559-фоллбэк),
-                 pool/farmer/workpool, vibevibe (ABI), crypto, database
-portal/        — aiohttp-портал + API + Telegram-бот + Mini App
-tests/         — pytest-набор (31 файл)
+                 pool/farmer/workpool, vibevibe (ABI), crypto, database,
+                 web_gui (локальный FastAPI-пульт)
+portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
+tests/         — pytest-набор (43 файла; test_load_opt.py — нагрузка, opt-in)
+docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
+tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
-harvest.spec   — спецификация PyInstaller
+harvest.spec   — спецификация PyInstaller (сборка: build.bat)
+publish_dash.py — публикация state.json пульта в ветку gh-pages
 ```
 
 Архитектура каждого модуля — [§3 DOCUMENTATION.md](DOCUMENTATION.md).
 
 ## Безопасность
 
-Секреты шифруются (AES-256-GCM), краснение RPC-URL, license-hub гейт,
+Секреты шифруются (AES-256-GCM), запись seed-данных без master-ключа
+запрещена (fail-closed), краснение RPC-URL, license-hub гейт,
 portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](DOCUMENTATION.md).
 
 ## Тесты
@@ -122,9 +151,15 @@ portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](D
 python -m pytest tests -q
 ```
 
-732 теста, 31 файл — полный зелёный прогон (включая контуры `wait_for_receipt`:
+1158 тестов, 43 файла — полный зелёный прогон (включая контуры `wait_for_receipt`:
 EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
 `None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
+
+Нагрузка — opt-in, в обычном CI пропускается:
+
+```powershell
+$env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q
+```
 
 ## Развёртывание (VPS / Docker)
 

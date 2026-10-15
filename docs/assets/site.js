@@ -191,9 +191,11 @@ function renderLive(s){
   const nets=(s.networks&&s.networks.length)?s.networks:FALLBACK_NETS;
   $("#nets").innerHTML=nets.map(n=>netCard(n,n.slug===s.network)).join("");
   paintTicker(nets);
-  live.actions=(s.chart?.actions||[]).slice(-60);
-  live.errors=(s.chart?.errors||[]).slice(-60);
-  live.proc=(s.chart?.processed||[]).slice(-60);
+  const hist0=s.history||[];
+  const pick=(arr,fb)=>((arr&&arr.length)?arr.slice(-60):fb);
+  live.actions=pick(s.chart?.actions,hist0.map(c=>c.actions_ok||0).slice(-60));
+  live.errors=pick(s.chart?.errors,hist0.map(c=>c.errors||0).slice(-60));
+  live.proc=pick(s.chart?.processed,hist0.map(c=>c.wallets||0).slice(-60));
   drawLive();
   $("#tWallets").innerHTML=(s.top_wallets||[]).map((w,i)=>
     `<tr><td class="num" style="color:var(--muted)">${i+1}</td><td class="addr">${esc(w.address)}</td><td class="num">${fmt(w.actions)}</td></tr>`).join("")
