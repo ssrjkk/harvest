@@ -19,7 +19,7 @@ class _SpyHandler(logging.Handler):
 class TestBotCrashHandling(unittest.IsolatedAsyncioTestCase):
     """Сбой Telegram-бота должен логироваться крупно, а не умирать молча.
 
-    Тихий выход polling оставляет владельца без пульта при живом сервере:
+    Тихий выход polling оставляет владельца без живого поля при живом сервере:
     это первый симптом отказа, который режут из-за отсутствия callback'а.
     """
 

@@ -390,7 +390,7 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
             ],
             [
                 InlineKeyboardButton(text="[СТАТА]", callback_data="stats"),
-                InlineKeyboardButton(text="[ПУЛЬТ]", callback_data="status"),
+                InlineKeyboardButton(text="[ПОЛЕ]", callback_data="status"),
                 InlineKeyboardButton(text="[СПРАВКА]", callback_data="ref"),
             ],
             [
@@ -422,8 +422,8 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
 
 
 _HELP_TEXT = (
-    "<b>HARVEST PORTAL</b> — единый пульт фермы.\n\n"
-    "Пульт и диагностика:\n"
+    "<b>HARVEST PORTAL</b> — живое поле фермы.\n\n"
+    "Поле и диагностика:\n"
     "• /status — живой статус (успех %, средние, health)\n"
     "• /monitor — живой мониторинг с алертами\n"
     "• /doctor — диагностика, /history — история циклов\n"
@@ -572,8 +572,8 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             await message.answer("⛔ Нет доступа.")
             return
         await message.answer(
-            "Привет! Это <b>HARVEST PORTAL</b> — единый пульт фермы.\n"
-            "Фарм, пульт, конструкторы команд и конфигов — всё здесь.\n\n"
+            "Привет! Это <b>HARVEST PORTAL</b> — живое поле фермы.\n"
+            "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
             "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0",
             parse_mode=ParseMode.HTML,
             reply_markup=_menu(),

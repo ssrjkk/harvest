@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HARVEST v2.3.0 — EVM testnet farmer</title>
-<meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живой пульт, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
+<meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живое поле, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
@@ -22,7 +22,7 @@
     </a>
     <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
     <nav class="main" id="mainNav" aria-label="Sections">
-      <a href="#live" data-i18n="nav_live">Пульт</a>
+      <a href="#field" data-i18n="nav_live">Поле</a>
       <a href="#overview" data-i18n="nav_overview">Обзор</a>
       <a href="#networks" data-i18n="nav_networks">Сети</a>
       <a href="#quickstart" data-i18n="nav_start">Запуск</a>
@@ -52,7 +52,7 @@
   <div class="wrap">
     <div class="kicker"><span class="dot-live"></span><span data-i18n="kick">EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk</span></div>
     <h1 data-i18n="h1">Фермер тестнетов,<br><em>а не лотерея.</em></h1>
-    <p class="lede" data-i18n="lede">Массовая генерация кошельков, краны, асинхронный фарминг транзакций с «человеческими» профилями поведения, мульти-RPC с EMA-скорингом, веб-портал и Telegram-бот. Ниже — живой пульт фермы, полная документация и рабочая браузерная зона: конфиг, команды, кошельки, симулятор.</p>
+    <p class="lede" data-i18n="lede">Массовая генерация кошельков, краны, асинхронный фарминг транзакций с «человеческими» профилями поведения, мульти-RPC с EMA-скорингом, веб-портал и Telegram-бот. Ниже — живое поле фермы, полная документация и рабочая браузерная зона: конфиг, команды, кошельки, симулятор.</p>
     <div class="hero-grid">
       <div>
         <div class="stat-table">
@@ -67,11 +67,11 @@
           </table>
         </div>
         <div class="hero-cta">
-          <a class="btn accent" href="#live" data-i18n="cta_live">Живой пульт</a>
+          <a class="btn accent" href="#field" data-i18n="cta_live">Живое поле</a>
           <a class="btn" href="#app" data-i18n="cta_demo">Демо-зона</a>
           <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">Telegram-бот фермы</a>
         </div>
-        <p class="note" data-i18n="hero_note">Пульт читает state.json, который публикует ферма. Остальной сайт полностью статический: ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
+        <p class="note" data-i18n="hero_note">Поле читает state.json, который публикует ферма. Остальной сайт полностью статический: ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
       </div>
       <div>
         <div class="terminal" aria-label="Quick commands">
@@ -94,11 +94,12 @@ python auto.py --doctor</pre>
   </div>
 </div>
 
-<!-- LIVE -->
-<section class="block" id="live">
+<!-- FIELD (дубль якоря #live — для старых внешних ссылок) -->
+<span id="live" aria-hidden="true"></span>
+<section class="block" id="field">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Пульт — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
-    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Обновление раз в минуту. Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
+    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
+    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Обновление — по расписанию издателя (рекомендовано каждые 15–60 минут). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
     <div id="liveAlert"></div>
     <div class="termline" id="term">
       <span class="tstat"><i class="dot mut" id="dot"></i><b id="status">—</b></span>
@@ -212,7 +213,7 @@ python auto.py --doctor        # самодиагностика<button class="bt
         </table></div>
       </div>
       <div>
-        <div class="label" style="margin-bottom:6px" data-i18n="exe_h">Сборка exe · портал · тесты · публикация пульта</div>
+        <div class="label" style="margin-bottom:6px" data-i18n="exe_h">Сборка exe · портал · тесты · публикация поля</div>
 <pre class="code" id="codeExe">pip install -r requirements.txt
 pyinstaller harvest.spec --noconfirm --clean
 Unblock-File dist\harvest\harvest.exe
@@ -222,9 +223,9 @@ python -m portal                # aiohttp + API + бот
 
 python -m pytest tests -q       # 1158 tests · 43 files
 
-python publish_dash.py          # state.json → gh-pages → пульт сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
+python publish_dash.py          # state.json → gh-pages → поле сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
-        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · G — локальный веб-пульт (FastAPI, 127.0.0.1:8080) · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
+        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · G — локальная веб-панель (FastAPI, 127.0.0.1:8080) · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
       </div>
     </div>
   </div>
@@ -289,7 +290,7 @@ python publish_dash.py          # state.json → gh-pages → пульт сай�
           <li data-i18n="w_n1">Установите Python 3.12 и выполните: pip install -r requirements.txt</li>
           <li data-i18n="w_n2">Положите скачанный файл-конфиг рядом с auto.py</li>
           <li data-i18n="w_n3">Вставьте команду в PowerShell и нажмите Enter</li>
-          <li data-i18n="w_n4">Пульт сайта оживёт после: python publish_dash.py</li>
+          <li data-i18n="w_n4">Поле сайта оживёт после: python publish_dash.py</li>
         </ol>
       </div>
 
@@ -543,7 +544,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
           <tr><td class="mono">vibevibe</td><td data-i18n="a4">ABI, EIP-712 TradeIntent, gas default 300000</td></tr>
           <tr><td class="mono">database</td><td data-i18n="a5">wallets/actions_log/nonces/cycle_history, VACUUM, бэкапы</td></tr>
           <tr><td class="mono">doctor</td><td data-i18n="a6">Конфиг → ключ → БД → RPC → кран → лицензия, exit code</td></tr>
-          <tr><td class="mono">web_gui</td><td data-i18n="a7">Локальный FastAPI-пульт: кнопки, WebSocket-лог, топ и история (main.py → G, 127.0.0.1:8080)</td></tr>
+          <tr><td class="mono">web_gui</td><td data-i18n="a7">Локальная веб-панель: кнопки, WebSocket-лог, топ и история (main.py → G, 127.0.0.1:8080)</td></tr>
         </table></div>
         <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (917 строк: точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
       </div>
@@ -567,7 +568,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
         <tr><td class="mono">PORTAL_DB / PORTAL_FARM_CONFIG</td><td data-i18n="po6">Путь к БД / конфиг фермера</td></tr>
       </table></div>
       <div>
-        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза фермы, пульт и статистика, ссылки, экспорт CSV/JSON, команды /doctor, /history, /export — плюс конструкторы /cmd (готовая команда), /cfg (готовый YAML файлом), /check (проверка YAML валидатором) и /ref (справочник). Стиль сообщений — как этот сайт: секции HARVEST // X, маркеры [RUN]/[STOP]/[ok], без эмодзи. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
+        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза фермы, поле и статистика, ссылки, экспорт CSV/JSON, команды /doctor, /history, /export — плюс конструкторы /cmd (готовая команда), /cfg (готовый YAML файлом), /check (проверка YAML валидатором) и /ref (справочник). Стиль сообщений — как этот сайт: секции HARVEST // X, маркеры [RUN]/[STOP]/[ok], без эмодзи. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
         <div class="card" style="margin-top:12px"><div class="label">deploy/</div><h3>VPS / Docker</h3><p data-i18n="dp_p">Готовый кит: Dockerfile + compose, long-polling без публичного URL, Caddy для HTTPS позже, .env-шаблон, healthcheck, volume для данных.</p></div>
       </div>
     </div>
@@ -603,7 +604,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
         <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебный фарминг активности. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
         <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вашей вкладки. Сайт статический, отправки на сервер нет — закройте вкладку или нажмите «Очистить», и они исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
         <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime делает фоллбэк на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
-        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему пульт пустой?</span></summary><div class="a" data-i18n="a_q4">Пульт оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут, история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут, история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
       </div>
     </div>
   </div>

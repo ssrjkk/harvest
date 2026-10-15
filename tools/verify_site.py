@@ -87,6 +87,28 @@ def main() -> int:
     bare = re.findall(r"contract: 0x[0-9a-fA-F]+", js)
     check("no unquoted contract addresses", not bare, str(bare[:3]))
 
+    # Токены: сгенерированный CSS свеж (пересборка не должна ничего менять).
+    before = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()
+    r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_tokens.py")],
+                       capture_output=True, text=True)
+    after = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()
+    check("tokens.css fresh", r.returncode == 0 and before == after)
+
+    # Бургер, статусы, сетка: обязательные id/классы на месте.
+    for el in ["navToggle", "mainNav", "fieldGrid", "fieldEmpty", "fieldLegend",
+               "fieldMore", "lastCycle", "cellTip"]:
+        check(f"html has #{el}", f'id="{el}"' in html)
+    css = open(os.path.join(DOCS, "assets", "site.css"), encoding="utf-8").read()
+    for cls in [".field-grid", ".cell.c-o", ".cell-tip", ".dot.mut",
+                ".termline.live", ".is-loading", ".nav-toggle", "nav.main.open"]:
+        check(f"css has {cls}", cls in css)
+
+    # Переименование Поле: никаких «пульт» в пользовательском сайте и боте.
+    for rel in ["docs/index.html", "docs/assets/site.js",
+                "portal/bot_ops.py", "portal/bot_telegram.py"]:
+        txt = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        check(f"no пульт in {rel}", re.search(r"[Пп]ульт", txt) is None)
+
     return 1 if fails else 0
 
 

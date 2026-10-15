@@ -17,22 +17,22 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 ## Сайт
 
 Живой сайт проекта: **[ssrjkk.github.io/harvest](https://ssrjkk.github.io/harvest/)** —
-пульт фермы (метрики из `state.json`), полная документация и браузерная
+поле фермы (метрики из `state.json`), полная документация и браузерная
 демо-зона: режимы «Новичок» (мастер за 3 шага) и «Про» (конструктор конфига
 и команд, генератор кошельков, симулятор фарма, проверка конфига,
 справочник параметров). Темы Paper/Ink/Field, языки RU/EN.
 
 ## Screenshots
 
-| Хиро | Пульт |
+| Хиро | Поле |
 |---|---|
-| ![HARVEST — главная](docs/screenshots/shot-hero.png) | ![HARVEST — пульт фермы](docs/screenshots/shot-live.png) |
+| ![HARVEST — главная](docs/screenshots/shot-hero.png) | ![HARVEST — поле фермы](docs/screenshots/shot-live.png) |
 
 | Мастер новичка | Про-справочник |
 |---|---|
 | ![HARVEST — мастер за 3 шага](docs/screenshots/shot-wizard.png) | ![HARVEST — справочник параметров](docs/screenshots/shot-pro.png) |
 
-Метрики пульта публикует `python publish_dash.py` с машины фермы в
+Метрики поля публикует `python publish_dash.py` с машины фермы в
 изолированную ветку `gh-pages` (один amend-коммит, история `master`
 не растёт). Проверка сайта одной командой: `python tools/verify_site.py`,
 скриншоты: `python tools/shoot_site.py`.
@@ -105,7 +105,7 @@ health, количество кошельков), старт/стоп/пауза
 Бот также умеет `/cmd` (готовая команда), `/cfg` (готовый YAML файлом),
 `/check` (проверка YAML) и `/ref` (справочник) — в стиле сайта.
 
-Локальный веб-пульт (FastAPI + WebSocket-лог, без Telegram): пункт `G`
+Локальная веб-панель (FastAPI + WebSocket-лог, без Telegram): пункт `G`
 в меню `main.py` → http://127.0.0.1:8080 (`core/web_gui.py`).
 
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
@@ -129,14 +129,14 @@ config_*.yaml  — конфиги сетей (robinhood/flop/arc/vibevibe) + con
                  config.example.yaml — шаблон
 core/          — ядро: config, network (мульти-RPC/EMA/1559-фоллбэк),
                  pool/farmer/workpool, vibevibe (ABI), crypto, database,
-                 web_gui (локальный FastAPI-пульт)
+                 web_gui (локальная FastAPI-панель)
 portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
 tests/         — pytest-набор (43 файла; test_load_opt.py — нагрузка, opt-in)
 docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
 tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
 harvest.spec   — спецификация PyInstaller (сборка: build.bat)
-publish_dash.py — публикация state.json пульта в ветку gh-pages
+publish_dash.py — публикация state.json поля в ветку gh-pages
 ```
 
 Архитектура каждого модуля — [§3 DOCUMENTATION.md](DOCUMENTATION.md).

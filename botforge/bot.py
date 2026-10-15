@@ -1,4 +1,4 @@
-"""HARVEST BOT FORGE — автономный бот-пульт (24/7 в облаке, без ПК).
+"""HARVEST BOT FORGE — автономное поле фермы (24/7 в облаке, без ПК).
 
 Читает state.json с GitHub Pages (метрики фермы, которые публикует
 publish_dash.py с твоего ПК). Кошельки с ключами и сид-фразами читает
@@ -154,7 +154,7 @@ async def main():
             await m.answer("⛔ Нет доступа.", parse_mode=ParseMode.HTML)
             return
         await m.answer(
-            "Привет! Это <b>HARVEST</b> — пульт фермы.\n"
+            "Привет! Это <b>HARVEST</b> — поле фермы.\n"
             "• /status — текущее состояние + прогресс\n"
             "• /wallets — кошельки с ключами и сид-фразами\n"
             "• /help — справка\n\n"

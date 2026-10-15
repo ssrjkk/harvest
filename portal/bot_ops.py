@@ -1,7 +1,7 @@
 """HARVEST // OPS — логика Telegram-бота в дизайне сайта (без эмодзи).
 
 Чистые функции без зависимости от aiogram-хендлеров: форматирование
-пульта/статистики/истории/балансов/сетей, конструктор команды `/cmd`,
+поля/статистики/истории/балансов/сетей, конструктор команды `/cmd`,
 генератор конфига `/cfg` из shipped YAML, проверка вставленного YAML
 `/check` настоящим валидатором и сжатый справочник `/ref`.
 
@@ -59,7 +59,7 @@ def _state_mark(running: bool, paused: bool = False) -> str:
 
 
 def fmt_status(data: dict) -> str:
-    """Живой статус: успех %, средние, health — как блок «Пульт» на сайте."""
+    """Живой статус: успех %, средние, health — как блок «Поле» на сайте."""
     pool = data.get("pool", {}) or {}
     db = data.get("db", {}) or {}
     actions = int(pool.get("actions", 0) or 0)
@@ -70,7 +70,7 @@ def fmt_status(data: dict) -> str:
     per_cycle = f"{actions / cycles:.1f}" if cycles else "—"
     state = _state_mark(bool(data.get("running")), bool(pool.get("paused")))
     lines = [
-        "<b>HARVEST // ПУЛЬТ</b>",
+        "<b>HARVEST // ПОЛЕ</b>",
         f"состояние: <b>{state}</b> · health: <b>{float(data.get('health_factor', 0.0)):.2f}</b>",
         "<pre>"
         f"кошельки  {_esc(data.get('wallet_count', '-'))}\n"

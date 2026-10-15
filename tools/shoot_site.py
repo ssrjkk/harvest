@@ -1,7 +1,7 @@
 """Скриншоты сайта для README: python tools/shoot_site.py [--url URL] [--out docs/screenshots].
 
 Требуется: pip install playwright + python -m playwright install chromium --only-shell.
-Снимает 4 кадра (hero, пульт, мастер новичка, про-справочник) в дефолтной
+Снимает 4 кадра (hero, поле, мастер новичка, про-справочник) в дефолтной
 тёмной теме. Анимации заморожены (reduced-motion) для детерминированности.
 """
 
