@@ -18,6 +18,8 @@ dist/
 
 # Crash-рекавери state
 state.json
+# Исключение: публичный снапшот пульта (только агрегаты, без ключей)
+!docs/state.json
 
 # Рабочее дерево сайта (ветка gh-pages), создаёт publish_dash.py
 .dash-site/

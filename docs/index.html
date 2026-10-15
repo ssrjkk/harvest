@@ -1,111 +1,508 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="dark">
+<html lang="ru" data-theme="paper">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HARVEST — пульт фермы</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌾</text></svg>">
-<style>
-:root{
-  --bg:#0d1117;--panel:#161b22;--panel2:#1c2128;--border:#30363d;
-  --text:#e6edf3;--muted:#8b949e;--faint:#6e7681;
-  --green:#3fb950;--red:#f85149;--yellow:#d29922;--accent:#58a6ff;
-  --mono:"JetBrains Mono","Cascadia Mono","Consolas",ui-monospace,monospace;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
-a{color:var(--accent);text-decoration:none}
-a:hover{text-decoration:underline}
-.wrap{max-width:1100px;margin:0 auto;padding:20px 18px 60px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid var(--border);margin-bottom:16px}
-.brand{font-size:18px;font-weight:700;letter-spacing:.3px}
-.brand small{display:block;font-family:var(--mono);font-size:10px;color:var(--faint);letter-spacing:1.5px;font-weight:400}
-.mono{font-family:var(--mono)}
-.muted{color:var(--muted)}.faint{color:var(--faint)}
-.term{display:flex;align-items:center;gap:18px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:18px}
-.term b{color:var(--text);font-weight:600}
-.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
-.on{background:var(--green);box-shadow:0 0 8px var(--green)}
-.off{background:var(--red);box-shadow:0 0 8px var(--red)}
-.pau{background:var(--yellow);box-shadow:0 0 8px var(--yellow)}
-.cursor{display:inline-block;width:7px;height:14px;background:var(--accent);animation:blink 1.1s steps(1) infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
-.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:18px;margin-bottom:18px}
-.panel h2{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:14px;font-weight:600}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:18px}
-.kpi{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px 16px}
-.kpi .k{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
-.kpi .v{font-family:var(--mono);font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-1px}
-.kpi .sub{font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:3px}
-.nets{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
-.net{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;gap:8px}
-.net .name{font-weight:700;font-size:15px}
-.net .meta{font-family:var(--mono);font-size:11px;color:var(--faint)}
-.net .tag{font-size:13px}
-.net .desc{font-size:12.5px;color:var(--muted)}
-.net .rewards{font-family:var(--mono);font-size:11px;color:var(--accent)}
-.net ul{margin:0;padding-left:18px;font-size:12px;color:var(--muted)}
-.net .cur{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 8px;border-radius:999px;background:var(--panel2);border:1px solid var(--border);color:var(--muted)}
-table{width:100%;border-collapse:collapse;font-size:12.5px}
-th{text-align:left;font-family:var(--mono);color:var(--faint);font-weight:500;padding:8px 10px;border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.6px}
-td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text)}
-tr:hover td{background:var(--panel2)}
-.badge{display:inline-block;padding:1px 8px;border-radius:4px;font-family:var(--mono);font-size:10px}
-.ok{background:rgba(63,185,80,.15);color:var(--green)}
-.warn{background:rgba(210,153,34,.15);color:var(--yellow)}
-canvas{width:100%;height:150px;display:block}
-.charts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media(max-width:800px){.charts{grid-template-columns:1fr}}
-footer{margin-top:30px;text-align:center;font-family:var(--mono);font-size:11px;color:var(--faint)}
-.alert{background:rgba(210,153,34,.1);border:1px solid rgba(210,153,34,.4);color:var(--yellow);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px}
-</style>
+<title>HARVEST v2.3.0 — EVM testnet farmer</title>
+<meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живой пульт, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
-<div class="wrap">
-  <div class="top">
-    <div class="brand">HARVEST<small>FARM CONTROL</small></div>
-    <div class="mono faint" id="updated">—</div>
-  </div>
+<a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
 
-  <div class="term" id="term">
-    <span style="display:inline-flex;align-items:center;gap:7px"><span class="dot off" id="dot"></span><b id="status">—</b></span>
-    <span>сеть <b id="net">—</b></span>
-    <span>health <b id="health">—</b></span>
-    <span class="cursor"></span>
-  </div>
-
-  <div class="panel">
-    <h2>Состояние</h2>
-    <div class="kpis">
-      <div class="kpi"><div class="k">Действий</div><div class="v" id="cActions">0</div><div class="sub" id="sActions">—</div></div>
-      <div class="kpi"><div class="k">Обработано</div><div class="v" id="cProcessed">0</div><div class="sub" id="sProcessed">—</div></div>
-      <div class="kpi"><div class="k">Ошибок</div><div class="v" id="cErrors">0</div><div class="sub" id="sErrors">—</div></div>
-      <div class="kpi"><div class="k">Циклов</div><div class="v" id="cCycles">0</div><div class="sub" id="sCycles">—</div></div>
-      <div class="kpi"><div class="k">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
+<header class="topbar">
+  <div class="wrap topbar-in">
+    <a class="brand" href="#top" aria-label="HARVEST home">
+      <span class="brand-mark">H</span>
+      <span class="brand-name">HARVEST</span>
+      <span class="brand-ver">v2.3.0</span>
+      <span class="live" id="livePill"><i class="dot off" id="pillDot"></i><span id="pillTxt">…</span></span>
+    </a>
+    <nav class="main" aria-label="Sections">
+      <a href="#live" data-i18n="nav_live">Пульт</a>
+      <a href="#overview" data-i18n="nav_overview">Обзор</a>
+      <a href="#networks" data-i18n="nav_networks">Сети</a>
+      <a href="#quickstart" data-i18n="nav_start">Запуск</a>
+      <a href="#app" data-i18n="nav_app">Демо</a>
+      <a href="#arch" data-i18n="nav_arch">Устройство</a>
+      <a href="#portal" data-i18n="nav_portal">Портал</a>
+      <a href="#security" data-i18n="nav_sec">Безопасность</a>
+      <a href="#license" data-i18n="nav_license">Лицензия</a>
+    </nav>
+    <div class="top-actions">
+      <div class="seg" role="group" aria-label="Language">
+        <button id="langRu" class="on" type="button">RU</button><button id="langEn" type="button">EN</button>
+      </div>
+      <div class="seg" role="group" aria-label="Theme">
+        <button id="themeBtn" type="button" title="Paper / Ink / Field">◐</button>
+      </div>
+      <a class="btn small primary" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a>
     </div>
-    <div class="charts">
-      <div><canvas id="chartMain"></canvas></div>
-      <div><canvas id="chartProc"></canvas></div>
+  </div>
+</header>
+
+<main id="main">
+<!-- HERO -->
+<div class="hero" id="top">
+  <div class="wrap">
+    <div class="kicker"><span class="dot-live"></span><span data-i18n="kick">EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk</span></div>
+    <h1 data-i18n="h1">Фермер тестнетов,<br><em>а не лотерея.</em></h1>
+    <p class="lede" data-i18n="lede">Массовая генерация кошельков, краны, асинхронный фарминг транзакций с «человеческими» профилями поведения, мульти-RPC с EMA-скорингом, веб-портал и Telegram-бот. Ниже — живой пульт фермы, полная документация и рабочая браузерная зона: конфиг, команды, кошельки, симулятор.</p>
+    <div class="hero-grid">
+      <div>
+        <div class="stat-table">
+          <table>
+            <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
+            <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
+            <tr><td data-i18n="f_tests">Тесты</td><td class="num">732 · 31 файл · зелёный прогон</td></tr>
+            <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
+            <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
+            <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
+            <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num">exe через PyInstaller · Docker + compose</td></tr>
+          </table>
+        </div>
+        <div class="hero-cta">
+          <a class="btn accent" href="#live" data-i18n="cta_live">Живой пульт</a>
+          <a class="btn" href="#app" data-i18n="cta_demo">Демо-зона</a>
+          <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">Telegram-бот фермы</a>
+        </div>
+        <p class="note" data-i18n="hero_note">Пульт читает state.json, который публикует ферма. Остальной сайт полностью статический: квантование приватности — ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
+      </div>
+      <div>
+        <div class="terminal" aria-label="Quick commands">
+          <div class="terminal-bar"><i></i><i></i><i></i><span>powershell — harvest</span></div>
+<pre><span class="c-dim"># установка</span>
+pip install -r requirements.txt
+
+<span class="c-dim"># интерактивное меню: сеть → фарм</span>
+python main.py
+
+<span class="c-dim"># авто-режим: 50 кошельков, 5 циклов</span>
+python auto.py --wallets 50 --cycles 5
+
+<span class="c-dim"># самодиагностика</span>
+python auto.py --doctor</pre>
+        </div>
+        <p class="note" style="margin-top:10px"><span data-i18n="contacts">Автор:</span> <b>ssrjkk</b> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
+      </div>
     </div>
   </div>
-
-  <div class="panel">
-    <h2>Сети</h2>
-    <div class="nets" id="nets"></div>
-  </div>
-
-  <div class="panel">
-    <h2>Топ кошельков</h2>
-    <div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead><tbody id="tWallets"></tbody></table></div>
-  </div>
-
-  <div class="panel">
-    <h2>История циклов</h2>
-    <div style="overflow-x:auto"><table><thead><tr><th>#</th><th>Статус</th><th>Действий</th><th>Ошибок</th><th>Время,с</th><th>Кошельков</th></tr></thead><tbody id="tHistory"></tbody></table></div>
-  </div>
-
-  <footer>HARVEST · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · данные обновляет ферма каждые 5 минут</footer>
 </div>
-<script src="app.js"></script>
+
+<!-- LIVE -->
+<section class="block" id="live">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Пульт — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
+    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт deploy/publish_dash.py с машины фермы. Обновление раз в минуту. Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
+    <div id="liveAlert"></div>
+    <div class="termline" id="term">
+      <span class="tstat"><i class="dot off" id="dot"></i><b id="status">—</b></span>
+      <span><span data-i18n="t_net">сеть</span> <b id="net">—</b></span>
+      <span>health <b id="health">—</b></span>
+      <span class="cursor" aria-hidden="true"></span>
+    </div>
+    <div class="grid5">
+      <div class="kpi"><div class="k" data-i18n="k_act">Действий</div><div class="v" id="cActions">—</div><div class="sub" id="sActions">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_proc">Обработано</div><div class="v" id="cProcessed">—</div><div class="sub" id="sProcessed">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_err">Ошибок</div><div class="v" id="cErrors">—</div><div class="sub" id="sErrors">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_cyc">Циклов</div><div class="v" id="cCycles">—</div><div class="sub" id="sCycles">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_wal">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div><div class="label" data-i18n="ch1">Действия / ошибки по истории</div><canvas class="chart" id="chartMain" width="600" height="150"></canvas></div>
+      <div><div class="label" data-i18n="ch2">Обработано кошельков</div><canvas class="chart" id="chartProc" width="600" height="150"></canvas></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="tw">Топ кошельков</div>
+        <div class="table-wrap"><table class="t"><tr><th>#</th><th>address</th><th data-i18n="w_act">actions</th></tr><tbody id="tWallets"><tr><td colspan="3" class="note">—</td></tr></tbody></table></div>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="ch">История циклов</div>
+        <div class="table-wrap"><table class="t"><tr><th>#</th><th>status</th><th>actions</th><th>errors</th><th>s</th><th>wallets</th></tr><tbody id="tHistory"><tr><td colspan="6" class="note">—</td></tr></tbody></table></div>
+      </div>
+    </div>
+    <div class="label" style="margin:16px 0 8px" data-i18n="nets_h">Сети</div>
+    <div class="grid4" id="nets"></div>
+  </div>
+</section>
+
+<!-- 02 OVERVIEW -->
+<section class="block" id="overview">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">02</span><h2 data-i18n="s1_h">Что это и что умеет</h2></div>
+    <p class="sec-sub" data-i18n="s1_sub">Один проход пайплайна auto.py — четыре фазы: генерация/переиспользование кошельков → кран → фарм → экспорт. Поведение каждого кошелька детерминировано его адресом, поэтому перезапуск не «палит» ферму сменой паттерна.</p>
+    <div class="grid3">
+      <div class="card"><div class="label" data-i18n="c1_l">Кошельки</div><h3 data-i18n="c1_h">Генерация и хранение</h3><p data-i18n="c1_p">BIP-39 через eth_account, импорт/экспорт CSV/JSON, шифрование сид-фраз AES-256-GCM мастер-ключом, дедупликация, защита от CSV-инъекций, атомарная запись файлов.</p></div>
+      <div class="card"><div class="label" data-i18n="c2_l">Кран</div><h3 data-i18n="c2_h">Пополнение балансов</h3><p data-i18n="c2_p">Стратегии chainstack / direct / web, pre-flight валидация живых стратегий, retries, rate-limit, прокси-ротация, ensure_balance до target_balance. Нет живых стратегий — включается force_farm.</p></div>
+      <div class="card"><div class="label" data-i18n="c3_l">Фарминг</div><h3 data-i18n="c3_h">Асинхронный воркер-пул</h3><p data-i18n="c3_p">Один NetworkManager на сессию, чанки по chunk_size, crash recovery через state.json, динамическое число воркеров по здоровью RPC, адаптивные веса падающих действий.</p></div>
+      <div class="card"><div class="label" data-i18n="c4_l">Анти-сибил</div><h3 data-i18n="c4_h">Профили поведения</h3><p data-i18n="c4_p">Активность, паузы, суммы с джиттером, газ, время суток (днём −25%, ночью +150% к пропуску), «отдых» на N циклов, staggered-старт, burst-всплески ×1.6.</p></div>
+      <div class="card"><div class="label" data-i18n="c5_l">RPC</div><h3 data-i18n="c5_h">Живучий сетевой слой</h3><p data-i18n="c5_p">Мульти-RPC со списком, EMA-скоринг нод, ротация на лучшую, zombie-воскрешение первым успехом, circuit breaker, адаптивный token-bucket, wait_for_receipt с бюджетом и failover.</p></div>
+      <div class="card"><div class="label" data-i18n="c6_l">Портал</div><h3 data-i18n="c6_h">Веб + Telegram</h3><p data-i18n="c6_p">aiohttp-дашборд: метрики, старт/стоп/пауза, история циклов, топ кошельков, экспорт с ключами. Бот на long-polling: те же команды + /doctor, /history, /export. Сессии HMAC, default-deny.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 NETWORKS -->
+<section class="block" id="networks">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">03</span><h2 data-i18n="s2_h">Сети и конфиги</h2></div>
+    <p class="sec-sub" data-i18n="s2_sub">Выбор сети — стартовое меню main.py или флаг --config. Пресет «только трансферы» (config.simple.yaml) — для плотного фарма без контрактных адресов: отдельная БД farming_simple.db, gas_limit 21000.</p>
+    <div class="table-wrap"><table class="t">
+      <tr><th data-i18n="n_net">Сеть</th><th data-i18n="n_cfg">Конфиг</th><th>chain_id</th><th data-i18n="n_cur">Валюта</th><th data-i18n="n_act">Действия</th></tr>
+      <tr><td><b>Robinhood Chain</b></td><td class="mono">config_robinhood.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer · vibevibe_swap/mint</td></tr>
+      <tr><td><b>Flop Labs</b></td><td class="mono">config_flop.yaml</td><td class="num">99999 <span class="pill warn">stub</span></td><td>FLOP</td><td class="mono">flop_compute/validate/stake + transfer</td></tr>
+      <tr><td><b>Arc (Minara.Fun)</b></td><td class="mono">config_arc.yaml</td><td class="num">5042002</td><td>ARC</td><td class="mono">arc_launch/trade/add_liquidity + transfer</td></tr>
+      <tr><td><b>vibe/vibe</b> <span class="note">— launchpad на Robinhood, 5% сапплая тестнету</span></td><td class="mono">config_vibevibe.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer · claimRewards · stake · buy/sell*</td></tr>
+    </table></div>
+    <p class="note" data-i18n="vibe_note">* buy/sell на VibePassMarket требуют EIP-712 подпись TradeIntent ключом tradeSigner (vibevibe.signer_key / env FARMER_VIBE_SIGNER_KEY). Без ключа они пропускаются адаптивными весами; transfer / claimRewards / stake работают всегда. ABI — в abi/vibevibe.json, контракты верифицированы в Blockscout.</p>
+<pre class="code" id="codeVibe">python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
+python auto.py --config config.simple.yaml --wallets 200 --cycles 2<button class="btn small copy-btn" data-copy="codeVibe" type="button">copy</button></pre>
+  </div>
+</section>
+
+<!-- 04 QUICKSTART -->
+<section class="block" id="quickstart">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">04</span><h2 data-i18n="s3_h">Запуск за пять минут</h2></div>
+    <p class="sec-sub" data-i18n="s3_sub">Первичная цель проекта — Windows/PowerShell и exe-дистрибутив. Python 3.12.</p>
+    <div class="grid2">
+      <div>
+<pre class="code" id="codeStart">git clone https://github.com/ssrjkk/harvest.git
+cd harvest
+pip install -r requirements.txt
+python main.py                 # меню: сеть → фарм
+python auto.py --doctor        # самодиагностика<button class="btn small copy-btn" data-copy="codeStart" type="button">copy</button></pre>
+        <div class="label" style="margin:14px 0 6px" data-i18n="flags_h">Флаги auto.py</div>
+        <div class="table-wrap"><table class="t">
+          <tr><th>Flag</th><th data-i18n="flags_d">Эффект</th></tr>
+          <tr><td class="mono">--wallets N</td><td data-i18n="fl1">N кошельков (0 — из конфига; по умолчанию 50)</td></tr>
+          <tr><td class="mono">--cycles N</td><td data-i18n="fl2">N циклов (0 — бесконечно)</td></tr>
+          <tr><td class="mono">--config FILE</td><td data-i18n="fl3">Конфиг ($FARMER_CONFIG → config.yaml)</td></tr>
+          <tr><td class="mono">--skip-faucet / --skip-farm</td><td data-i18n="fl4">Пропустить кран / фарм</td></tr>
+          <tr><td class="mono">--schedule H</td><td data-i18n="fl5">Пайплайн каждые H часов (мин. 0.05)</td></tr>
+          <tr><td class="mono">--batch / --workers / --fast</td><td data-i18n="fl6">Пачка крана · воркеры · минимальные задержки</td></tr>
+          <tr><td class="mono">--dry-run / --export / --encrypt</td><td data-i18n="fl7">Холостой прогон · экспорт CSV+JSON · AES-шифрование</td></tr>
+          <tr><td class="mono">--history N / --doctor / --version</td><td data-i18n="fl8">История циклов · диагностика · версия</td></tr>
+        </table></div>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="exe_h">Сборка exe · портал · тесты · публикация пульта</div>
+<pre class="code" id="codeExe">pip install -r requirements.txt
+pyinstaller harvest.spec --noconfirm --clean
+Unblock-File dist\harvest\harvest.exe
+
+pip install -r requirements-portal.txt
+python -m portal                # aiohttp + API + бот
+
+python -m pytest tests -q       # 732 теста
+
+python deploy/publish_dash.py   # state.json → пульт сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
+        <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
+        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 05 APP -->
+<section class="block" id="app">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">05</span><h2 data-i18n="s4_h">Пользоваться здесь — демо-зона</h2></div>
+    <p class="sec-sub" data-i18n="s4_sub">Всё выполняется локально в вашем браузере, без сервера. Ончейн-исполнение остаётся за Python-фермером — здесь вы готовите конфиг и команды, проверяете логику на симуляторе и управляете кошельками для тестнетов.</p>
+    <div class="play">
+      <div class="play-tabs" role="tablist">
+        <button class="on" data-tab="t-config" type="button" data-i18n="tab1">1 · Конфиг</button>
+        <button data-tab="t-cmd" type="button" data-i18n="tab2">2 · Команда</button>
+        <button data-tab="t-wallet" type="button" data-i18n="tab3">3 · Кошельки</button>
+        <button data-tab="t-sim" type="button" data-i18n="tab4">4 · Симулятор</button>
+        <button data-tab="t-check" type="button" data-i18n="tab5">5 · Проверка</button>
+      </div>
+      <div class="play-body">
+
+        <div id="t-config">
+          <div class="row3">
+            <div class="field"><label data-i18n="f_net">Сеть</label>
+              <select id="cfgNet">
+                <option value="robinhood">Robinhood Chain · 46630 · ETH</option>
+                <option value="vibevibe" selected>vibe/vibe · 46630 · ETH</option>
+                <option value="flop">Flop Labs · 99999 (stub) · FLOP</option>
+                <option value="arc">Arc Minara · 5042002 · ARC</option>
+                <option value="simple">Simple transfers · 46630 · ETH</option>
+              </select></div>
+            <div class="field"><label data-i18n="f_rpc">RPC URL</label><input type="text" id="cfgRpc" value="https://rpc.testnet.chain.robinhood.com"></div>
+            <div class="field"><label data-i18n="f_db">БД / master key file</label><input type="text" id="cfgDb" value="farming_vibevibe.db"></div>
+          </div>
+          <div class="row3">
+            <div class="field"><label data-i18n="f_wallets">Кошельков</label><input type="number" id="cfgWallets" value="50" min="1" max="5000"></div>
+            <div class="field"><label data-i18n="f_workers">Воркеры</label><input type="number" id="cfgWorkers" value="20" min="1" max="1000"></div>
+            <div class="field"><label data-i18n="f_target">Кран: min → target</label><input type="text" id="cfgFaucet" value="0.005 → 0.05"></div>
+          </div>
+          <div class="row">
+            <div class="field"><label data-i18n="f_actions">Действий за цикл [min, max]</label><input type="text" id="cfgActions" value="[3, 8]"></div>
+            <div class="field"><label data-i18n="f_gas">gas_limit / min_gas_for_action</label><input type="text" id="cfgGas" value="100000 / 0.003"></div>
+          </div>
+          <div class="toolbar">
+            <button class="btn accent" id="cfgGen" type="button" data-i18n="gen_cfg">Сгенерировать YAML</button>
+            <button class="btn" id="cfgDl" type="button" data-i18n="dl">Скачать файл</button>
+            <button class="btn" id="cfgCopy" type="button">copy</button>
+          </div>
+<pre class="code" id="cfgOut"># нажмите «Сгенерировать YAML»</pre>
+        </div>
+
+        <div id="t-cmd" hidden>
+          <div class="grid2">
+            <div>
+              <div class="field"><label data-i18n="f_cfgfile">Конфиг-файл</label><input type="text" id="cmdCfg" value="config_vibevibe.yaml"></div>
+              <div class="row">
+                <div class="field"><label>--wallets</label><input type="number" id="cmdW" value="50" min="0" max="5000"></div>
+                <div class="field"><label>--cycles (0 = ∞)</label><input type="number" id="cmdC" value="5" min="0" max="100000"></div>
+              </div>
+              <label class="check"><input type="checkbox" id="cmdSkipF"> <span><code class="inline">--skip-faucet</code> — <span data-i18n="o_sf">без крана (force_farm)</span></span></label>
+              <label class="check"><input type="checkbox" id="cmdSkipFarm"> <span><code class="inline">--skip-farm</code> — <span data-i18n="o_sfarm">только кран+экспорт</span></span></label>
+              <label class="check"><input type="checkbox" id="cmdFast"> <span><code class="inline">--fast</code> — <span data-i18n="o_fast">минимальные задержки</span></span></label>
+              <label class="check"><input type="checkbox" id="cmdDry"> <span><code class="inline">--dry-run</code> — <span data-i18n="o_dry">холостой прогон</span></span></label>
+              <label class="check"><input type="checkbox" id="cmdEnc"> <span><code class="inline">--encrypt</code> — <span data-i18n="o_enc">зашифровать экспорт</span></span></label>
+              <div class="field" style="margin-top:12px"><label>--schedule (часов, пусто — разовый прогон)</label><input type="text" id="cmdSched" value="" placeholder="6"></div>
+            </div>
+            <div>
+              <div class="label" data-i18n="cmd_out">Готовая команда</div>
+<pre class="code" id="cmdOut">python auto.py --wallets 50 --cycles 5</pre>
+              <div class="toolbar">
+                <button class="btn accent" id="cmdBuild" type="button" data-i18n="build">Собрать</button>
+                <button class="btn" id="cmdCopy" type="button">copy</button>
+              </div>
+              <div class="label" data-i18n="cmd_sim">Пояснение фаз</div>
+              <p class="note" data-i18n="cmd_sim_p">Команда выполняет 4 фазы run_once: добор кошельков → pre-flight крана и request_batch → FarmerPool (чанки, воркеры, crash recovery) → export_csv/json. Повтор запуска продолжает state.json с места обрыва.</p>
+            </div>
+          </div>
+        </div>
+
+        <div id="t-wallet" hidden>
+          <p class="note" data-i18n="w_warn">Тестнеты only. Генерация — WebCrypto; адрес выводится из ключа локально (ethers через CDN, при офлайне — демо-режим с честной пометкой). Ничего не отправляется в сеть.</p>
+          <div class="row">
+            <div class="field"><label data-i18n="w_n">Сколько сгенерировать</label><input type="number" id="wCount" value="5" min="1" max="200"></div>
+            <div class="field"><label>Engine</label><input type="text" id="wEngine" value="…" readonly></div>
+          </div>
+          <div class="toolbar">
+            <button class="btn accent" id="wGen" type="button" data-i18n="w_gen">Сгенерировать</button>
+            <button class="btn" id="wCsv" type="button">CSV</button>
+            <button class="btn" id="wJson" type="button">JSON</button>
+            <button class="btn" id="wClear" type="button" data-i18n="w_clear">Очистить</button>
+            <span class="pill" id="wMode">…</span>
+          </div>
+          <div class="table-wrap"><table class="t"><tr><th>#</th><th>address</th><th>private_key</th><th data-i18n="w_act">actions</th></tr><tbody id="wRows"><tr><td colspan="4" class="note">—</td></tr></tbody></table></div>
+        </div>
+
+        <div id="t-sim" hidden>
+          <div class="row3">
+            <div class="field"><label data-i18n="s_w">Кошельков</label><input type="number" id="simW" value="50" min="1" max="2000"></div>
+            <div class="field"><label data-i18n="s_c">Циклов</label><input type="number" id="simC" value="5" min="1" max="200"></div>
+            <div class="field"><label data-i18n="s_skip">skip_cycle_probability</label><input type="number" id="simSkip" value="0.05" step="0.01" min="0" max="1"></div>
+          </div>
+          <div class="row3">
+            <div class="field"><label data-i18n="s_a">Действий [min,max]</label><input type="text" id="simA" value="3,8"></div>
+            <div class="field"><label data-i18n="s_fail">Шанс падения действия</label><input type="number" id="simFail" value="0.08" step="0.01" min="0" max="1"></div>
+            <div class="field"><label data-i18n="s_speed">Скорость лога</label><select id="simSpeed"><option value="1">×1</option><option value="8" selected>×8</option><option value="60">×60</option></select></div>
+          </div>
+          <div class="toolbar">
+            <button class="btn accent" id="simRun" type="button" data-i18n="sim_run">Запустить симуляцию</button>
+            <button class="btn" id="simStop" type="button" data-i18n="sim_stop">Стоп</button>
+            <button class="btn" id="simExp" type="button" data-i18n="sim_exp">Экспорт истории CSV</button>
+            <span class="pill ok" id="simStat">idle</span>
+          </div>
+          <div class="grid2">
+            <div><div class="label" data-i18n="sim_log">Живой лог (как operator terminal)</div><div class="log" id="simLog">harvest-sim ready.
+</div></div>
+            <div><div class="label" data-i18n="sim_chart">Действия по циклам</div><canvas class="chart" id="simChart" width="600" height="220"></canvas>
+              <dl class="kv" style="margin-top:10px"><dt>wallets_ok</dt><dd id="kW">—</dd><dt>actions_ok</dt><dd id="kA">—</dd><dt>errors</dt><dd id="kE">—</dd><dt>avg/cycle</dt><dd id="kAvg">—</dd></dl>
+            </div>
+          </div>
+          <div class="table-wrap" style="margin-top:12px"><table class="t"><tr><th>cycle</th><th>mode</th><th>wallets</th><th>wallets_ok</th><th>actions_ok</th><th>errors</th><th>duration_s</th></tr><tbody id="simHist"><tr><td colspan="7" class="note">—</td></tr></tbody></table></div>
+        </div>
+
+        <div id="t-check" hidden>
+          <div class="grid2">
+            <div>
+              <div class="label" data-i18n="v_h">Вставьте YAML конфига — проверка как в config_validate.py</div>
+              <div class="field"><textarea id="vText" spellcheck="false">network:
+  rpc_url: https://rpc.testnet.chain.robinhood.com
+  chain_id: 46630
+wallets:
+  count: 50
+faucet:
+  enabled: true
+  min_balance: 0.005
+  target_balance: 0.05
+actions:
+  - type: transfer
+    target: random_wallet
+farming:
+  actions_per_cycle: [3, 8]
+threading:
+  max_workers: 20
+database:
+  path: farming_state.db
+advanced:
+  gas_limit: 100000</textarea></div>
+              <div class="toolbar"><button class="btn accent" id="vRun" type="button" data-i18n="v_run">Проверить</button></div>
+              <div id="vOut"></div>
+            </div>
+            <div>
+              <div class="label" data-i18n="p_h">Калькулятор параллелизма (core/performance.py)</div>
+              <div class="row">
+                <div class="field"><label>CPU</label><input type="number" id="pCpu" value="8" min="1" max="256"></div>
+                <div class="field"><label data-i18n="p_w">max_workers (пусто — авто)</label><input type="text" id="pW" value="" placeholder="auto"></div>
+              </div>
+              <div class="toolbar"><button class="btn accent" id="pRun" type="button" data-i18n="p_run">Посчитать</button></div>
+              <dl class="kv"><dt>auto_max_workers</dt><dd id="p1">—</dd><dt>auto_rpc_threads</dt><dd id="p2">—</dd><dt>auto_gen_workers</dt><dd id="p3">—</dd><dt>chunk_size</dt><dd id="p4">—</dd></dl>
+              <p class="note" data-i18n="p_n">Формулы: workers=min(max(20,cpu·2),128) · rpc=min(max(8,cpu·4),128) · gen=min(8,max(2,cpu)) · chunk=max(workers·4,100). RPC-потолок 128, gen-потолок 8.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 06 ARCH -->
+<section class="block" id="arch">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">06</span><h2 data-i18n="s5_h">Как устроено</h2></div>
+    <p class="sec-sub" data-i18n="s5_sub">main.py (Rich-меню) и auto.py (CLI-автомат) делят одно ядро core/. Один NetworkManager на сессию — латентность, кэши и монитор общие. Запись в БД — через BatchWriter батчами, с cooldown после серии сбоев.</p>
+    <div class="grid2">
+      <div><div class="tree">main.py ── interactive menu (Rich live, p/q keys)
+auto.py ── CLI pipeline: gen → faucet → farm → export
+          │
+core/config.py ── load + env-override + validate
+core/license.py ── hub gate, PBKDF2, offline grace
+core/performance.py ── workers/rpc/gen/chunk
+          │
+core/pool.py FarmerPool ── state.json recovery
+   └── core/workpool.py ── health-scaled workers
+   └── core/farmer.py ── one-wallet cycle
+   └── core/actions.py ── weights × adaptive scores
+   └── core/behavior.py ── sha256(address) profiles
+          │
+core/network.py ── multi-RPC, EMA, breaker, TTL
+core/faucet.py ── chainstack/direct, batch+semaphore
+core/database.py ── SQLite WAL / PostgreSQL DSN
+core/crypto.py ── AES-256-GCM seeds
+core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
+      <div>
+        <div class="table-wrap"><table class="t">
+          <tr><th data-i18n="a_mod">Модуль</th><th data-i18n="a_do">Отвечает за</th></tr>
+          <tr><td class="mono">network</td><td data-i18n="a1">Пинг 30с, проба 2500мс, ретраи ×3, failover, receipt-бюджет 30с</td></tr>
+          <tr><td class="mono">workpool</td><td data-i18n="a2">Очередь приоритетов, retire без cancel, respawn с backoff</td></tr>
+          <tr><td class="mono">batchwriter</td><td data-i18n="a3">flush 2с/500 строк, dropped_count, cooldown 30с</td></tr>
+          <tr><td class="mono">vibevibe</td><td data-i18n="a4">ABI, EIP-712 TradeIntent, gas default 300000</td></tr>
+          <tr><td class="mono">database</td><td data-i18n="a5">wallets/actions_log/nonces/cycle_history, VACUUM, бэкапы</td></tr>
+          <tr><td class="mono">doctor</td><td data-i18n="a6">Конфиг → ключ → БД → RPC → кран → лицензия, exit code</td></tr>
+        </table></div>
+        <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (917 строк: точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 07 PORTAL -->
+<section class="block" id="portal">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">07</span><h2 data-i18n="s6_h">Портал и Telegram</h2></div>
+    <p class="sec-sub" data-i18n="s6_sub">python -m portal поднимает aiohttp (веб + API) и, при токене, бота. Секреты — только через env. Fail-closed: bind не на loopback без способа входа — отказ запуска.</p>
+    <div class="grid2">
+      <div class="table-wrap"><table class="t">
+        <tr><th>env</th><th data-i18n="po_d">Назначение</th></tr>
+        <tr><td class="mono">PORTAL_SECRET</td><td data-i18n="po1">Подпись сессий, мин. 16 символов</td></tr>
+        <tr><td class="mono">TELEGRAM_BOT_TOKEN</td><td data-i18n="po2">Токен от BotFather</td></tr>
+        <tr><td class="mono">TELEGRAM_ALLOW_IDS</td><td data-i18n="po3">Default-deny список user_id</td></tr>
+        <tr><td class="mono">FARMER_MASTER_KEY</td><td data-i18n="po4">Мастер-ключ БД / PIN веб-входа</td></tr>
+        <tr><td class="mono">GOOGLE_CLIENT_ID/SECRET</td><td>Google OAuth 2.0 + PKCE</td></tr>
+        <tr><td class="mono">PORTAL_DB / PORTAL_FARM_CONFIG</td><td data-i18n="po6">Путь к БД / конфиг фермера</td></tr>
+      </table></div>
+      <div>
+        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза фермы, статистика со счётчиком кошельков, ссылки, экспорт CSV/JSON, команды /doctor, /history, /export. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
+        <div class="card" style="margin-top:12px"><div class="label">deploy/</div><h3>VPS / Docker</h3><p data-i18n="dp_p">Готовый кит: Dockerfile + compose, long-polling без публичного URL, Caddy для HTTPS позже, .env-шаблон, healthcheck, volume для данных.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 08 SECURITY -->
+<section class="block" id="security">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">08</span><h2 data-i18n="s7_h">Безопасность — по умолчанию закрыто</h2></div>
+    <div class="grid3">
+      <div class="card"><h3 data-i18n="b1_h">Шифрование</h3><p data-i18n="b1_p">Сиды — AES-256-GCM (nonce 12B, AAD wallet-seed). Файлы экспорта — AES-256-CBC v2: PBKDF2-SHA256 100k, раздельные ключи шифрования и MAC, HMAC-проверка до записи.</p></div>
+      <div class="card"><h3>Redaction</h3><p data-i18n="b2_p">RPC-URL чистятся везде: credentials до @ и query-токены стираются. https://user:pass@host/?api_key=X → https://host/. Логи, история циклов, CLI-вывод.</p></div>
+      <div class="card"><h3>Fail-closed</h3><p data-i18n="b3_p">Нет мастер-ключа при шифрованных сидах — отказ. Портал default-deny, single-instance лок на БД, ограничение прав файлов, лимиты логина 5/10мин per-IP.</p></div>
+    </div>
+    <p class="note" data-i18n="sec_rep">Нашли уязвимость — не открывайте публичный issue. Используйте private vulnerability reporting на GitHub или напишите мейнтейнеру. Поддерживается только последний релиз; ответ в течение 48 часов.</p>
+  </div>
+</section>
+
+<!-- 09 TESTS / FAQ -->
+<section class="block" id="tests">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
+    <div class="grid2">
+      <div>
+<pre class="code">python -m pytest tests -q   # 732 теста, 31 файл</pre>
+        <ul class="tight note">
+          <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
+          <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>
+        </ul>
+      </div>
+      <div>
+        <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебный фарминг активности. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
+        <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вашей вкладки. Сайт статический, отправки на сервер нет — закройте вкладку или нажмите «Очистить», и они исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
+        <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime делает фоллбэк на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему пульт пустой?</span></summary><div class="a" data-i18n="a_q4">Пульт оживает после первой публикации: запустите python deploy/publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут). До этого вся остальная информация и инструменты уже работают.</div></details>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 LICENSE -->
+<section class="block" id="license">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">10</span><h2 data-i18n="s9_h">Лицензия MIT</h2></div>
+    <p class="sec-sub" data-i18n="s9_sub">Свободно используйте, копируйте, изменяйте, публикуйте и продавайте — с сохранением уведомления об авторстве. Без гарантий.</p>
+    <div class="license-box">MIT License
+
+Copyright (c) 2026 ssrjkk (https://t.me/ssrjkk_bot)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</div>
+    <div class="toolbar"><a class="btn small" href="https://github.com/ssrjkk/harvest/blob/master/LICENSE" target="_blank" rel="noopener">LICENSE file</a></div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap cols">
+    <div><b class="mono">HARVEST v2.3.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+  </div>
+</footer>
+<div class="toast" id="toast"></div>
+<script src="assets/site.js" defer></script>
 </body>
 </html>
