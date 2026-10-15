@@ -12,6 +12,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from portal import bot_ops as ops
 
 
+class TestParseHelpers(unittest.TestCase):
+    def test_parse_count(self):
+        self.assertEqual(ops.parse_count("50"), 50)
+        for bad in ["", "xx", "0", "-1", "5001", "1.5", None]:
+            self.assertIsNone(ops.parse_count(bad))  # type: ignore[arg-type]
+
+    def test_parse_cycles(self):
+        self.assertEqual(ops.parse_cycles("0"), 0)
+        self.assertEqual(ops.parse_cycles("100000"), 100000)
+        for bad in ["", "xx", "-1", "100001", None]:
+            self.assertIsNone(ops.parse_cycles(bad))  # type: ignore[arg-type]
+
+    def test_known_slug(self):
+        self.assertTrue(ops.known_slug("vibe"))
+        self.assertTrue(ops.known_slug("ARC"))
+        self.assertFalse(ops.known_slug("nope"))
+        self.assertFalse(ops.known_slug(""))
+
+
 class TestBuildCommand(unittest.TestCase):
     def test_defaults(self):
         self.assertEqual(

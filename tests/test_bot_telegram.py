@@ -8,12 +8,21 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
-    from portal.bot_telegram import _fmt_networks, _fmt_stats, _networks_kb, build_dispatcher
+    from portal.bot_telegram import CfgWizard, CmdWizard, _fmt_networks, _fmt_stats, _networks_kb, build_dispatcher
     from portal.config import PortalConfig
 
     HAS_BOT = True
 except Exception:  # noqa: BLE001
     HAS_BOT = False
+
+
+_GOOD_YAML = (
+    "network:\n  rpc_url: https://rpc.testnet.chain.robinhood.com\n  chain_id: 46630\n"
+    "wallets:\n  count: 5\nfaucet:\n  enabled: true\n  min_balance: 0.005\n"
+    "  target_balance: 0.05\nactions:\n  - type: transfer\n    target: random_wallet\n"
+    "farming:\n  actions_per_cycle: [3, 8]\nthreading:\n  max_workers: 20\n"
+    "database:\n  path: farming_state.db\nadvanced:\n  gas_limit: 100000\n"
+)
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
@@ -277,15 +286,8 @@ class TestOpsCommands(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[err]", msg3.answers[0][0][0])
 
     async def test_check_good_and_bad(self):
-        good = (
-            "network:\n  rpc_url: https://rpc.testnet.chain.robinhood.com\n  chain_id: 46630\n"
-            "wallets:\n  count: 5\nfaucet:\n  enabled: true\n  min_balance: 0.005\n"
-            "  target_balance: 0.05\nactions:\n  - type: transfer\n    target: random_wallet\n"
-            "farming:\n  actions_per_cycle: [3, 8]\nthreading:\n  max_workers: 20\n"
-            "database:\n  path: farming_state.db\nadvanced:\n  gas_limit: 100000\n"
-        )
         dp = build_dispatcher(_cfg(), _NetDaemon())
-        msg = _M(uid=123, text="/check\n" + good)
+        msg = _M(uid=123, text="/check\n" + _GOOD_YAML)
         await dp.message.handlers[1].callback(msg)
         self.assertIn("[ok]", msg.answers[0][0][0])
         msg2 = _M(uid=123, text="/check\nnetwork:\n  chain_id: 0\n")
@@ -304,13 +306,126 @@ class TestOpsCommands(unittest.IsolatedAsyncioTestCase):
         await dp.message.handlers[1].callback(msg)
         self.assertIn("СПРАВКА", msg.answers[0][0][0])
         for data, needle in [
-            ("cmd:usage", "/cmd"), ("cfg:usage", "/cfg"), ("ref", "СПРАВКА"),
+            ("cmd:run", "/cmd"), ("cfg:run", "/cfg"), ("ref", "СПРАВКА"),
         ]:
             call = _C(uid=123, data=data)
             await dp.callback_query.handlers[0].callback(call)
             got = (call.message.answers + call.message.edits)
             self.assertTrue(got, data)
             self.assertIn(needle, got[0][0][0])
+
+
+class _FakeState:
+    """Подмена FSMContext для тестов мастера (без storage)."""
+
+    def __init__(self):
+        self._state = None
+        self._data = {}
+
+    async def get_state(self):
+        return self._state
+
+    async def set_state(self, s):
+        self._state = getattr(s, "state", s)
+
+    async def update_data(self, **kw):
+        self._data.update(kw)
+
+    async def get_data(self):
+        return dict(self._data)
+
+    async def clear(self):
+        self._state = None
+        self._data = {}
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestOpsWizardFlow(unittest.IsolatedAsyncioTestCase):
+    def _call(self, uid=123, data="", with_user=True):
+        call = _C(uid=uid, data=data)
+        if with_user:
+            call.message.from_user = _U(uid)
+        call.message.bot.send_document = mock.AsyncMock()
+        return call
+
+    async def test_cmd_wizard_full(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _FakeState()
+        call = self._call(data="cmd:run")
+        await cb(call, st)
+        self.assertIn("Шаг 1/4", call.message.answers[0][0][0])
+        call = self._call(data="wiz:cmd:net:arc")
+        await cb(call, st)
+        self.assertEqual(await st.get_state(), CmdWizard.wallets.state)
+        msg = _M(uid=123, text="50")
+        # свободный ввод идёт через on_help (handlers[1]) со state
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertEqual(await st.get_state(), CmdWizard.cycles.state)
+        msg = _M(uid=123, text="5")
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertEqual(await st.get_state(), CmdWizard.faucet.state)
+        call = self._call(data="wiz:cmd:f:1")
+        await cb(call, st)
+        texts = [a[0][0] for a in call.message.answers]
+        self.assertTrue(any("config_arc.yaml" in t for t in texts))
+        self.assertTrue(call.message.bot.send_document.await_count)
+        kw = call.message.bot.send_document.await_args.kwargs
+        self.assertEqual(kw["document"].filename, "config_arc.yaml")
+        self.assertIsNone(await st.get_state())
+
+    async def test_cmd_wizard_bad_number_and_cancel(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _FakeState()
+        await cb(self._call(data="cmd:run"), st)
+        await cb(self._call(data="wiz:cmd:net:vibe"), st)
+        msg = _M(uid=123, text="много")
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertIn("[err]", msg.answers[0][0][0])
+        call = self._call(data="wiz:cancel")
+        await cb(call, st)
+        self.assertIsNone(await st.get_state())
+        self.assertIn("ОТМЕНА", call.message.answers[0][0][0])
+
+    async def test_cfg_wizard_full(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _FakeState()
+        await cb(self._call(data="cfg:run"), st)
+        await cb(self._call(data="wiz:cfg:net:flop"), st)
+        self.assertEqual(await st.get_state(), CfgWizard.wallets.state)
+        msg = _M(uid=123, text="7")
+        msg.bot.send_document = mock.AsyncMock()
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertIsNone(await st.get_state())
+        self.assertTrue(msg.bot.send_document.await_count)
+        kw = msg.bot.send_document.await_args.kwargs
+        self.assertEqual(kw["document"].filename, "config_flop.yaml")
+        self.assertIn("count: 7", kw["document"].data.decode("utf-8"))
+
+    async def test_document_yaml_checked(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="")
+        msg.document = mock.Mock()
+        msg.document.file_name = "farm.yaml"
+        msg.document.file_size = 100
+
+        async def _dl(doc, buf):
+            buf.write(b"network:\n  chain_id: 0\n")
+
+        msg.bot.download = mock.AsyncMock(side_effect=_dl)
+        await dp.message.handlers[2].callback(msg)
+        self.assertIn("[err]", msg.answers[0][0][0])
+
+    async def test_document_wrong_ext(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="")
+        msg.document = mock.Mock()
+        msg.document.file_name = "photo.png"
+        msg.document.file_size = 100
+        await dp.message.handlers[2].callback(msg)
+        self.assertIn("[err]", msg.answers[0][0][0])
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):

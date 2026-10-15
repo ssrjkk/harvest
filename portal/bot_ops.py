@@ -31,6 +31,13 @@ _CHECK_MAX_BYTES = 16 * 1024
 _CMD_NETS: dict[str, str] = {n["slug"]: n["config"] for n in NETWORKS}
 _CMD_NETS["simple"] = "config.simple.yaml"
 
+
+def known_slug(slug: str) -> bool:
+    """Известный слаг сети (с учётом алиаса vibe)."""
+    s = (slug or "").strip().lower()
+    return s == "vibe" or s in _CMD_NETS
+
+
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -237,6 +244,26 @@ def _fmt_wallets_page(wallets: list[dict], page: int = 1, per_page: int = 4) -> 
     lines.append("Нажми на спойлер, чтобы открыть. Секреты видны только вам.")
     lines.append(_FOOT)
     return "\n".join(lines), pages
+
+
+# ---------------- общие парсеры мастера ----------------
+
+def parse_count(text: str) -> int | None:
+    """Число кошельков 1..5000 из свободного ввода. None = переспросить."""
+    try:
+        n = int((text or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return n if 1 <= n <= 5000 else None
+
+
+def parse_cycles(text: str) -> int | None:
+    """Число циклов 0..100000 (0 — бесконечно). None = переспросить."""
+    try:
+        n = int((text or "").strip())
+    except (TypeError, ValueError):
+        return None
+    return n if 0 <= n <= 100000 else None
 
 
 # ---------------- /cmd ----------------

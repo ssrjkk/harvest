@@ -243,6 +243,7 @@ class TestBotCommandsMonitor(unittest.IsolatedAsyncioTestCase):
         msg = mock.Mock()
         msg.from_user.id = 123
         msg.text = text
+        msg.document = None
         msg.answer = mock.AsyncMock()
         msg.bot = mock.Mock()
         msg.bot.send_message = mock.AsyncMock()

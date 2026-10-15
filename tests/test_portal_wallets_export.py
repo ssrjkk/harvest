@@ -332,6 +332,7 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         msg = mock.Mock()
         msg.from_user.id = 123
         msg.text = "/export"
+        msg.document = None
         msg.bot = mock.Mock()
         msg.answer = mock.AsyncMock()
         with mock.patch("portal.bot_telegram.send_wallets_file", new=mock.AsyncMock()) as swf:
@@ -344,6 +345,7 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         msg = mock.Mock()
         msg.from_user.id = 123
         msg.text = "/export json"
+        msg.document = None
         msg.bot = mock.Mock()
         msg.answer = mock.AsyncMock()
         with mock.patch("portal.bot_telegram.send_wallets_file", new=mock.AsyncMock()) as swf:
@@ -355,6 +357,7 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         msg = mock.Mock()
         msg.from_user.id = 123
         msg.text = "/export"
+        msg.document = None
         msg.bot = mock.Mock()
         msg.answer = mock.AsyncMock()
         with mock.patch(

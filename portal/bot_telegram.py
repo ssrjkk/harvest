@@ -22,10 +22,13 @@ import asyncio
 import html
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
     CallbackQuery,
     InlineKeyboardButton,
@@ -37,6 +40,7 @@ from aiogram.types import (
 
 from portal import bot_ops as _bot_ops
 from portal.bot_ops import (
+    _FOOT,
     _fmt_wallets_page,
     _progress_bar,
     check_config_text as _check_config_text,
@@ -47,6 +51,8 @@ from portal.bot_ops import (
     fmt_stats as _fmt_stats,
     fmt_status as _fmt_status,
     parse_cmd_args as _bot_ops_parse_cmd,
+    parse_count as _parse_count,
+    parse_cycles as _parse_cycles,
 )
 from portal.config import PortalConfig, load_links
 from portal.farm import FarmDaemon
@@ -57,8 +63,164 @@ __all__ = [
     "_fmt_balances", "_fmt_doctor", "_fmt_history", "_fmt_networks",
     "_fmt_stats", "_fmt_status", "_fmt_wallets_page", "_progress_bar",
     "build_dispatcher", "run_bot", "notify_owner", "send_wallets_file",
-    "LiveMonitor",
+    "LiveMonitor", "CmdWizard", "CfgWizard",
 ]
+
+
+class CmdWizard(StatesGroup):
+    """Мастер команды: сеть → кошельки → циклы → кран."""
+
+    net = State()
+    wallets = State()
+    cycles = State()
+    faucet = State()
+
+
+class CfgWizard(StatesGroup):
+    """Мастер конфига: сеть → кошельки (YAML уходит файлом)."""
+
+    net = State()
+    wallets = State()
+
+
+_WIZ_NETS = (("vibe", "VIBE/VIBE"), ("robinhood", "ROBINHOOD"), ("flop", "FLOP"),
+             ("arc", "ARC"), ("simple", "SIMPLE"))
+
+
+def _wiz_cancel_kb() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="[ОТМЕНА]", callback_data="wiz:cancel")]]
+    )
+
+
+def _wiz_nets_kb(prefix: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=f"[{label}]", callback_data=f"{prefix}:net:{slug}")
+         for slug, label in _WIZ_NETS[:2]],
+        [InlineKeyboardButton(text=f"[{label}]", callback_data=f"{prefix}:net:{slug}")
+         for slug, label in _WIZ_NETS[2:4]],
+        [InlineKeyboardButton(text=f"[{_WIZ_NETS[4][1]}]", callback_data=f"{prefix}:net:{_WIZ_NETS[4][0]}")],
+        [InlineKeyboardButton(text="[ОТМЕНА]", callback_data="wiz:cancel")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _wiz_num_kb(prefix: str, values: list[str]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"[{v}]", callback_data=f"{prefix}:{v}") for v in values]]
+    rows.append([InlineKeyboardButton(text="[ОТМЕНА]", callback_data="wiz:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _wiz_start_cmd(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(CmdWizard.net)
+    await message.answer(
+        "<b>HARVEST // МАСТЕР</b>\nШаг 1/4 — сеть:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=_wiz_nets_kb("wiz:cmd"),
+    )
+
+
+async def _wiz_start_cfg(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await state.set_state(CfgWizard.net)
+    await message.answer(
+        "<b>HARVEST // МАСТЕР</b>\nШаг 1/2 — сеть для YAML:",
+        parse_mode=ParseMode.HTML,
+        reply_markup=_wiz_nets_kb("wiz:cfg"),
+    )
+
+
+async def _wiz_finish_cmd(message: Message, state: FSMContext, skip_faucet: bool) -> None:
+    data = await state.get_data()
+    try:
+        cmd = _bot_ops.build_command(data["net"], data["wallets"], data["cycles"], skip_faucet)
+        filename, content = _bot_ops.build_config_yaml(data["net"], data["wallets"])
+    except ValueError as e:
+        await state.clear()
+        await message.answer(f"[err] {_esc(e)}")
+        return
+    await state.clear()
+    await message.answer(
+        f"<b>HARVEST // ГОТОВО</b>\n<code>{_esc(cmd)}</code>\n{_FOOT}",
+        parse_mode=ParseMode.HTML,
+    )
+    from aiogram.types import BufferedInputFile
+
+    await message.bot.send_document(
+        chat_id=message.from_user.id,
+        document=BufferedInputFile(content.encode("utf-8"), filename=filename),
+        caption="Конфиг к команде выше.",
+    )
+
+
+async def _wiz_finish_cfg(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    try:
+        filename, content = _bot_ops.build_config_yaml(data["net"], data["wallets"])
+        cmd = _bot_ops.build_command(data["net"], data["wallets"], 5)
+    except ValueError as e:
+        await state.clear()
+        await message.answer(f"[err] {_esc(e)}")
+        return
+    await state.clear()
+    from aiogram.types import BufferedInputFile
+
+    await message.bot.send_document(
+        chat_id=message.from_user.id,
+        document=BufferedInputFile(content.encode("utf-8"), filename=filename),
+        caption=f"<code>{_esc(cmd)}</code>",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def _wiz_handle_text(message: Message, state: FSMContext) -> bool:
+    """Свободный ввод мастера (числа) или /cancel. True = consumed."""
+    try:
+        cur = await state.get_state()
+    except Exception:  # noqa: BLE001
+        return False
+    text = (message.text or "").strip()
+    if text == "/cancel":
+        await state.clear()
+        await message.answer("[ОТМЕНА] Мастер закрыт.")
+        return True
+    if cur == CmdWizard.wallets.state:
+        n = _parse_count(text)
+        if n is None:
+            await message.answer("[err] Нужно число 1..5000. Или /cancel.")
+            return True
+        await state.update_data(wallets=n)
+        await state.set_state(CmdWizard.cycles)
+        await message.answer(
+            "Шаг 3/4 — кругов (0 — бесконечно):",
+            reply_markup=_wiz_num_kb("wiz:cmd:c", ["1", "2", "5", "0"]),
+        )
+        return True
+    if cur == CmdWizard.cycles:
+        n = _parse_cycles(text)
+        if n is None:
+            await message.answer("[err] Нужно число 0..100000. Или /cancel.")
+            return True
+        await state.update_data(cycles=n)
+        await state.set_state(CmdWizard.faucet)
+        await message.answer(
+            "Шаг 4/4 — кран:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="[С КРАНОМ]", callback_data="wiz:cmd:f:1"),
+                InlineKeyboardButton(text="[БЕЗ КРАНА]", callback_data="wiz:cmd:f:0"),
+            ], [InlineKeyboardButton(text="[ОТМЕНА]", callback_data="wiz:cancel")]]),
+        )
+        return True
+    if cur == CfgWizard.wallets:
+        n = _parse_count(text)
+        if n is None:
+            await message.answer("[err] Нужно число 1..5000. Или /cancel.")
+            return True
+        await state.update_data(wallets=n)
+        await _wiz_finish_cfg(message, state)
+        return True
+    return False
 
 logger = logging.getLogger(__name__)
 
@@ -241,8 +403,8 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
             ],
             [
                 InlineKeyboardButton(text="[КОШЕЛЬКИ]", callback_data="wallets:page:1"),
-                InlineKeyboardButton(text="[CMD]", callback_data="cmd:usage"),
-                InlineKeyboardButton(text="[CFG]", callback_data="cfg:usage"),
+                InlineKeyboardButton(text="[CMD]", callback_data="cmd:run"),
+                InlineKeyboardButton(text="[CFG]", callback_data="cfg:run"),
             ],
             [
                 InlineKeyboardButton(
@@ -271,8 +433,12 @@ _HELP_TEXT = (
     "• /network — переключение тестнет-сети\n\n"
     "Конструкторы (как вкладки Про на сайте):\n"
     "• /cmd сеть [кошельки] [циклы] — готовая команда\n"
+    "• Кнопка [CMD] — мастер: сеть → кошельки → циклы → кран\n"
     "• /cfg сеть [кошельки] — готовый YAML файлом\n"
+    "• Кнопка [CFG] — мастер: сеть → кошельки\n"
     "• /check + YAML следующими строками — проверка валидатором\n"
+    "• YAML можно прислать файлом (.yaml) — тоже проверю\n"
+    "• /cancel — закрыть мастер\n"
     "• /ref — сжатый справочник параметров\n\n"
     "Кошельки:\n"
     "• /wallets — список (ключи под спойлером)\n"
@@ -382,7 +548,7 @@ async def _answer_cfg(message: Message, text: str) -> None:
 
 
 def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor | None = None) -> Dispatcher:
-    dp = Dispatcher()
+    dp = Dispatcher(storage=MemoryStorage())
     # Монитор можно передать снаружи (для тестов/перезапуска). Если нет — создаём
     # лениво при первом /monitor: без токена бота у него не будет, но dispatcher
     # соберётся всегда.
@@ -414,11 +580,23 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         )
 
     @dp.message()
-    async def on_help(message: Message) -> None:
+    async def on_help(message: Message, state: FSMContext | None = None) -> None:
         # Default-deny для ЛЮБЫХ сообщений, включая неизвестные команды:
         # посторонним бот не должен даже подтверждать, что он существует.
         if not _allowed(cfg, message.from_user.id if message.from_user else None):
             return
+        # YAML-файл обрабатывает отдельный хендлер ниже (регистрирован позже,
+        # сюда попадаем первыми — пропускаем дальше).
+        if getattr(message, "document", None):
+            return
+        # Свободный ввод активного мастера (числа) — до разбора команд.
+        if state is not None:
+            try:
+                if await _wiz_handle_text(message, state):
+                    return
+            except Exception:  # noqa: BLE001
+                logger.warning("мастер: сбой обработки ввода", exc_info=True)
+                return
         text = (message.text or "").strip()
         if text == "/help":
             await message.answer(_HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=_menu())
@@ -472,8 +650,35 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         elif text.startswith("/"):
             await message.answer("Неизвестная команда. /help — список возможностей.")
 
+    @dp.message(F.document)
+    async def on_document(message: Message) -> None:
+        # YAML-файл на проверку (текстом — через /check). Лимит 16 КБ.
+        if not _allowed(cfg, message.from_user.id if message.from_user else None):
+            return
+        doc = message.document
+        name = (doc.file_name or "").lower()
+        if not name.endswith((".yaml", ".yml", ".txt")):
+            await message.answer("[err] Пришли YAML (.yaml/.yml). Текстом — через /check.")
+            return
+        if (doc.file_size or 0) > 16 * 1024:
+            await message.answer("[err] Файл больше 16 КБ.")
+            return
+        try:
+            from io import BytesIO
+
+            buf = BytesIO()
+            await message.bot.download(doc, buf)
+            _ok, lines = _check_config_text(buf.getvalue().decode("utf-8", "ignore"))
+        except Exception:  # noqa: BLE001
+            logger.warning("проверка YAML-файла упала", exc_info=True)
+            await message.answer("[err] Не удалось прочитать файл.")
+            return
+        await message.answer(
+            "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML
+        )
+
     @dp.callback_query()
-    async def on_callback(call: CallbackQuery) -> None:
+    async def on_callback(call: CallbackQuery, state: FSMContext | None = None) -> None:
         if not _allowed(cfg, call.from_user.id if call.from_user else None):
             await call.answer("⛔ Нет доступа.", show_alert=True)
             return
@@ -484,6 +689,101 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             pass
 
         try:
+            if data == "cmd:run":
+                if state is None:
+                    await call.message.answer(_bot_ops.CMD_USAGE, parse_mode=ParseMode.HTML)
+                else:
+                    await _wiz_start_cmd(call.message, state)
+                return
+
+            if data == "cfg:run":
+                if state is None:
+                    await call.message.answer(_bot_ops.CFG_USAGE, parse_mode=ParseMode.HTML)
+                else:
+                    await _wiz_start_cfg(call.message, state)
+                return
+
+            if data == "wiz:cancel":
+                if state is not None:
+                    try:
+                        await state.clear()
+                    except Exception:  # noqa: BLE001
+                        pass
+                await call.message.answer("[ОТМЕНА] Мастер закрыт.")
+                return
+
+            if data.startswith("wiz:cmd:net:") or data.startswith("wiz:cfg:net:"):
+                if state is None:
+                    return
+                slug = data.rsplit(":net:", 1)[1]
+                if not _bot_ops.known_slug(slug):
+                    await call.message.answer("[err] Неизвестная сеть.")
+                    return
+                slug = "vibevibe" if slug == "vibe" else slug
+                if data.startswith("wiz:cmd:"):
+                    await state.update_data(net=slug)
+                    await state.set_state(CmdWizard.wallets)
+                    await call.message.answer(
+                        "Шаг 2/4 — кошельков (или отправь число 1..5000):",
+                        reply_markup=_wiz_num_kb("wiz:cmd:w", ["3", "10", "50", "200"]),
+                    )
+                else:
+                    await state.update_data(net=slug)
+                    await state.set_state(CfgWizard.wallets)
+                    await call.message.answer(
+                        "Шаг 2/2 — кошельков (или отправь число 1..5000):",
+                        reply_markup=_wiz_num_kb("wiz:cfg:w", ["3", "10", "50", "200"]),
+                    )
+                return
+
+            if data.startswith("wiz:cmd:w:") or data.startswith("wiz:cfg:w:"):
+                if state is None:
+                    return
+                try:
+                    n = int(data.rsplit(":w:", 1)[1])
+                except ValueError:
+                    return
+                if not 1 <= n <= 5000:
+                    await call.message.answer("[err] Нужно число 1..5000.")
+                    return
+                await state.update_data(wallets=n)
+                if data.startswith("wiz:cmd:"):
+                    await state.set_state(CmdWizard.cycles)
+                    await call.message.answer(
+                        "Шаг 3/4 — кругов (0 — бесконечно):",
+                        reply_markup=_wiz_num_kb("wiz:cmd:c", ["1", "2", "5", "0"]),
+                    )
+                else:
+                    await _wiz_finish_cfg(call.message, state)
+                return
+
+            if data.startswith("wiz:cmd:c:"):
+                if state is None:
+                    return
+                try:
+                    n = int(data.rsplit(":c:", 1)[1])
+                except ValueError:
+                    return
+                if not 0 <= n <= 100000:
+                    await call.message.answer("[err] Нужно число 0..100000.")
+                    return
+                await state.update_data(cycles=n)
+                await state.set_state(CmdWizard.faucet)
+                await call.message.answer(
+                    "Шаг 4/4 — кран:",
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="[С КРАНОМ]", callback_data="wiz:cmd:f:1"),
+                        InlineKeyboardButton(text="[БЕЗ КРАНА]", callback_data="wiz:cmd:f:0"),
+                    ], [InlineKeyboardButton(text="[ОТМЕНА]", callback_data="wiz:cancel")]]),
+                )
+                return
+
+            if data.startswith("wiz:cmd:f:"):
+                if state is None:
+                    return
+                await _wiz_finish_cmd(call.message, state, data.endswith(":0"))
+                return
+
             if data == "stats":
                 answer = _fmt_stats(await daemon.statistics())
                 kb = InlineKeyboardMarkup(
@@ -595,27 +895,22 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                     await call.message.answer("[err] Не удалось сформировать файл кошельков.")
                 return
 
-            if data in ("cmd:usage", "cfg:usage", "ref"):
-                if data == "cmd:usage":
-                    answer = _bot_ops.CMD_USAGE
-                elif data == "cfg:usage":
-                    answer = _bot_ops.CFG_USAGE
-                else:
-                    answer = _bot_ops.REF_TEXT
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="ref")]]
-                    if data == "ref"
-                    else []
+            if data in ("cmd:usage", "cfg:usage"):
+                await call.message.answer(
+                    _bot_ops.CMD_USAGE if data == "cmd:usage" else _bot_ops.CFG_USAGE,
+                    parse_mode=ParseMode.HTML,
                 )
-                if data == "ref":
-                    await call.message.edit_text(
-                        answer,
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=kb,
-                        link_preview_options=_NO_PREVIEW,
-                    )
-                else:
-                    await call.message.answer(answer, parse_mode=ParseMode.HTML)
+                return
+
+            if data == "ref":
+                await call.message.edit_text(
+                    _bot_ops.REF_TEXT,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="ref")]]
+                    ),
+                    link_preview_options=_NO_PREVIEW,
+                )
                 return
 
             if data == "network:list":
