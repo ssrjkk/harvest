@@ -199,7 +199,7 @@ function renderGrid(cells,n,running){
 }
 function lastCycleText(hist){
   if(!hist.length)return "—";
-  const c=hist[hist.length-1];
+  const c=hist[0];
   const dur=(Math.round(Number(c.duration_s||0)*100)/100);
   return lang==="en"
     ?`cycle ${c.id} · ${dur}s · ${c.wallets||0} wallets · ${c.errors||0} errors`
