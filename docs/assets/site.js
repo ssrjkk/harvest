@@ -20,7 +20,7 @@ skip:"Skip to content",nav_live:"Field",nav_overview:"Overview",nav_networks:"Ne
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
-th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1158 · 43 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
+th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1199 · 44 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
 cta_live:"Live field",cta_demo:"Demo zone",
 hero_note:"The field reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
@@ -270,7 +270,7 @@ function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textC
 function paintTicker(nets){
   try{
     const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
-    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1158 TESTS · MIT · ").repeat(2);
+    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1199 TESTS · MIT · ").repeat(2);
   }catch(e){}
 }
 function drawLive(){
