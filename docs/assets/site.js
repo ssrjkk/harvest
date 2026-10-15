@@ -7,8 +7,9 @@ const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 const fmt=n=>{n=Number(n);if(!isFinite(n))return "—";if(Math.abs(n)>=1e6)return(n/1e6).toFixed(2)+"M";if(Math.abs(n)>=1e3)return(n/1e3).toFixed(1)+"K";return String(Math.round(n*100)/100);};
 
 /* ---------- theme ---------- */
-const themes=["paper","ink","field"];
+const themes=["paper","ink","moss"];
 let theme=localStorage.getItem("hv-theme")||"ink";
+if(!themes.includes(theme)){theme="ink";localStorage.setItem("hv-theme",theme);}
 function applyTheme(){document.documentElement.dataset.theme=theme;$("#themeBtn").textContent=theme==="paper"?"◐":theme==="ink"?"◑":"◒";}
 $("#themeBtn").addEventListener("click",()=>{theme=themes[(themes.indexOf(theme)+1)%themes.length];localStorage.setItem("hv-theme",theme);applyTheme();drawLive();drawChart();});
 applyTheme();
@@ -165,7 +166,7 @@ function renderLive(s){
     $("#liveAlert").innerHTML='<div class="alert">'+(lang==="en"?"state.json not published yet — the farm will upload metrics. The rest of the site already works.":"state.json ещё не опубликован — ферма скоро загрузит метрики. Остальной сайт уже работает.")+'</div>';
     $("#nets").innerHTML=FALLBACK_NETS.map(netCard).join("");
     paintTicker(null);
-    setPill("off","—");return;
+    setPill("mut","—");return;
   }
   $("#liveAlert").innerHTML="";
   const pool=s.pool||{},db=s.db||{};
@@ -182,7 +183,7 @@ function renderLive(s){
   $("#cWallets").textContent=fmt(s.wallet_count);
   $("#sRate").textContent=rate===null?(lang==="en"?"success —":"успех —"):(lang==="en"?"success ":"успех ")+rate.toFixed(1)+"%";
   const dot=$("#dot"),st=$("#status");
-  if(!s.running){dot.className="dot off";st.textContent="stopped";setPill("off","stopped");}
+  if(!s.running){dot.className="dot mut";st.textContent="stopped";setPill("mut","stopped");}
   else if(pool.paused){dot.className="dot pau";st.textContent="paused";setPill("pau","paused");}
   else{dot.className="dot on";st.textContent="running";setPill("on","running");}
   $("#net").textContent=s.network||"—";
@@ -229,8 +230,8 @@ function lineChart(cv,series){
   const W=cv.clientWidth||600,H=150;cv.width=W*dpr;cv.height=H*dpr;
   const x=cv.getContext("2d");x.scale(dpr,dpr);
   const cs=getComputedStyle(document.documentElement);
-  const acc=cs.getPropertyValue("--accent").trim()||"#2E4A22";
-  const amb=cs.getPropertyValue("--amber").trim()||"#9A6B0F";
+  const acc=cs.getPropertyValue("--gold").trim()||"#D4A72C";
+  const amb=cs.getPropertyValue("--warn").trim()||"#E07B39";
   const grid=cs.getPropertyValue("--line").trim()||"#DDD6C2";
   const mut=cs.getPropertyValue("--muted").trim()||"#6F6A5C";
   x.clearRect(0,0,W,H);x.strokeStyle=grid;
@@ -372,7 +373,7 @@ function drawChart(data){
   if(!d.length){x.fillStyle=cs.getPropertyValue("--muted");x.font="12px monospace";x.fillText("no data — run simulation",44,H/2);return;}
   const mx=Math.max(...d,1),bw=Math.max(3,(W-60)/d.length-4);
   d.forEach((v,i)=>{const h=(H-48)*v/mx,bx=40+i*(bw+4);
-    x.fillStyle=cs.getPropertyValue("--accent");x.fillRect(bx,H-24-h,bw,h);});
+    x.fillStyle=cs.getPropertyValue("--gold");x.fillRect(bx,H-24-h,bw,h);});
   x.fillStyle=cs.getPropertyValue("--muted");x.font="11px monospace";x.fillText("max "+mx,40,20);
 }
 window.addEventListener("resize",()=>drawChart());

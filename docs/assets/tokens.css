@@ -1,0 +1,58 @@
+/* GENERATED from design/tokens.json by tools/build_tokens.py — не править руками. */
+:root{
+  --bg:#F4EDDA;
+  --bg2:#E7DCBE;
+  --ink:#1C160B;
+  --ink2:#4A3F28;
+  --muted:#6B5F42;
+  --line:#D3C49C;
+  --line2:#8A7A52;
+  --dots:#DCCFA9;
+  --gold:#7A5200;
+  --gold-ink:#FFFFFF;
+  --paper:#F4EDDA;
+  --chip:#1C160B;
+  --chip-ink:#F4EDDA;
+  --ok:#2F7A2E;
+  --warn:#96500E;
+  --err:#A02C14;
+  --blue:#1F4E79;
+}
+[data-theme="ink"]{
+  --bg:#14110A;
+  --bg2:#1E1810;
+  --ink:#F0E8D0;
+  --ink2:#CFC3A6;
+  --muted:#8A8068;
+  --line:#2C2618;
+  --line2:#57492E;
+  --dots:#241E12;
+  --gold:#D4A72C;
+  --gold-ink:#14110A;
+  --paper:#F0E8D0;
+  --chip:#F0E8D0;
+  --chip-ink:#14110A;
+  --ok:#5FAD56;
+  --warn:#E07B39;
+  --err:#D8503F;
+  --blue:#7FB3E0;
+}
+[data-theme="moss"]{
+  --bg:#131A10;
+  --bg2:#1B2415;
+  --ink:#EDEBD2;
+  --ink2:#C4C49A;
+  --muted:#8E9268;
+  --line:#26301E;
+  --line2:#4C5A34;
+  --dots:#1C2415;
+  --gold:#D4A82E;
+  --gold-ink:#131A10;
+  --paper:#EDEBD2;
+  --chip:#EDEBD2;
+  --chip-ink:#131A10;
+  --ok:#5FAD56;
+  --warn:#E07B39;
+  --err:#DD5A44;
+  --blue:#7FB3E0;
+}

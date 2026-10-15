@@ -6,6 +6,7 @@
 <title>HARVEST v2.3.0 — EVM testnet farmer</title>
 <meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живой пульт, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
 </head>
 <body>
@@ -17,7 +18,7 @@
       <span class="brand-mark">H</span>
       <span class="brand-name">HARVEST</span>
       <span class="brand-ver">v2.3.0</span>
-      <span class="live" id="livePill"><i class="dot off" id="pillDot"></i><span id="pillTxt">…</span></span>
+      <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span>
     </a>
     <nav class="main" aria-label="Sections">
       <a href="#live" data-i18n="nav_live">Пульт</a>
@@ -35,7 +36,7 @@
         <button id="langRu" class="on" type="button">RU</button><button id="langEn" type="button">EN</button>
       </div>
       <div class="seg" role="group" aria-label="Theme">
-        <button id="themeBtn" type="button" title="Paper / Ink / Field">◐</button>
+        <button id="themeBtn" type="button" title="Paper / Ink / Moss">◐</button>
       </div>
       <a class="btn small primary" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a>
     </div>
@@ -99,7 +100,7 @@ python auto.py --doctor</pre>
     <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Обновление раз в минуту. Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
     <div id="liveAlert"></div>
     <div class="termline" id="term">
-      <span class="tstat"><i class="dot off" id="dot"></i><b id="status">—</b></span>
+      <span class="tstat"><i class="dot mut" id="dot"></i><b id="status">—</b></span>
       <span><span data-i18n="t_net">сеть</span> <b id="net">—</b></span>
       <span>health <b id="health">—</b></span>
       <span class="cursor" aria-hidden="true"></span>
