@@ -187,7 +187,29 @@ input[type=range]{width:100%;accent-color:var(--gold);height:28px}
 .wnext{margin:12px 0;padding-left:22px;color:var(--ink2);font-size:14px}
 .wnext li{margin:7px 0}
 
-/* arch */
+/* field grid (wallet cells) */
+.field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(16px,1fr));gap:3px;margin:14px 0 8px;max-width:900px}
+.cell{aspect-ratio:1;background:var(--line);border:1px solid var(--line2);min-width:14px;cursor:default}
+.cell.c-i{background:var(--line)}
+.cell.c-w{background:var(--gold);border-color:var(--gold)}
+.cell.c-o{background:var(--ok);border-color:var(--ok)}
+.cell.c-e{background:var(--err);border-color:var(--err)}
+.cell.c-r{background:var(--line);border-color:var(--line2);opacity:.35}
+.field-grid.flash .cell.c-o{animation:cellflash .4s ease-out}
+@keyframes cellflash{from{filter:brightness(1.8)}to{filter:brightness(1)}}
+.termline.live .dot.on{animation:pulse 1.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+.field-legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;font-family:var(--mono);font-size:11.5px;color:var(--muted);margin-bottom:16px}
+.field-legend .sw{display:inline-block;width:12px;height:12px;margin-right:6px;vertical-align:-1px;border:1px solid var(--line2)}
+.sw.s-i{background:var(--line)} .sw.s-w{background:var(--gold);border-color:var(--gold)}
+.sw.s-o{background:var(--ok);border-color:var(--ok)} .sw.s-e{background:var(--err);border-color:var(--err)}
+.sw.s-r{background:var(--line);opacity:.35}
+.cell-tip{position:fixed;z-index:99;background:var(--chip);color:var(--chip-ink);font-family:var(--mono);font-size:12px;padding:5px 10px;pointer-events:none;white-space:nowrap}
+.is-loading .kpi .v{animation:skel 1.2s ease-in-out infinite}
+@keyframes skel{0%,100%{opacity:1}50%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){
+  .field-grid.flash .cell.c-o,.termline.live .dot.on,.is-loading .kpi .v{animation:none}
+}
 .tree{font-family:var(--mono);font-size:12.6px;line-height:1.75;border:2px solid var(--ink);padding:14px 16px;background:var(--bg2);overflow-x:auto;white-space:pre;box-shadow:4px 4px 0 var(--line2)}
 
 /* faq */

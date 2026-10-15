@@ -26,6 +26,7 @@ hero_note:"The pulpit reads state.json published by the farm. The rest is fully 
 contacts:"Author:",
 sl_h:"Pulpit — live farm state",sl_sub:"Metrics are published by publish_dash.py from the farm machine into the gh-pages branch. Refreshes every minute. If nothing was published yet, the site still fully works — data appears on its own.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
+fe_t:"Farm is stopped. Run",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
 ch1:"Actions / errors over history",ch2:"Wallets processed",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
 s1_h:"What it is and what it does",s1_sub:"One auto.py pipeline pass = four phases: generate/reuse wallets → faucet → farm → export. Each wallet's behavior is deterministic from its address, so restarts don't leak the farm by changing the pattern.",
 c1_l:"Wallets",c1_h:"Generation & storage",c1_p:"BIP-39 via eth_account, CSV/JSON import/export, AES-256-GCM seed encryption with master key, dedup, CSV-injection guard, atomic file writes.",
@@ -171,7 +172,41 @@ async function loadState(){
   try{const r=await fetch("state.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;return await r.json();}
   catch(e){return null;}
 }
+let gridPainted=false;
+const _noMotion=()=>typeof matchMedia!=="undefined"&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+const _hasRAF=()=>typeof requestAnimationFrame==="function";
+function setNum(id,raw){
+  const el=$("#"+id);const v=Number(raw)||0;
+  const from=parseFloat(el.dataset.raw||"0")||0;el.dataset.raw=String(v);
+  if(_noMotion()||!_hasRAF()||!isFinite(from)){el.textContent=fmt(v);return;}
+  const t0=performance.now();
+  const step=t=>{const k=Math.min(1,(t-t0)/600),e=1-Math.pow(1-k,3);
+    el.textContent=fmt(from+(v-from)*e);if(k<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function cellName(c){
+  const names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
+  const n=names[c]||names.i;return lang==="en"?n.en:n.ru;
+}
+function renderGrid(cells,n,running){
+  const g=$("#fieldGrid");
+  const show=String(cells||"").slice(0,400);
+  g.innerHTML=show.split("").map((c,i)=>
+    `<span class="cell c-${"iwoer".includes(c)?c:"i"}" data-i="${i}" tabindex="0" role="img" aria-label="#${i+1} · ${cellName(c)}"></span>`).join("");
+  g.classList.toggle("flash",!gridPainted&&show.length>0);
+  gridPainted=gridPainted||show.length>0;
+  $("#fieldMore").textContent=n>400?`+${n-400}`:"";
+}
+function lastCycleText(hist){
+  if(!hist.length)return "—";
+  const c=hist[hist.length-1];
+  const dur=(Math.round(Number(c.duration_s||0)*100)/100);
+  return lang==="en"
+    ?`cycle ${c.id} · ${dur}s · ${c.wallets||0} wallets · ${c.errors||0} errors`
+    :`цикл ${c.id} · ${dur} с · ${c.wallets||0} кошельков · ${c.errors||0} ошибок`;
+}
 function renderLive(s){
+  document.body.classList.remove("is-loading");
   if(!s){
     $("#liveAlert").innerHTML='<div class="alert">'+(lang==="en"?"state.json not published yet — the farm will upload metrics. The rest of the site already works.":"state.json ещё не опубликован — ферма скоро загрузит метрики. Остальной сайт уже работает.")+'</div>';
     $("#nets").innerHTML=FALLBACK_NETS.map(netCard).join("");
@@ -182,20 +217,18 @@ function renderLive(s){
   const pool=s.pool||{},db=s.db||{};
   const total=(pool.actions??0)+(pool.errors??0);
   const rate=total>0?(pool.actions/total*100):null;
-  $("#cActions").textContent=fmt(pool.actions);
+  setNum("cActions",pool.actions);setNum("cProcessed",pool.processed);
+  setNum("cErrors",pool.errors);setNum("cCycles",pool.cycles);setNum("cWallets",s.wallet_count);
   $("#sActions").textContent=(lang==="en"?"per cycle ":"за цикл ")+fmt((pool.actions??0)/Math.max(pool.cycles||1,1));
-  $("#cProcessed").textContent=fmt(pool.processed);
   $("#sProcessed").textContent=(lang==="en"?"of ":"из ")+fmt(s.wallet_count);
-  $("#cErrors").textContent=fmt(pool.errors);
   $("#sErrors").textContent=(lang==="en"?"dropped ":"дроп ")+fmt(pool.dropped??0);
-  $("#cCycles").textContent=fmt(pool.cycles);
   $("#sCycles").textContent=(lang==="en"?"history ":"история ")+fmt(db.cycles);
-  $("#cWallets").textContent=fmt(s.wallet_count);
   $("#sRate").textContent=rate===null?(lang==="en"?"success —":"успех —"):(lang==="en"?"success ":"успех ")+rate.toFixed(1)+"%";
   const dot=$("#dot"),st=$("#status");
   if(!s.running){dot.className="dot mut";st.textContent="stopped";setPill("mut","stopped");}
   else if(pool.paused){dot.className="dot pau";st.textContent="paused";setPill("pau","paused");}
   else{dot.className="dot on";st.textContent="running";setPill("on","running");}
+  $("#term").classList.toggle("live",!!s.running&&!pool.paused);
   $("#net").textContent=s.network||"—";
   $("#health").textContent=Number(s.health_factor??1).toFixed(2);
   $("#updated").textContent=(lang==="en"?"updated: ":"обновлено: ")+(s.updated_at||"—");
@@ -203,14 +236,23 @@ function renderLive(s){
   $("#nets").innerHTML=nets.map(n=>netCard(n,n.slug===s.network)).join("");
   paintTicker(nets);
   const hist0=s.history||[];
+  $("#lastCycle").textContent=lastCycleText(hist0);
+  const wc=s.wallet_cells||{};
+  const cells=typeof wc.cells==="string"?wc.cells:"";
+  const nWallets=wc.n||s.wallet_count||0;
+  const hasData=cells.length>0||hist0.length>0;
+  $("#fieldEmpty").hidden=hasData;
+  $("#fieldGrid").style.display=cells?"":"none";
+  $("#fieldLegend").style.display=cells?"":"none";
+  renderGrid(cells,nWallets,!!s.running);
   const pick=(arr,fb)=>((arr&&arr.length)?arr.slice(-60):fb);
   live.actions=pick(s.chart?.actions,hist0.map(c=>c.actions_ok||0).slice(-60));
   live.errors=pick(s.chart?.errors,hist0.map(c=>c.errors||0).slice(-60));
   live.proc=pick(s.chart?.processed,hist0.map(c=>c.wallets||0).slice(-60));
   drawLive();
   $("#tWallets").innerHTML=(s.top_wallets||[]).map((w,i)=>
-    `<tr><td class="num" style="color:var(--muted)">${i+1}</td><td class="addr">${esc(w.address)}</td><td class="num">${fmt(w.actions)}</td></tr>`).join("")
-    ||'<tr><td colspan="3" class="note">—</td></tr>';
+    `<tr><td class="num" style="color:var(--muted)">#${w.n??i+1}</td><td class="num">${fmt(w.actions)}</td></tr>`).join("")
+    ||'<tr><td colspan="2" class="note">—</td></tr>';
   $("#tHistory").innerHTML=(s.history||[]).map(c=>{const e=c.errors||0;
     const b=e===0?'<span class="pill ok">ok</span>':`<span class="pill warn">${esc(e)}</span>`;
     return `<tr><td class="num" style="color:var(--muted)">${esc(c.id)}</td><td>${b}</td><td class="num">${fmt(c.actions_ok)}</td><td class="num">${esc(e)}</td><td class="num">${fmt(c.duration_s)}</td><td class="num">${esc(c.wallets)}</td></tr>`;}).join("")
@@ -235,6 +277,20 @@ function drawLive(){
   lineChart($("#chartMain"),[live.actions,live.errors]);
   lineChart($("#chartProc"),[live.proc]);
 }
+(function(){
+  const tip=$("#cellTip"), grid=$("#fieldGrid");
+  function show(el,x,y){tip.textContent=el.getAttribute("aria-label")||"";tip.hidden=false;
+    try{
+      tip.style.left=Math.min(x+12,window.innerWidth-200)+"px";tip.style.top=(y+16)+"px";
+    }catch(e){/* no window in some contexts */}
+  }
+  function hide(){tip.hidden=true;}
+  const cellOf=e=>(e.target&&e.target.closest)?e.target.closest(".cell"):null;
+  grid.addEventListener("mousemove",e=>{const c=cellOf(e);if(!c){hide();return;}show(c,e.clientX,e.clientY);});
+  grid.addEventListener("mouseleave",hide);
+  grid.addEventListener("focusin",e=>{const c=cellOf(e);if(!c)return;const r=c.getBoundingClientRect();show(c,r.left,r.bottom);});
+  grid.addEventListener("focusout",hide);
+})();
 function lineChart(cv,series){
   if(!cv)return;const dpr=window.devicePixelRatio||1;
   const W=cv.clientWidth||600,H=150;cv.width=W*dpr;cv.height=H*dpr;

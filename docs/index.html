@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
 </head>
-<body>
+<body class="is-loading">
 <a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
 
 <header class="topbar">
@@ -106,6 +106,22 @@ python auto.py --doctor</pre>
       <span>health <b id="health">—</b></span>
       <span class="cursor" aria-hidden="true"></span>
     </div>
+    <p class="note" id="lastCycle">—</p>
+    <div id="fieldEmpty" hidden>
+      <p><span data-i18n="fe_t">Ферма остановлена. Запусти</span>
+      <code id="feCmd">python auto.py --wallets 50 --cycles 5</code>
+      <button class="btn small" data-copy="feCmd" type="button">copy</button></p>
+    </div>
+    <div class="field-grid" id="fieldGrid" role="img" aria-label="Сетка кошельков"></div>
+    <div class="field-legend" id="fieldLegend">
+      <span><i class="sw s-i"></i><span data-i18n="lg_i">спит</span></span>
+      <span><i class="sw s-w"></i><span data-i18n="lg_w">работает</span></span>
+      <span><i class="sw s-o"></i><span data-i18n="lg_o">успех</span></span>
+      <span><i class="sw s-e"></i><span data-i18n="lg_e">ошибка</span></span>
+      <span><i class="sw s-r"></i><span data-i18n="lg_r">отдыхает</span></span>
+      <span class="note" id="fieldMore"></span>
+    </div>
+    <div class="cell-tip" id="cellTip" hidden></div>
     <div class="grid5">
       <div class="kpi"><div class="k" data-i18n="k_act">Действий</div><div class="v" id="cActions">—</div><div class="sub" id="sActions">—</div></div>
       <div class="kpi"><div class="k" data-i18n="k_proc">Обработано</div><div class="v" id="cProcessed">—</div><div class="sub" id="sProcessed">—</div></div>
@@ -120,7 +136,7 @@ python auto.py --doctor</pre>
     <div class="grid2" style="margin-top:14px">
       <div>
         <div class="label" style="margin-bottom:6px" data-i18n="tw">Топ кошельков</div>
-        <div class="table-wrap"><table class="t"><tr><th>#</th><th>address</th><th data-i18n="w_act">actions</th></tr><tbody id="tWallets"><tr><td colspan="3" class="note">—</td></tr></tbody></table></div>
+        <div class="table-wrap"><table class="t"><tr><th>#</th><th data-i18n="w_act">actions</th></tr><tbody id="tWallets"><tr><td colspan="2" class="note">—</td></tr></tbody></table></div>
       </div>
       <div>
         <div class="label" style="margin-bottom:6px" data-i18n="ch">История циклов</div>

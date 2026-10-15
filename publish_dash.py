@@ -34,6 +34,20 @@ SITE_DIRS = ("assets",)
 DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 
 
+_CELLS_MAX = 400  # максимум клеток сетки; остальные — подписью «+N»
+
+
+def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None) -> str:
+    """Один символ состояния кошелька: i idle, w working, o ok, e err, r rest."""
+    if attempts > actions:
+        return "e"
+    if latest is not None and last_cycle == latest:
+        return "o" if actions > 0 else "w"
+    if last_cycle >= 0:
+        return "r"
+    return "i"
+
+
 async def collect() -> dict:
     async with aiosqlite.connect(DB) as db:
         async with db.execute(
@@ -43,12 +57,27 @@ async def collect() -> dict:
                 {"id": r[0], "actions_ok": r[1], "errors": r[2], "duration_s": r[3], "wallets": r[4]}
                 for r in await cur.fetchall()
             ]
+        latest = history[0]["id"] if history else None
         async with db.execute("SELECT COUNT(*) FROM wallets") as cur:
             wallet_count = (await cur.fetchone())[0]
+        # Топ — только порядковые номера и счётчики: адреса в публичную
+        # ветку не публикуем (анти-сибил: не связывать кошельки между собой).
         async with db.execute(
-            "SELECT address, total_actions FROM wallets ORDER BY total_actions DESC LIMIT 10"
+            "SELECT total_actions FROM wallets ORDER BY total_actions DESC LIMIT 10"
         ) as cur:
-            top = [{"address": r[0], "actions": r[1]} for r in await cur.fetchall()]
+            top = [{"n": i + 1, "actions": (r[0] or 0)} for i, r in enumerate(await cur.fetchall())]
+        try:
+            async with db.execute(
+                "SELECT total_actions, total_attempts, last_cycle FROM wallets "
+                f"ORDER BY rowid LIMIT {_CELLS_MAX}"
+            ) as cur:
+                sample = await cur.fetchall()
+            cells = "".join(
+                _cell_state(a or 0, t or 0, -1 if c is None else c, latest)
+                for a, t, c in sample
+            )
+        except Exception:  # noqa: BLE001 — старая схема без колонок: все idle
+            cells = ""
         async with db.execute(
             "SELECT COALESCE(SUM(actions_ok),0), COALESCE(SUM(errors),0), COUNT(*), "
             "COALESCE(SUM(wallets_ok),0) FROM cycle_history"
@@ -80,6 +109,7 @@ async def collect() -> dict:
         "wallet_count": wallet_count,
         "db": {"cycles": r[2], "actions": r[0], "errors": r[1]},
         "top_wallets": top,
+        "wallet_cells": {"v": 1, "n": wallet_count, "cells": cells},
         "history": history,
         "chart": {"actions": [], "errors": [], "processed": []},
         "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
