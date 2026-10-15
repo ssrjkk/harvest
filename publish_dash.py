@@ -69,7 +69,8 @@ async def collect() -> dict:
         try:
             async with db.execute(
                 "SELECT total_actions, total_attempts, last_cycle FROM wallets "
-                f"ORDER BY rowid LIMIT {_CELLS_MAX}"
+                "ORDER BY rowid LIMIT ?",
+                (_CELLS_MAX,),
             ) as cur:
                 sample = await cur.fetchall()
             cells = "".join(

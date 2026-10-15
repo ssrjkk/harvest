@@ -7,6 +7,7 @@
   --r:0px; --max:1160px;
 }
 *{box-sizing:border-box}
+.grid2>*,.grid3>*,.grid4>*,.grid5>*,.hero-grid>*,.optgrid>*{min-width:0}
 html{scroll-behavior:smooth}
 body{margin:0;background-color:var(--bg);background-image:radial-gradient(var(--dots) 1px,transparent 1.4px);background-size:22px 22px;color:var(--ink);font-family:var(--sans);font-size:15.5px;line-height:1.6;-webkit-font-smoothing:antialiased}
 a{color:inherit}
@@ -43,15 +44,21 @@ nav.main a:hover{border-color:var(--ink)}
   nav.main{order:3;flex-basis:100%;margin-left:0}
   .topbar .btn.primary{display:none}
 }
-.nav-toggle{display:none;font-family:var(--mono);font-size:18px;font-weight:700;background:var(--paper);color:var(--ink);border:2px solid var(--ink);padding:4px 12px;cursor:pointer;box-shadow:3px 3px 0 var(--line2)}
+.nav-toggle{display:none;font-family:var(--mono);font-size:18px;font-weight:700;background:var(--bg);color:var(--ink);border:2px solid var(--ink);padding:4px 12px;cursor:pointer;box-shadow:3px 3px 0 var(--line2)}
 @media(max-width:900px){
   .topbar-in{flex-wrap:nowrap}
   .nav-toggle{display:inline-flex;margin-left:8px}
+  .topbar .btn.primary{display:none}
   nav.main{display:none;position:absolute;top:100%;left:0;right:0;flex-direction:column;align-items:stretch;background:var(--bg);border-bottom:2px solid var(--ink);padding:10px 22px 16px;margin:0;max-height:70vh;overflow-y:auto}
   nav.main.open{display:flex}
   nav.main a{padding:11px 4px;border-bottom:1px solid var(--line)}
   .top-actions{margin-left:auto}
-  .topbar .btn.primary{display:none}
+}
+@media(max-width:480px){
+  .brand-ver,.topbar .live{display:none}
+  .brand-name{font-size:18px}
+  .seg button{padding:8px 8px}
+  .topbar-in{gap:8px}
 }
 .btn{font-family:var(--mono);font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;border:2px solid var(--ink);background:var(--bg);color:var(--ink);padding:8px 14px;border-radius:var(--r);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:7px;box-shadow:3px 3px 0 var(--line2)}
 .btn:hover{transform:translate(-1px,-1px);box-shadow:4px 4px 0 var(--line2)}
