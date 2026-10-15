@@ -2,6 +2,11 @@
 кнопка Mini App, живой мониторинг с алертами. Long-polling (без открытых
 портов — дружит с любым хостингом).
 
+Стиль сообщений — ops-board сайта (раздел 05): секции `HARVEST // X`,
+маркеры `[RUN]`/`[STOP]`, `[ok]`/`[warn]`, таблицы в <pre>, без эмодзи.
+Форматирование живёт в portal/bot_ops.py (там же чистые функции
+команд /cmd, /cfg, /check, /ref).
+
 Mini App открывается через WebAppInfo; Telegram сам дописывает initData к URL,
 портальный фронтенд шлёт его в /api/tg/init и получает сессию.
 
@@ -30,8 +35,30 @@ from aiogram.types import (
     WebAppInfo,
 )
 
+from portal import bot_ops as _bot_ops
+from portal.bot_ops import (
+    _fmt_wallets_page,
+    _progress_bar,
+    check_config_text as _check_config_text,
+    fmt_balances as _fmt_balances,
+    fmt_doctor as _fmt_doctor,
+    fmt_history as _fmt_history,
+    fmt_networks as _fmt_networks,
+    fmt_stats as _fmt_stats,
+    fmt_status as _fmt_status,
+    parse_cmd_args as _bot_ops_parse_cmd,
+)
 from portal.config import PortalConfig, load_links
 from portal.farm import FarmDaemon
+
+# Реэкспорт ops-форматтеров: тесты и внешний код используют имена
+# portal.bot_telegram (реализация — portal/bot_ops.py).
+__all__ = [
+    "_fmt_balances", "_fmt_doctor", "_fmt_history", "_fmt_networks",
+    "_fmt_stats", "_fmt_status", "_fmt_wallets_page", "_progress_bar",
+    "build_dispatcher", "run_bot", "notify_owner", "send_wallets_file",
+    "LiveMonitor",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -42,8 +69,7 @@ _BOT_DEFAULTS = DefaultBotProperties(parse_mode=ParseMode.HTML, link_preview_is_
 # Интервал пульса монитора (сек) и его можно переопределить env.
 _DEFAULT_MONITOR_INTERVAL_S = 600.0
 
-# Ссылка на бота автора: добавляется в стартовое сообщение, help и статусы.
-_AUTHOR_LINK = "👤 Автор: @ssrjkk_bot · <a href='https://t.me/ssrjkk_bot'>t.me/ssrjkk_bot</a>"
+# Ссылка на автора — в стартовом сообщении, help и футерах bot_ops.
 
 
 def _allowed(cfg: PortalConfig, tg_id: int | None) -> bool:
@@ -57,73 +83,6 @@ def _allowed(cfg: PortalConfig, tg_id: int | None) -> bool:
 def _esc(value: object) -> str:
     """HTML-экранирование значений из daemon.statistics()/live_stats (defense-in-depth)."""
     return html.escape(str(value), quote=True)
-
-
-def _fmt_doctor(data: dict) -> str:
-    pool = data.get("pool", {})
-    db = data.get("db", {})
-    health = data.get("health_factor", 0.0)
-    problems = []
-    if not data.get("running"):
-        problems.append("ферма не запущена")
-    if not pool:
-        problems.append("ядро фермы не подключено")
-    if pool:
-        if health and health < 0.5:
-            problems.append(f"сеть деградировала (health {health:.2f})")
-        errors = pool.get("errors", 0)
-        actions = pool.get("actions", 0)
-        if errors and errors > actions * 0.5 + 50:
-            problems.append("накоплено много ошибок")
-    lines = [
-        "🔧 <b>HARVEST — диагностика</b>",
-        "",
-        "Ферма: " + ("▶ работает" if data.get("running") else "⏹ остановлена"),
-        "Ядро: " + ("подключено" if pool else "НЕ ПОДКЛЮЧЕНО"),
-        f"Health сети: {health:.2f}" + ("" if not health or health >= 0.5 else " ⚠️"),
-    ]
-    if pool:
-        lines.append(
-            f"Циклов: <b>{_esc(pool.get('cycles', 0))}</b> · "
-            f"действий: <b>{_esc(pool.get('actions', 0))}</b> · "
-            f"ошибок: <b>{_esc(pool.get('errors', 0))}</b>"
-        )
-        lines.append(
-            f"Обработано: {_esc(pool.get('processed', 0))} · "
-            f"воркеры: {_esc(pool.get('dyn_workers', '-'))}"
-        )
-    lines.append(f"БД: циклов в истории: <b>{_esc(db.get('cycles', 0))}</b>")
-    lines.append("")
-    if problems:
-        lines.append("⚠️ Замечания:")
-        lines.extend(f"• {p}" for p in problems)
-    else:
-        lines.append("✅ Всё штатно.")
-    lines.append("")
-    lines.append(_AUTHOR_LINK)
-    return "\n".join(lines)
-
-
-def _fmt_history(rows: list[dict]) -> str:
-    lines = ["🕓 <b>История циклов</b>", ""]
-    if not rows:
-        lines.append("Пусто — циклы ещё не завершались.")
-        lines.append("")
-        lines.append(_AUTHOR_LINK)
-        return "\n".join(lines)
-    for row in rows[:8]:
-        errs = row.get("errors") or 0
-        mark = "✅" if errs == 0 else "⚠️"
-        started = str(row.get("started_at") or "-")[:19]
-        lines.append(
-            f"{mark} #{_esc(row.get('id'))} · {_esc(started)} · "
-            f"{float(row.get('duration_s') or 0):.0f}с · "
-            f"кошельков {_esc(row.get('wallets'))} (ок {_esc(row.get('wallets_ok'))}) · "
-            f"действий {_esc(row.get('actions_ok'))} · ошибок {_esc(errs)}"
-        )
-    lines.append("")
-    lines.append(_AUTHOR_LINK)
-    return "\n".join(lines)
 
 
 async def notify_owner(cfg: PortalConfig, text: str) -> None:
@@ -141,106 +100,6 @@ async def notify_owner(cfg: PortalConfig, text: str) -> None:
                 logger.warning("Не удалось отправить алерт %s", tg_id, exc_info=True)
 
 
-def _fmt_stats(data: dict) -> str:
-    pool = data.get("pool", {})
-    db = data.get("db", {})
-    lines = [
-        "📊 <b>HARVEST — статус</b>",
-        "",
-        f"Ферма: <b>{'▶ РАБОТАЕТ' if data['running'] else '⏹ ОСТАНОВЛЕНА'}</b>",
-        f"Пауза: <b>{'⏸ да' if pool.get('paused') else '✅ нет'}</b>",
-        "",
-        f"Кошельков: <b>{_esc(data.get('wallet_count', '-'))}</b>",
-        f"Циклов: <b>{_esc(pool.get('cycles', 0))}</b>",
-        f"Действий: <b>{_esc(pool.get('actions', 0))}</b>",
-        f"Ошибок: <b>{_esc(pool.get('errors', 0))}</b>",
-        f"Обработано: <b>{_esc(pool.get('processed', 0))}</b>",
-        f"Дропов: <b>{_esc(pool.get('dropped', 0))}</b>",
-        "",
-        f"Воркеры: <b>{_esc(pool.get('dyn_workers', '-'))}</b> (health {pool.get('health', 1.0):.2f})",
-        f"Успешных сборок БД: <b>{_esc(db.get('cycles', '-'))}</b>",
-        "",
-        _progress_bar(pool.get("processed", 0), data.get("wallet_count", 0), "обработано кошельков"),
-        "",
-        _AUTHOR_LINK,
-    ]
-    return "\n".join(lines)
-
-
-def _fmt_status(data: dict) -> str:
-    """Богатый статус как на сайте: успех %, средние за цикл, health, кошельки."""
-    pool = data.get("pool", {})
-    db = data.get("db", {})
-    actions = int(pool.get("actions", 0) or 0)
-    errors = int(pool.get("errors", 0) or 0)
-    cycles = int(pool.get("cycles", 0) or 0)
-    total = actions + errors
-    rate = f"{actions / total * 100:.1f}%" if total else "—"
-    per_cycle = f"{actions / cycles:.1f}" if cycles else "—"
-    state = "▶ РАБОТАЕТ" if data.get("running") else "⏹ ОСТАНОВЛЕНА"
-    if pool.get("paused"):
-        state += " ⏸"
-    lines = [
-        "📈 <b>HARVEST — живой статус</b>",
-        "",
-        f"Ферма: <b>{state}</b>",
-        f"Health сети: <b>{data.get('health_factor', 0.0):.2f}</b>",
-        "",
-        f"• Кошельков в БД: <b>{_esc(data.get('wallet_count', '-'))}</b>",
-        f"• Действий: <b>{_esc(actions)}</b> · ошибок: <b>{_esc(errors)}</b>",
-        f"• Успешность: <b>{_esc(rate)}</b>",
-        f"• Обработано: <b>{_esc(pool.get('processed', 0))}</b>",
-        "",
-        f"• Циклов: <b>{_esc(cycles)}</b> · действий/цикл: <b>{_esc(per_cycle)}</b>",
-        f"• Воркеры: <b>{_esc(pool.get('dyn_workers', '-'))}</b>",
-        f"• Циклов в истории: <b>{_esc(db.get('cycles', '-'))}</b>",
-        "",
-        _progress_bar(pool.get("processed", 0), data.get("wallet_count", 0), "обработано кошельков"),
-        "",
-        _AUTHOR_LINK,
-    ]
-    return "\n".join(lines)
-
-
-def _progress_bar(done: int, total: int, label: str, width: int = 10) -> str:
-    """Прогресс-бар: ▰▰▰▱▱ 60% (12/20). label — подпись."""
-    try:
-        total = int(total or 0)
-    except (TypeError, ValueError):
-        total = 0
-    try:
-        done = int(done or 0)
-    except (TypeError, ValueError):
-        done = 0
-    pct = (done / total * 100) if total else 0
-    filled = round(pct / 100 * width)
-    bar = "▰" * filled + "▱" * (width - filled)
-    return f"<b>{label}</b>\n{bar} {pct:.0f}% ({done}/{total})"
-
-
-def _fmt_wallets_page(wallets: list[dict], page: int = 1, per_page: int = 4) -> tuple[str, int]:
-    """Кошельки с ключами и сид-фразами (скрыты спойлером). Возвращает (текст, страниц)."""
-    total = len(wallets)
-    pages = max(1, (total + per_page - 1) // per_page)
-    page = max(1, min(page, pages))
-    start = (page - 1) * per_page
-    chunk = wallets[start : start + per_page]
-    lines = [f"💼 <b>Кошельки</b> · всего {total} · стр. {page}/{pages}", ""]
-    if not chunk:
-        lines.append("Кошельков пока нет — создайте кнопкой «➕ Создать» ниже.")
-    for i, w in enumerate(chunk, start + 1):
-        addr = _esc(w.get("address", ""))
-        acts = _esc(w.get("total_actions", 0))
-        key = _esc(w.get("private_key", ""))
-        mn = _esc(w.get("mnemonic", "") or "—")
-        lines.append(f"<b>#{i}</b> · <code>{addr}</code> · <i>{acts} действ.</i>")
-        lines.append(f"🔑 Ключ: <spoiler>{key}</spoiler>")
-        lines.append(f"🌱 Сид: <spoiler>{mn}</spoiler>")
-        lines.append("")
-    lines.append("Нажми на 🔑/🌱, чтобы открыть. Секреты видны только вам.")
-    return "\n".join(lines), pages
-
-
 def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
     row = []
     if page > 1:
@@ -250,31 +109,9 @@ def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else InlineKeyboardMarkup(inline_keyboard=[])
 
 
-def _fmt_balances(bals: list[dict]) -> str:
-    """Балансы кошельков + итог (для /balance)."""
-    if not bals:
-        return "💰 <b>Балансы</b>\n\nКошельков пока нет — создайте кнопкой «➕ Создать» в /wallets."
-    lines = ["💰 <b>Балансы</b>", ""]
-    total = 0.0
-    unknown = 0
-    for b in bals:
-        bal = b.get("balance")
-        addr = _esc(b.get("address", ""))
-        if bal is None:
-            unknown += 1
-            lines.append(f"• <code>{addr}</code> — ?")
-        else:
-            total += float(bal)
-            lines.append(f"• <code>{addr}</code> — {float(bal):.4f} ETH")
-    lines += ["", f"<b>Итого: {total:.4f} ETH</b>"]
-    if unknown:
-        lines.append(f"({unknown} — не прочитались, RPC недоступен)")
-    return "\n".join(lines)
-
-
 def _wallets_empty_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="➕ Создать", callback_data="wallets:create")]]
+        inline_keyboard=[[InlineKeyboardButton(text="[+ СОЗДАТЬ]", callback_data="wallets:create")]]
     )
 
 
@@ -347,7 +184,7 @@ class LiveMonitor:
             self._was_running = running
         elif self._was_running and not running:
             self._was_running = False
-            text = "⛔ <b>Ферма остановилась.</b>\n/status — детали"
+            text = "[АЛЕРТ] Ферма остановилась.\n/status — детали"
             await self._send(text)
             return text
         text = _fmt_status(data)
@@ -371,48 +208,51 @@ async def send_wallets_file(bot: Bot, tg_id: int, daemon: FarmDaemon, fmt: str =
     await bot.send_document(
         chat_id=tg_id,
         document=BufferedInputFile(content.encode("utf-8-sig"), filename=filename),
-        caption=f"💼 Кошельки ({fmt.upper()}) — {len(content):,} байт",
+        caption=f"Кошельки ({fmt.upper()}) — {len(content):,} байт",
     )
 
 
 def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarkup:
     rows = []
     if cfg.public_base_url:
-        rows.append([InlineKeyboardButton(text="🚀 Открыть Mini App", web_app=WebAppInfo(url=cfg.public_base_url))])
+        rows.append([InlineKeyboardButton(text="[MINI APP]", web_app=WebAppInfo(url=cfg.public_base_url))])
     rows.extend(
         [
             [
-                InlineKeyboardButton(text="▶️ Старт", callback_data="farm:start"),
-                InlineKeyboardButton(text="⏹ Стоп", callback_data="farm:stop"),
+                InlineKeyboardButton(text="[СТАРТ]", callback_data="farm:start"),
+                InlineKeyboardButton(text="[СТОП]", callback_data="farm:stop"),
             ],
             [
-                InlineKeyboardButton(text="⏸ Пауза", callback_data="farm:pause"),
-                InlineKeyboardButton(text="▶️ Резюм", callback_data="farm:resume"),
+                InlineKeyboardButton(text="[ПАУЗА]", callback_data="farm:pause"),
+                InlineKeyboardButton(text="[РЕЗЮМ]", callback_data="farm:resume"),
             ],
             [
-                InlineKeyboardButton(text="📊 Статистика", callback_data="stats"),
-                InlineKeyboardButton(text="📈 Живой статус", callback_data="status"),
+                InlineKeyboardButton(text="[СТАТА]", callback_data="stats"),
+                InlineKeyboardButton(text="[ПУЛЬТ]", callback_data="status"),
+                InlineKeyboardButton(text="[СПРАВКА]", callback_data="ref"),
             ],
             [
-                InlineKeyboardButton(text="🔧 Doctor", callback_data="doctor"),
-                InlineKeyboardButton(text="🕓 История", callback_data="history"),
+                InlineKeyboardButton(text="[ДОКТОР]", callback_data="doctor"),
+                InlineKeyboardButton(text="[ИСТОРИЯ]", callback_data="history"),
             ],
             [
-                InlineKeyboardButton(text="💼 Кошельки (CSV)", callback_data="export:csv"),
-                InlineKeyboardButton(text="💼 Кошельки (JSON)", callback_data="export:json"),
+                InlineKeyboardButton(text="[ЭКСПОРТ CSV]", callback_data="export:csv"),
+                InlineKeyboardButton(text="[ЭКСПОРТ JSON]", callback_data="export:json"),
             ],
             [
-                InlineKeyboardButton(text="💼 Список кошельков", callback_data="wallets:page:1"),
+                InlineKeyboardButton(text="[КОШЕЛЬКИ]", callback_data="wallets:page:1"),
+                InlineKeyboardButton(text="[CMD]", callback_data="cmd:usage"),
+                InlineKeyboardButton(text="[CFG]", callback_data="cfg:usage"),
             ],
             [
                 InlineKeyboardButton(
-                    text="🔔 Мониторинг: ВКЛ" if monitor_on else "🔕 Мониторинг: ВЫКЛ",
+                    text="Мониторинг: ВКЛ" if monitor_on else "Мониторинг: ВЫКЛ",
                     callback_data="monitor:toggle",
                 ),
-                InlineKeyboardButton(text="🔗 Ссылки", callback_data="links"),
+                InlineKeyboardButton(text="[ССЫЛКИ]", callback_data="links"),
             ],
             [
-                InlineKeyboardButton(text="🌐 Сети", callback_data="network:list"),
+                InlineKeyboardButton(text="[СЕТИ]", callback_data="network:list"),
             ],
         ]
     )
@@ -421,42 +261,25 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
 
 _HELP_TEXT = (
     "<b>HARVEST PORTAL</b> — единый пульт фермы.\n\n"
-    "Возможности:\n"
-    "• Статистика в реальном времени\n"
-    "• /status — развёрнутый статус (успех %, средние, health)\n"
-    "• /monitor — живой мониторинг с алертами (периодический статус + алерт об остановке)\n"
-    "• Старт / Стоп фермы\n"
-    "• Пауза / Резюм\n"
-    "• /network — переключение тестнет-сети (кнопки Старт/Стоп)\n"
-    "• /balance — балансы кошельков\n"
-    "• Кошельки — экспорт всех кошельков с ключами (CSV/JSON)\n"
-    "• /wallets — список кошельков с ключами и сид-фразами\n"
-    "• Ссылки\n"
-    "• /doctor — диагностика\n"
-    "• /history — история циклов\n"
-    "• /export — скачать все кошельки (CSV)\n"
-    "• Mini App (кнопка под меню)\n\n"
+    "Пульт и диагностика:\n"
+    "• /status — живой статус (успех %, средние, health)\n"
+    "• /monitor — живой мониторинг с алертами\n"
+    "• /doctor — диагностика, /history — история циклов\n"
+    "• /balance — балансы кошельков\n\n"
+    "Управление:\n"
+    "• Старт / Стоп / Пауза / Резюм\n"
+    "• /network — переключение тестнет-сети\n\n"
+    "Конструкторы (как вкладки Про на сайте):\n"
+    "• /cmd сеть [кошельки] [циклы] — готовая команда\n"
+    "• /cfg сеть [кошельки] — готовый YAML файлом\n"
+    "• /check + YAML следующими строками — проверка валидатором\n"
+    "• /ref — сжатый справочник параметров\n\n"
+    "Кошельки:\n"
+    "• /wallets — список (ключи под спойлером)\n"
+    "• /export [json] — скачать все кошельки (CSV)\n\n"
     "/start — главное меню\n/help — эта справка\n\n"
-    + _AUTHOR_LINK
+    "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
 )
-
-
-def _fmt_networks(networks: list[dict]) -> str:
-    """Список тестнет-сетей с пометками текущей/активной (для /network)."""
-    lines = ["🌐 <b>Тестнет-сети</b>", ""]
-    for n in networks or []:
-        if n.get("running"):
-            mark = "▶️"
-        elif n.get("current"):
-            mark = "✅"
-        else:
-            mark = "▫️"
-        name = _esc(n.get("name") or n.get("slug", "?"))
-        tagline = _esc(n.get("tagline") or "")
-        line = f"{mark} <b>{name}</b> — {tagline}" if tagline else f"{mark} <b>{name}</b>"
-        lines.append(line)
-    lines += ["", "Кнопка под сетью — переключить и запустить фарм."]
-    return "\n".join(lines)
 
 
 def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
@@ -464,12 +287,12 @@ def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
     rows = []
     for n in networks or []:
         slug = str(n.get("slug", ""))
-        label = ("⏹ " if n.get("running") else "▶️ ") + str(n.get("name") or slug)
+        label = ("[СТОП] " if n.get("running") else "[СТАРТ] ") + str(n.get("name") or slug)
         rows.append([InlineKeyboardButton(text=label[:64], callback_data=f"network:start:{slug}")])
     rows.append(
         [
-            InlineKeyboardButton(text="⏹ Стоп", callback_data="network:stop"),
-            InlineKeyboardButton(text="🔄 Обновить", callback_data="network:list"),
+            InlineKeyboardButton(text="[СТОП]", callback_data="network:stop"),
+            InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="network:list"),
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -502,16 +325,60 @@ def _toggle_monitor(
     async def _act() -> None:
         if monitor.running:
             await monitor.stop()
-            await answer("🔕 Живой мониторинг выключен.")
+            await answer("Мониторинг выключен.")
         else:
             await monitor.start()
             await answer(
-                "🔔 Живой мониторинг включён.\n"
+                "Мониторинг включён.\n"
                 f"Статус буду присылать каждые {monitor.interval_s:.0f} с, "
                 "при остановке фермы — сразу."
             )
 
     _asyncio.create_task(_act())
+
+
+def _bot_ops_check(text: str) -> str:
+    """Ответ на /check: YAML идёт следующими строками после команды."""
+    _, _, rest = text.partition("\n")
+    if not rest.strip():
+        return (
+            "<b>HARVEST // ПРОВЕРКА</b>\n"
+            "Вставьте YAML следующими строками:\n"
+            "<code>/check</code> + перенос строки + конфиг.\n"
+            "Пример — вкладка «Про → Проверка» на сайте."
+        )
+    _ok, lines = _check_config_text(rest)
+    return "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines)
+
+
+async def _answer_cfg(message: Message, text: str) -> None:
+    """Ответ на /cfg: готовый YAML документом + команда в подписи."""
+    from aiogram.types import BufferedInputFile
+
+    parts = text.split()
+    if len(parts) < 2:
+        await message.answer(_bot_ops.CFG_USAGE, parse_mode=ParseMode.HTML)
+        return
+    try:
+        n = int(parts[2]) if len(parts) > 2 else 50
+    except ValueError:
+        await message.answer(
+            "[err] кошельки — целое число 1..5000.\n" + _bot_ops.CFG_USAGE,
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    try:
+        filename, content = _bot_ops.build_config_yaml(parts[1], n)
+        cmd = _bot_ops.build_command(parts[1], n, 5)
+    except ValueError as e:
+        await message.answer(f"[err] {_esc(e)}\n" + _bot_ops.CFG_USAGE, parse_mode=ParseMode.HTML)
+        return
+    await message.bot.send_document(
+        chat_id=message.from_user.id,
+        document=BufferedInputFile(content.encode("utf-8"), filename=filename),
+        caption=f"<code>{_esc(cmd)}</code>",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor | None = None) -> Dispatcher:
@@ -540,8 +407,8 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             return
         await message.answer(
             "Привет! Это <b>HARVEST PORTAL</b> — единый пульт фермы.\n"
-            "Управляй фармом, смотри статистику, включай живой мониторинг.\n\n"
-            + _AUTHOR_LINK,
+            "Фарм, пульт, конструкторы команд и конфигов — всё здесь.\n\n"
+            "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0",
             parse_mode=ParseMode.HTML,
             reply_markup=_menu(),
         )
@@ -581,7 +448,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 await send_wallets_file(message.bot, message.from_user.id, daemon, fmt)
             except Exception:  # noqa: BLE001
                 logger.warning("Экспорт кошельков через /export упал", exc_info=True)
-                await message.answer("⚠️ Не удалось сформировать файл кошельков.")
+                await message.answer("[err] Не удалось сформировать файл кошельков.")
         elif text == "/network":
             answer, kb = _networks_view(daemon)
             await message.answer(answer, parse_mode=ParseMode.HTML, reply_markup=kb)
@@ -589,9 +456,19 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             try:
                 bals = await daemon.wallet_balances()
             except RuntimeError:
-                await message.answer("⚠️ Ферма не запущена.")
+                await message.answer("[err] Ферма не запущена.")
                 return
             await message.answer(_fmt_balances(bals), parse_mode=ParseMode.HTML)
+        elif text.startswith("/cmd"):
+            await message.answer(
+                _bot_ops_parse_cmd(text), parse_mode=ParseMode.HTML, reply_markup=_menu()
+            )
+        elif text.startswith("/cfg"):
+            await _answer_cfg(message, text)
+        elif text.startswith("/check"):
+            await message.answer(_bot_ops_check(text), parse_mode=ParseMode.HTML)
+        elif text == "/ref":
+            await message.answer(_bot_ops.REF_TEXT, parse_mode=ParseMode.HTML)
         elif text.startswith("/"):
             await message.answer("Неизвестная команда. /help — список возможностей.")
 
@@ -610,7 +487,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "stats":
                 answer = _fmt_stats(await daemon.statistics())
                 kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="📊 Обновить", callback_data="stats")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="stats")]]
                 )
                 await call.message.edit_text(
                     answer,
@@ -623,7 +500,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "status":
                 answer = _fmt_status(await daemon.statistics())
                 kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="📈 Обновить", callback_data="status")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="status")]]
                 )
                 await call.message.edit_text(
                     answer,
@@ -655,9 +532,9 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 try:
                     created = await daemon.create_wallets(n)
                 except RuntimeError:
-                    await call.message.answer("⚠️ БД фермы не подключена.")
+                    await call.message.answer("[err] БД фермы не подключена.")
                     return
-                await call.message.answer(f"✅ Создано кошельков: {len(created)}")
+                await call.message.answer(f"[ok] Создано кошельков: {len(created)}")
                 wallets = await daemon.all_wallets()
                 content, pages = _fmt_wallets_page(wallets, 1)
                 kb = _wallets_kb(1, pages) if wallets else _wallets_empty_kb()
@@ -667,7 +544,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "links":
                 links = load_links(cfg.links_path)
                 title = html.escape(str(links.get("title", "Наши ссылки"))[:200])
-                lines = [f"🔗 <b>{title}</b>", ""]
+                lines = [f"<b>HARVEST // ССЫЛКИ — {title}</b>", ""]
                 # Ограничение размера: сообщение >4096 символов Telegram отвергнет.
                 for item in links.get("items", [])[:15]:
                     url = html.escape(str(item["url"])[:300], quote=True)
@@ -685,7 +562,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "doctor":
                 answer = _fmt_doctor(await daemon.statistics())
                 kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🔧 Обновить", callback_data="doctor")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="doctor")]]
                 )
                 await call.message.edit_text(
                     answer,
@@ -698,7 +575,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "history":
                 answer = _fmt_history(await daemon.cycle_history())
                 kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🕓 Обновить", callback_data="history")]]
+                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="history")]]
                 )
                 await call.message.edit_text(
                     answer,
@@ -711,11 +588,34 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data in ("export:csv", "export:json"):
                 fmt = data.split(":")[1]
                 try:
-                    await call.message.answer("📦 Готовлю файл кошельков…")
+                    await call.message.answer("[...] Готовлю файл кошельков…")
                     await send_wallets_file(call.message.bot, call.from_user.id, daemon, fmt)
                 except Exception:  # noqa: BLE001
                     logger.warning("Экспорт кошельков (кнопка) упал", exc_info=True)
-                    await call.message.answer("⚠️ Не удалось сформировать файл кошельков.")
+                    await call.message.answer("[err] Не удалось сформировать файл кошельков.")
+                return
+
+            if data in ("cmd:usage", "cfg:usage", "ref"):
+                if data == "cmd:usage":
+                    answer = _bot_ops.CMD_USAGE
+                elif data == "cfg:usage":
+                    answer = _bot_ops.CFG_USAGE
+                else:
+                    answer = _bot_ops.REF_TEXT
+                kb = InlineKeyboardMarkup(
+                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="ref")]]
+                    if data == "ref"
+                    else []
+                )
+                if data == "ref":
+                    await call.message.edit_text(
+                        answer,
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=kb,
+                        link_preview_options=_NO_PREVIEW,
+                    )
+                else:
+                    await call.message.answer(answer, parse_mode=ParseMode.HTML)
                 return
 
             if data == "network:list":
@@ -732,11 +632,11 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 slug = data.split(":", 2)[2]
                 switched = await daemon.switch_to(slug)
                 if not switched:
-                    await call.message.answer("⚠️ Неизвестная сеть.")
+                    await call.message.answer("[err] Неизвестная сеть.")
                     return
                 ok = await daemon.start()
                 await call.message.answer(
-                    f"{'✅' if ok else '⚠️'} Фарм {_esc(slug)}: {'запущен' if ok else 'не запустился'}"
+                    f"[{'ok' if ok else 'err'}] Фарм {_esc(slug)}: {'запущен' if ok else 'не запустился'}"
                 )
                 answer, kb = _networks_view(daemon)
                 await call.message.edit_text(
@@ -749,7 +649,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data == "network:stop":
                 ok = await daemon.stop()
-                await call.message.answer("✅ Ферма остановлена." if ok else "⚠️ Остановить не удалось.")
+                await call.message.answer("[ok] Ферма остановлена." if ok else "[err] Остановить не удалось.")
                 answer, kb = _networks_view(daemon)
                 await call.message.edit_text(
                     answer,
@@ -768,9 +668,8 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data in actions:
                 ok = await actions[data]()
                 label = data.split(":")[1]
-                await call.message.answer(
-                    f"{'✅' if ok else '⚠️'} {label}: {'выполнено' if ok else 'уже в этой позиции / ферма недоступна'}"
-                )
+                done = "выполнено" if ok else "уже в этой позиции / ферма недоступна"
+                await call.message.answer(f"[{'ok' if ok else 'err'}] {label}: {done}")
                 return
 
             await call.message.answer("Неизвестная команда.", reply_markup=_menu_kb(cfg))
@@ -779,7 +678,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             # пишем в журнал и отвечаем пользователю generic-текстом (без деталей).
             logger.warning("callback %r упал", data, exc_info=True)
             try:
-                await call.message.answer("⚠️ Не удалось выполнить команду. Попробуйте позже.")
+                await call.message.answer("[err] Не удалось выполнить команду. Попробуйте позже.")
             except Exception:  # noqa: BLE001
                 pass
 
@@ -799,7 +698,7 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
         try:
             await notify_owner(
                 cfg,
-                "🌾 HARVEST запущен.\nСайт: " + cfg.public_base_url,
+                "HARVEST запущен.\nСайт: " + cfg.public_base_url,
             )
         except Exception:  # noqa: BLE001
             logger.warning("Не удалось отправить адрес владельцу", exc_info=True)

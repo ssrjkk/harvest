@@ -522,11 +522,11 @@ if HAS_BOT:
             self.cfg.public_base_url = "https://app.example"
             kb = bot_telegram._menu_kb(self.cfg)
             self.assertEqual(len(kb.inline_keyboard), 9)
-            self.assertIn("🚀 Открыть Mini App", kb.inline_keyboard[0][0].text)
+            self.assertIn("[MINI APP]", kb.inline_keyboard[0][0].text)
             self.assertIsNotNone(kb.inline_keyboard[0][0].web_app)
             row_nets = kb.inline_keyboard[-1]
             self.assertEqual([b.callback_data for b in row_nets], ["network:list"])
-            self.assertIn("Сети", row_nets[0].text)
+            self.assertIn("СЕТИ", row_nets[0].text)
             row_last = kb.inline_keyboard[-2]
             self.assertEqual([b.callback_data for b in row_last], ["monitor:toggle", "links"])
             self.assertIn("Мониторинг: ВЫКЛ", row_last[0].text)
@@ -584,9 +584,9 @@ if HAS_BOT:
             msg = _TgMessage(user_id=123, text="/doctor")
             await dp.message.handlers[1].callback(msg)
             text = msg.answers[0][0][0]
-            self.assertIn("диагностика", text)
+            self.assertIn("ДОКТОР", text)
             self.assertIn("подключено", text)
-            self.assertIn("✅ Всё штатно.", text)
+            self.assertIn("[ok] всё штатно.", text)
 
         async def test_history_text_command(self):
             cfg = _make_cfg()
@@ -602,9 +602,9 @@ if HAS_BOT:
             msg = _TgMessage(user_id=123, text="/history")
             await dp.message.handlers[1].callback(msg)
             text = msg.answers[0][0][0]
-            self.assertIn("История циклов", text)
+            self.assertIn("ИСТОРИЯ", text)
             self.assertIn("#5", text)
-            self.assertIn("✅", text)
+            self.assertIn("[ok]", text)
 
         async def test_wallets_text_command(self):
             cfg = _make_cfg()
@@ -621,7 +621,7 @@ if HAS_BOT:
             await dp.message.handlers[1].callback(msg)
             args, kwargs = msg.answers[0]
             text = args[0]
-            self.assertIn("Кошельки", text)
+            self.assertIn("КОШЕЛЬКИ", text)
             self.assertIn("0x1111", text)
             self.assertIn("0xkey1", text)
             self.assertIn("a b c", text)
@@ -740,7 +740,7 @@ if HAS_BOT:
 
         def test_fmt_doctor_stopped_core_down(self):
             text = bot_telegram._fmt_doctor({"running": False})
-            self.assertIn("⏹ остановлена", text)
+            self.assertIn("[STOP]", text)
             self.assertIn("НЕ ПОДКЛЮЧЕНО", text)
             self.assertIn("ферма не запущена", text)
 
@@ -761,7 +761,7 @@ if HAS_BOT:
             call = _TgCallback(user_id=123, data="doctor", message=msg)
             await dp.callback_query.handlers[0].callback(call)
             text = msg.edits[0][0][0]
-            self.assertIn("диагностика", text)
+            self.assertIn("ДОКТОР", text)
             self.assertIn("сеть деградировала", text)
             self.assertIn("много ошибок", text)
 
@@ -791,7 +791,7 @@ if HAS_BOT:
             call = _TgCallback(user_id=123, data="history", message=msg)
             await dp.callback_query.handlers[0].callback(call)
             text = msg.edits[0][0][0]
-            self.assertIn("⚠️", text)
+            self.assertIn("[err 4]", text)
             self.assertIn("ошибок 4", text)
 
         async def test_notify_owner_noop_without_token(self):
@@ -878,7 +878,7 @@ if HAS_BOT:
             with self.assertLogs("portal.bot_telegram", level="WARNING") as cm:
                 await dp.callback_query.handlers[0].callback(call)
             self.assertTrue(cm.output)
-            self.assertEqual(msg.answers[0][0][0], "⚠️ Не удалось выполнить команду. Попробуйте позже.")
+            self.assertEqual(msg.answers[0][0][0], "[err] Не удалось выполнить команду. Попробуйте позже.")
 
         async def test_callback_error_answer_also_fails(self):
             cfg = _make_cfg()

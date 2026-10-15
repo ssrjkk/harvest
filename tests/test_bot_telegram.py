@@ -20,7 +20,7 @@ except Exception:  # noqa: BLE001
 class TestFmtStatsEscape(unittest.TestCase):
     def test_plain_values_render(self):
         s = _fmt_stats({"running": True, "pool": {"dyn_workers": 8, "health": 1.0, "cycles": 3}, "db": {"cycles": 2}})
-        self.assertIn("▶ РАБОТАЕТ", s)
+        self.assertIn("[RUN]", s)
         self.assertIn("8", s)
 
     def test_markup_in_values_escaped(self):
@@ -49,15 +49,15 @@ _NETWORKS = [
 class TestFmtNetworks(unittest.TestCase):
     def test_marks(self):
         s = _fmt_networks(_NETWORKS)
-        self.assertIn("▶️", s)
+        self.assertIn("[RUN]", s)
         self.assertIn("vibe/vibe", s)
-        self.assertIn("▫️", s)
+        self.assertIn("[···]", s)
         self.assertIn("Robinhood Chain", s)
 
     def test_current_not_running_mark(self):
         s = _fmt_networks([{"slug": "x", "name": "X", "tagline": "", "current": True, "running": False}])
-        self.assertIn("✅", s)
-        self.assertNotIn("▶️", s)
+        self.assertIn("[CUR]", s)
+        self.assertNotIn("[RUN]", s)
 
     def test_markup_escaped(self):
         s = _fmt_networks([{"slug": "x", "name": "<b>evil</b>", "tagline": "<i>t</i>"}])
@@ -67,7 +67,7 @@ class TestFmtNetworks(unittest.TestCase):
 
     def test_empty(self):
         s = _fmt_networks([])
-        self.assertIn("Тестнет-сети", s)
+        self.assertIn("СЕТИ", s)
 
     def test_kb_payloads(self):
         kb = _networks_kb(_NETWORKS)
@@ -234,6 +234,85 @@ class TestNetworkCallbacks(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestOpsCommands(unittest.IsolatedAsyncioTestCase):
+    async def test_cmd_builds(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/cmd vibe 10 2")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(len(msg.answers), 1)
+        self.assertIn("config_vibevibe.yaml", msg.answers[0][0][0])
+        self.assertIn("--wallets 10", msg.answers[0][0][0])
+
+    async def test_cmd_usage_and_bad_slug(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/cmd")
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("/cmd", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="/cmd nope 1 1")
+        await dp.message.handlers[1].callback(msg2)
+        self.assertIn("[err]", msg2.answers[0][0][0])
+
+    async def test_cfg_sends_document(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/cfg arc 7")
+        msg.bot.send_document = mock.AsyncMock()
+        await dp.message.handlers[1].callback(msg)
+        msg.bot.send_document.assert_awaited_once()
+        kw = msg.bot.send_document.await_args.kwargs
+        self.assertEqual(kw["document"].filename, "config_arc.yaml")
+        body = kw["document"].data.decode("utf-8")
+        self.assertIn("count: 7", body)
+        self.assertIn("5042002", body)
+
+    async def test_cfg_usage_and_bad_args(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/cfg")
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("/cfg", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="/cfg vibe xx")
+        await dp.message.handlers[1].callback(msg2)
+        self.assertIn("[err]", msg2.answers[0][0][0])
+        msg3 = _M(uid=123, text="/cfg nope 5")
+        await dp.message.handlers[1].callback(msg3)
+        self.assertIn("[err]", msg3.answers[0][0][0])
+
+    async def test_check_good_and_bad(self):
+        good = (
+            "network:\n  rpc_url: https://rpc.testnet.chain.robinhood.com\n  chain_id: 46630\n"
+            "wallets:\n  count: 5\nfaucet:\n  enabled: true\n  min_balance: 0.005\n"
+            "  target_balance: 0.05\nactions:\n  - type: transfer\n    target: random_wallet\n"
+            "farming:\n  actions_per_cycle: [3, 8]\nthreading:\n  max_workers: 20\n"
+            "database:\n  path: farming_state.db\nadvanced:\n  gas_limit: 100000\n"
+        )
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/check\n" + good)
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("[ok]", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="/check\nnetwork:\n  chain_id: 0\n")
+        await dp.message.handlers[1].callback(msg2)
+        self.assertIn("[err]", msg2.answers[0][0][0])
+
+    async def test_check_needs_body(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/check")
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("ПРОВЕРКА", msg.answers[0][0][0])
+
+    async def test_ref_and_callbacks(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/ref")
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("СПРАВКА", msg.answers[0][0][0])
+        for data, needle in [
+            ("cmd:usage", "/cmd"), ("cfg:usage", "/cfg"), ("ref", "СПРАВКА"),
+        ]:
+            call = _C(uid=123, data=data)
+            await dp.callback_query.handlers[0].callback(call)
+            got = (call.message.answers + call.message.edits)
+            self.assertTrue(got, data)
+            self.assertIn(needle, got[0][0][0])
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
     def test_empty_kb(self):
         from portal.bot_telegram import _wallets_empty_kb
@@ -248,7 +327,7 @@ class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
         msg = _M(uid=123, text="/wallets")
         await dp.message.handlers[1].callback(msg)
         self.assertEqual(len(msg.answers), 1)
-        self.assertIn("Создать", msg.answers[0][0][0])
+        self.assertIn("СОЗДАТЬ", msg.answers[0][0][0])
         kb = msg.answers[0][1]["reply_markup"]
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
         self.assertIn("wallets:create", payloads)

@@ -59,7 +59,7 @@ class TestFmtStatus(unittest.TestCase):
                 "db": {"cycles": 3},
             }
         )
-        self.assertIn("▶ РАБОТАЕТ", s)
+        self.assertIn("[RUN]", s)
         self.assertIn("80.0%", s)  # 80/100
         self.assertIn("20.0", s)  # 80/4 за цикл
         self.assertIn("12", s)
@@ -73,7 +73,7 @@ class TestFmtStatus(unittest.TestCase):
                 "db": {},
             }
         )
-        self.assertIn("⏹ ОСТАНОВЛЕНА ⏸", s)
+        self.assertIn("[STOP]", s)
         self.assertIn("—", s)  # успешность и среднее без данных
 
     def test_status_escapes_values(self):
@@ -121,7 +121,7 @@ class TestLiveMonitor(unittest.IsolatedAsyncioTestCase):
     async def test_tick_sends_status_on_first(self):
         mon, bot, daemon = self._monitor()
         text = await mon.tick()
-        self.assertIn("живой статус", text)
+        self.assertIn("ПУЛЬТ", text)
         bot.send_message.assert_awaited_once()
         self.assertEqual(bot.send_message.await_args.kwargs["chat_id"], 123)
 
@@ -140,7 +140,7 @@ class TestLiveMonitor(unittest.IsolatedAsyncioTestCase):
         mon, bot, daemon = self._monitor()
         bot.send_message = mock.AsyncMock(side_effect=RuntimeError("tg down"))
         text = await mon.tick()
-        self.assertIn("живой статус", text)
+        self.assertIn("ПУЛЬТ", text)
 
     async def test_loop_cancelled_by_stop(self):
         mon, bot, daemon = self._monitor()
@@ -253,7 +253,7 @@ class TestBotCommandsMonitor(unittest.IsolatedAsyncioTestCase):
         msg = self._msg("/status")
         await dp.message.handlers[1].callback(msg)
         msg.answer.assert_awaited_once()
-        self.assertIn("живой статус", msg.answer.await_args.args[0])
+        self.assertIn("ПУЛЬТ", msg.answer.await_args.args[0])
 
     async def test_monitor_command_toggles(self):
         dp, daemon, cfg = self._dispatch()
@@ -276,7 +276,7 @@ class TestBotCommandsMonitor(unittest.IsolatedAsyncioTestCase):
         call.answer = mock.AsyncMock()
         await dp.callback_query.handlers[0].callback(call)
         call.message.edit_text.assert_awaited_once()
-        self.assertIn("живой статус", call.message.edit_text.await_args.args[0])
+        self.assertIn("ПУЛЬТ", call.message.edit_text.await_args.args[0])
 
     async def test_callback_monitor_toggle(self):
         dp, daemon, cfg = self._dispatch()
