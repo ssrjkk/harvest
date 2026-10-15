@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="terminal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Доки — harvest</title>
+<meta name="description" content="Как устроен harvest: архитектура, портал и Telegram-бот, безопасность, тесты и лицензия MIT.">
+<meta name="theme-color" content="#14110A">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Доки — harvest">
+<meta property="og:description" content="Как устроен harvest: архитектура, портал и Telegram-бот, безопасность, тесты и лицензия MIT.">
+<meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
+<meta property="og:url" content="https://ssrjkk.github.io/harvest/docs.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L22 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script>/* rv = разрешено показывать анимацию появления. Ставится до отрисовки,
+   иначе контент моргает: сначала виден, потом прячется до пересечения.
+   Через 2.5с после load класс снимается: если common.js не загрузился,
+   страница обязана остаться читаемой, а не пустой. */
+try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/terminal.css">
+<noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
+</head>
+<body class="is-loading">
+<a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
+
+<header class="topbar">
+  <div class="titlebar">
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span style="display:flex;gap:8px;align-items:center">
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
+      <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
+      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss / Terminal">◐</button>
+      <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
+    </span>
+  </div>
+  <nav class="main" id="mainNav" aria-label="Sections">
+    <a class="btn navlink" href="index.html" data-i18n="nav_home">Главная</a>
+    <a class="btn navlink" href="field.html" data-i18n="nav_field">Поле</a>
+    <a class="btn navlink" href="demo.html" data-i18n="nav_demo">Демо</a>
+    <a class="btn navlink" href="docs.html" aria-current="page" data-i18n="nav_docs">Доки</a>
+  </nav>
+</header>
+<div class="nav-scrim" id="navScrim" hidden></div>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
+
+<main id="main">
+<!-- SPECS -->
+<section class="block" data-reveal id="specs">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="specs_h">Коротко о проекте</h2></div>
+    <div class="table-wrap"><table class="t">
+      <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
+      <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
+      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">pytest · контрактные сценарии · CI</td></tr>
+      <tr><td data-i18n="f_wallet">Генерация</td><td class="num" data-i18n="f_wallet_v">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
+      <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num" data-i18n="f_rpc_v">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
+      <tr><td data-i18n="f_portal">Управление</td><td class="num" data-i18n="f_portal_v">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
+      <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num" data-i18n="f_dist_v">exe через PyInstaller · Docker + compose</td></tr>
+    </table></div>
+  </div>
+</section><!-- 06 ARCH -->
+<section class="block" data-reveal id="arch">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">06</span><h2 data-i18n="s5_h">Как устроено</h2></div>
+    <p class="sec-sub" data-i18n="s5_sub">main.py — меню для человека, auto.py — тот же пайплайн для скрипта. Оба делят одно ядро core/. Один NetworkManager на сессию — латентность, кэши и монитор общие. Запись в БД идёт через BatchWriter батчами, с паузой после серии сбоев.</p>
+    <div class="grid2">
+      <div><div class="tree">main.py ── interactive menu (Rich live, p/q keys)
+auto.py ── CLI pipeline: gen → faucet → farm → export
+          │
+core/config.py ── load + env-override + validate
+core/license.py ── hub gate, PBKDF2, offline grace
+core/performance.py ── workers/rpc/gen/chunk
+          │
+core/pool.py FarmerPool ── state.json recovery
+   └── core/workpool.py ── health-scaled workers
+   └── core/farmer.py ── one-wallet cycle
+   └── core/actions.py ── weights × adaptive scores
+   └── core/behavior.py ── sha256(address) profiles
+          │
+core/network.py ── multi-RPC, EMA, breaker, TTL
+core/faucet.py ── chainstack/direct, batch+semaphore
+core/database.py ── SQLite WAL / PostgreSQL DSN
+core/crypto.py ── AES-256-GCM seeds
+core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
+      <div>
+        <div class="table-wrap"><table class="t">
+          <tr><th data-i18n="a_mod">Модуль</th><th data-i18n="a_do">Отвечает за</th></tr>
+          <tr><td class="mono">network</td><td data-i18n="a1">Пинг 30с, проба 2500мс, ретраи ×3, failover, receipt-бюджет 30с</td></tr>
+          <tr><td class="mono">workpool</td><td data-i18n="a2">Очередь приоритетов, retire без cancel, respawn с backoff</td></tr>
+          <tr><td class="mono">batchwriter</td><td data-i18n="a3">flush 2с/500 строк, dropped_count, cooldown 30с</td></tr>
+          <tr><td class="mono">vibevibe</td><td data-i18n="a4">ABI, EIP-712 TradeIntent, gas default 300000</td></tr>
+          <tr><td class="mono">database</td><td data-i18n="a5">wallets/actions_log/nonces/cycle_history, VACUUM, бэкапы</td></tr>
+          <tr><td class="mono">doctor</td><td data-i18n="a6">Конфиг → ключ → БД → RPC → кран → лицензия, exit code</td></tr>
+          <tr><td class="mono">web_gui</td><td data-i18n="a7">Локальная веб-панель: кнопки, WebSocket-лог, топ и история (main.py → G, 127.0.0.1:8080)</td></tr>
+        </table></div>
+        <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
+      </div>
+    </div>
+  </div>
+</section><!-- 07 PORTAL -->
+<section class="block" data-reveal id="portal">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">07</span><h2 data-i18n="s6_h">Портал и Telegram</h2></div>
+    <p class="sec-sub" data-i18n="s6_sub">python -m portal поднимает aiohttp (веб + API) и, если есть токен, Telegram-бота. Секреты — только через env. Если портал выставляют не на loopback и способа входа нет, он отказывается стартовать.</p>
+    <div class="grid2">
+      <div class="table-wrap"><table class="t">
+        <tr><th>env</th><th data-i18n="po_d">Назначение</th></tr>
+        <tr><td class="mono">PORTAL_SECRET</td><td data-i18n="po1">Подпись сессий, мин. 16 символов</td></tr>
+        <tr><td class="mono">TELEGRAM_BOT_TOKEN</td><td data-i18n="po2">Токен от BotFather</td></tr>
+        <tr><td class="mono">TELEGRAM_ALLOW_IDS</td><td data-i18n="po3">Default-deny список user_id</td></tr>
+        <tr><td class="mono">FARMER_MASTER_KEY</td><td data-i18n="po4">Мастер-ключ БД / PIN веб-входа</td></tr>
+        <tr><td class="mono">GOOGLE_CLIENT_ID/SECRET</td><td>Google OAuth 2.0 + PKCE</td></tr>
+        <tr><td class="mono">PORTAL_DB / PORTAL_FARM_CONFIG</td><td data-i18n="po6">Путь к БД / конфиг фермера</td></tr>
+      </table></div>
+      <div>
+        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза, поле и статистика, ссылки, экспорт CSV/JSON, кнопки под сообщениями, команды: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /cmd, /cfg, /check, /ref, /cancel, /help — плюс конструкторы /cmd (готовая команда), /cfg (готовый YAML файлом), /check (проверка YAML валидатором) и /ref (справочник). Стиль сообщений — как этот сайт: секции harvest // X, маркеры [RUN]/[STOP]/[ok], эмодзи только в статусе home. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
+        <div class="card" style="margin-top:12px"><div class="label">deploy/</div><h3>VPS / Docker</h3><p data-i18n="dp_p">Готовый кит: Dockerfile + compose, long-polling без публичного URL, Caddy для HTTPS позже, .env-шаблон, healthcheck, volume для данных.</p></div>
+      </div>
+    </div>
+  </div>
+</section><!-- 08 SECURITY -->
+<section class="block" data-reveal id="security">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">08</span><h2 data-i18n="s7_h">Безопасность — по умолчанию закрыто</h2></div>
+    <div class="grid3">
+      <div class="card"><h3 data-i18n="b1_h">Шифрование</h3><p data-i18n="b1_p">Сиды — AES-256-GCM (nonce 12B, AAD wallet-seed). Файлы экспорта — AES-256-CBC v2: PBKDF2-SHA256 100k, раздельные ключи шифрования и MAC, HMAC-проверка до записи.</p></div>
+      <div class="card"><h3>Redaction</h3><p data-i18n="b2_p">RPC-URL чистятся везде: credentials до @ и query-токены стираются. https://user:pass@host/?api_key=X → https://host/. Логи, история циклов, CLI-вывод.</p></div>
+      <div class="card"><h3>Fail-closed</h3><p data-i18n="b3_p">Нет мастер-ключа при шифрованных сидах — отказ. Портал default-deny, single-instance лок на БД, ограничение прав файлов, лимиты логина 5/10мин per-IP.</p></div>
+    </div>
+    <p class="note" data-i18n="sec_rep">Нашли уязвимость — не открывайте публичный issue. Напишите через private vulnerability reporting на GitHub или напрямую мейнтейнеру. Поддерживается последний релиз; стараюсь ответить в течение 48 часов.</p>
+  </div>
+</section><!-- 09 TESTS / FAQ -->
+<section class="block" data-reveal id="tests">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Проверки и вопросы</h2></div>
+    <div class="grid2">
+      <div>
+<pre class="code" id="codeTest">python -m pytest tests -q<button class="btn small copy-btn" data-copy="codeTest" type="button"><span data-i18n="copy">копировать</span></button></pre>
+        <ul class="tight note">
+          <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
+          <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI гоняет то же, что можно запустить локально; покрытие core/portal — это гейт в CI, а не цифра для хвастовства на сайте.</li>
+          <li data-i18n="t3">Нагрузочный тест — opt-in: <code class="inline">$env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q</code>.</li>
+        </ul>
+      </div>
+      <div>
+        <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебная активность. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
+        <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вкладки. Сайт статический, на сервер ничего не уходит — закройте вкладку или нажмите «Очистить», и ключи исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
+        <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime откатывается на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по умолчанию раз в 30 минут, допустимо 15–60; история main не растёт — снапшот уходит в ветку gh-pages). Если данных нет — это не ошибка сайта, ферма просто ещё ничего не отправила.</div></details>
+        <details><summary><span class="q">Q5</span> <span data-i18n="q5">Вы обещаете дроп?</span></summary><div class="a" data-i18n="a_q5">Нет. harvest не гарантирует дроп, поинты или прибыль. Тестнеты меняются, активность могут не засчитать. Инструмент помогает делать практику аккуратно, но результат не в его власти.</div></details>
+      </div>
+    </div>
+  </div>
+</section><!-- 10 LICENSE -->
+<section class="block" data-reveal id="license">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">10</span><h2 data-i18n="s9_h">Лицензия MIT</h2></div>
+    <p class="sec-sub" data-i18n="s9_sub">Свободно используйте, копируйте, изменяйте, публикуйте и продавайте — с сохранением уведомления об авторстве. Без гарантий.</p>
+    <div class="license-box">MIT License
+
+Copyright (c) 2026 ssrjkk (https://t.me/ssrjkk_bot)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.</div>
+    <div class="toolbar"><a class="btn small" href="https://github.com/ssrjkk/harvest/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE file</a></div>
+  </div>
+</section></main>
+
+<footer>
+  <div class="wrap cols">
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">QA-стенд для EVM-тестнетов · © 2026 ssrjkk · MIT</span></div>
+    <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+  </div>
+</footer>
+<div class="cmdk" id="cmdk">
+  <div class="cmdk-scrim" id="cmdkScrim"></div>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="harvest">
+    <input class="cmdk-in" id="cmdkIn" type="text" autocomplete="off" spellcheck="false" placeholder="Команда или раздел…" data-i18n-ph="cmdk_ph" aria-label="Команда или раздел">
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="harvest"></div>
+    <div class="cmdk-foot"><span data-i18n="cmdk_hint">↑↓ выбор · Enter выполнить · Esc закрыть</span><kbd class="cmdk-kbd">Ctrl</kbd><kbd class="cmdk-kbd">K</kbd></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="assets/common.js" defer></script>
+<script>
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+}
+</script>
+</body>
+</html>

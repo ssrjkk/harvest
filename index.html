@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="terminal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>harvest v2.4.1 — QA-стенд для EVM-тестнетов</title>
+<meta name="description" content="harvest — QA-стенд для чужих EVM-тестнетов: гоняем чейны ботами по сценариям (smoke/load/soak/chaos), меряем здоровье сети и пишем отчёт прогона. Только тестовые сети, без обещаний дропа. MIT, © 2026 ssrjkk.">
+<meta name="theme-color" content="#14110A">
+<meta property="og:type" content="website">
+<meta property="og:title" content="harvest v2.4.1 — QA-стенд для EVM-тестнетов">
+<meta property="og:description" content="QA-стенд для чужих EVM-тестнетов: боты, сценарии, здоровье сети, отчёт прогона. Только тестовые сети, без обещаний дропа.">
+<meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
+<meta property="og:url" content="https://ssrjkk.github.io/harvest/">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L22 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script>/* rv = разрешено показывать анимацию появления. Ставится до отрисовки,
+   иначе контент моргает: сначала виден, потом прячется до пересечения.
+   Через 2.5с после load класс снимается: если common.js не загрузился,
+   страница обязана остаться читаемой, а не пустой. */
+try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/terminal.css">
+<noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
+</head>
+<body class="is-loading">
+<a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
+
+<script>
+/* Старые якоря ленты (#field, #app, …) — на новые страницы. */
+(function(){
+var map={field:"field.html",live:"field.html",faucet:"field.html",bot:"field.html",app:"demo.html",specs:"docs.html",arch:"docs.html",portal:"docs.html",security:"docs.html",tests:"docs.html",license:"docs.html"};
+var h=(location.hash||"").replace("#","");
+if(map[h])location.replace(map[h]+"#"+h);
+})();
+</script>
+<header class="topbar">
+  <div class="titlebar">
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span style="display:flex;gap:8px;align-items:center">
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
+      <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
+      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss / Terminal">◐</button>
+      <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
+    </span>
+  </div>
+  <nav class="main" id="mainNav" aria-label="Sections">
+    <a class="btn navlink" href="index.html" aria-current="page" data-i18n="nav_home">Главная</a>
+    <a class="btn navlink" href="field.html" data-i18n="nav_field">Поле</a>
+    <a class="btn navlink" href="demo.html" data-i18n="nav_demo">Демо</a>
+    <a class="btn navlink" href="docs.html" data-i18n="nav_docs">Доки</a>
+  </nav>
+</header>
+<div class="nav-scrim" id="navScrim" hidden></div>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
+
+<main id="main">
+<!-- HERO -->
+<div class="hero win" data-reveal id="top">
+  <div class="titlebar"><span data-i18n="hero_kicker">ТЕСТНЕТЫ · PYTHON 3.12 · MIT</span><span data-i18n="hero_kicker_r">БЕЗ ОБЕЩАНИЙ ДРОПА</span></div>
+  <div class="wrap">
+    <h1 data-i18n="h1">Чужие тестнеты — под нагрузкой.<br><em>Ботами, по сценариям.</em></h1>
+    <p class="lede" data-i18n="lede">harvest — QA-стенд для EVM-тестнетов: поднимает флот кошельков с поведенческими персонами, топит чейн транзакциями по сценарию и показывает здоровье сети и отчёт прогона. Написан на Python, работает с вашей машины.</p>
+    <div class="hero-cta">
+      <a class="btn accent" href="field.html" data-i18n="cta_live">Открыть поле</a>
+      <a class="btn" href="demo.html" data-i18n="cta_demo">Попробовать в демо</a>
+      <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener" data-i18n="cta_bot">Telegram-бот</a>
+    </div>
+    <p class="note" data-i18n="hero_note">Только тестовые сети. Демо-ключи остаются в браузере, стенд — на вашем компьютере. Никаких гарантий дропа или прибыли: это инструмент проверки чужих чейнов, а не лотерейный билет.</p>
+    <p class="note"><span data-i18n="contacts">Автор:</span> <b>ssrjkk</b> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
+    <div class="hero-grid">
+      <div class="stat-table"><table>
+        <tr><th colspan="2" data-i18n="hg_t">Что внутри</th></tr>
+        <tr><td data-i18n="hg_nets">Сети</td><td class="num" data-i18n="hg_nets_v">4 тестовые · Robinhood, Flop, Arc, vibe/vibe</td></tr>
+        <tr><td data-i18n="hg_control">Управление</td><td class="num" data-i18n="hg_control_v">Python CLI · меню · веб-портал · Telegram</td></tr>
+        <tr><td data-i18n="hg_themes">Темы / языки</td><td class="num" data-i18n="hg_themes_v">Paper · Ink · Moss · Terminal / RU · EN</td></tr>
+        <tr><td data-i18n="hg_license">Лицензия</td><td class="num" data-i18n="hg_license_v">MIT · код можно читать и менять</td></tr>
+      </table></div>
+      <div class="terminal"><div class="terminal-bar"><i></i><i></i><i></i><span data-i18n="hg_term">Три команды до меню</span></div><pre>git clone https://github.com/ssrjkk/harvest.git
+cd harvest
+pip install -r requirements.txt
+python main.py</pre></div>
+    </div>
+  </div>
+</div>
+
+<!-- 02 LETTER -->
+<section class="block" data-reveal id="overview">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">02</span><h2 data-i18n="s1_h">Зачем это всё</h2></div>
+    <p class="sec-sub" data-i18n="s1_sub">Если коротко: мне нравится возиться с тестнетами, и я хотел убрать из этого рутину. А ещё — показать, как всё устроено, без тумана.</p>
+    <div class="letter">
+      <p data-i18n="letter_p1">Я начал harvest с простой задачи: у меня было несколько тестовых сетей и много одинаковых действий, которые я делал руками. Создать кошельки, дождаться крана, отправить перевод, записать, что получилось. Через пару вечеров стало понятно: это лучше поручить скрипту, а самому смотреть на цифры и иногда вмешиваться.</p>
+      <p data-i18n="letter_p2">Поэтому здесь нет «секретной стратегии» или обещания, что вас заметят и что-то дадут. Есть Python-ферма, конфиги под конкретные сети, портал для запуска и остановки, и этот сайт. Всё можно прочитать, поменять и запустить у себя. Если что-то сломается — в логах будет видно, что именно.</p>
+      <p data-i18n="letter_p3">Сайт специально сделан статическим. Демо-зона считает ключи в браузере и никуда их не отправляет. Поле показывает только то, что ферма сама решила опубликовать: без адресов и без приватных ключей.</p>
+      <div class="sign" data-i18n="letter_sign">— ssrjkk, автор harvest</div>
+    </div>
+    <div class="grid3">
+      <div class="card"><div class="label" data-i18n="c1_l">Кошельки</div><h3 data-i18n="c1_h">Создать и не потерять</h3><p data-i18n="c1_p">BIP-39 через eth_account, импорт и экспорт CSV/JSON, шифрование сидов AES-256-GCM. Повторный запуск не плодит дубликаты.</p></div>
+      <div class="card"><div class="label" data-i18n="c2_l">Кран</div><h3 data-i18n="c2_h">Дождаться топлива</h3><p data-i18n="c2_p">Стратегии chainstack, direct и web, ретраи, лимиты и прокси. Если живого крана нет, ферма честно скажет об этом, а не будет делать вид.</p></div>
+      <div class="card"><div class="label" data-i18n="c3_l">Прогоны</div><h3 data-i18n="c3_h">Гонять чейн по сценарию</h3><p data-i18n="c3_p">Асинхронный пул, чанки, восстановление после падения по state.json. Поведенческая персона привязана к адресу, поэтому перезапуск не меняет рисунок нагрузки.</p></div>
+    </div>
+    <div class="label" style="margin:26px 0 4px" data-i18n="limits_h">Границы, о которых лучше знать сразу</div>
+    <ul class="plain-list">
+      <li><b data-i18n="lim1_h">Только тестнеты</b><span data-i18n="lim1_p">Никакого мейннета, реальных денег и реальных ключей. Это песочница для практики, а не способ заработать.</span></li>
+      <li><b data-i18n="lim2_h">Без гарантий</b><span data-i18n="lim2_p">Проект не обещает дроп, поинты или прибыль. Тестнет может закрыться, правила могут поменяться, активность могут не засчитать.</span></li>
+      <li><b data-i18n="lim3_h">Ключи у вас</b><span data-i18n="lim3_p">Демо-генератор хранит ключи только в памяти вкладки. Ферма хранит их в вашей БД; для шифрования нужен мастер-ключ. Резервные копии — ваша ответственность.</span></li>
+      <li><b data-i18n="lim4_h">Не «всё само»</b><span data-i18n="lim4_p">Конфиги, RPC и контракты иногда нужно править руками. Если сеть — заглушка, часть действий будет пропущена, и это нормально.</span></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 03 NETWORKS -->
+<section class="block" data-reveal id="networks">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">03</span><h2 data-i18n="s2_h">Четыре тестовые сети</h2></div>
+    <p class="sec-sub" data-i18n="s2_sub">Выбор сети — в меню main.py или флагом --config. У каждой сети свой конфиг и своя БД. Для плотного фарма без контрактов есть config.simple.yaml: только переводы, gas_limit 21000.</p>
+    <div class="table-wrap"><table class="t">
+      <tr><th data-i18n="n_net">Сеть</th><th data-i18n="n_cfg">Конфиг</th><th>chain_id</th><th data-i18n="n_cur">Валюта</th><th data-i18n="n_act">Действия</th></tr>
+      <tr><td><b>Robinhood Chain</b></td><td class="mono">config_robinhood.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer · vibevibe_swap/mint</td></tr>
+      <tr><td><b>Flop Labs</b></td><td class="mono">config_flop.yaml</td><td class="num">99999 <span class="pill warn">stub</span></td><td>FLOP</td><td class="mono">flop_compute/validate/stake + transfer</td></tr>
+      <tr><td><b>Arc (Minara.Fun)</b></td><td class="mono">config_arc.yaml</td><td class="num">5042002</td><td>ARC</td><td class="mono">arc_launch/trade/add_liquidity + transfer</td></tr>
+      <tr><td><b>vibe/vibe</b> <span class="note" data-i18n="net_vibe_note">— launchpad на Robinhood</span></td><td class="mono">config_vibevibe.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono" data-i18n="net_vibe_act">transfer · buy/sell — если настроен signer_key</td></tr>
+    </table></div>
+    <p class="note" data-i18n="net_note">99999 у Flop — маркер-заглушка: переводы работают, контрактные вызовы без реальных адресов откатываются на transfer. Это не ошибка конфига.</p>
+    <p class="note" data-i18n="vibe_note">* В shipped config_vibevibe.yaml включён transfer. buy/sell на VibePassMarket требуют EIP-712 подписи TradeIntent ключом tradeSigner (vibevibe.signer_key или env FARMER_VIBE_SIGNER_KEY). Без ключа они пропускаются; transfer, claimRewards и stake работают. ABI — в abi/vibevibe.json.</p>
+    <pre class="code" id="codeVibe">python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
+python auto.py --config config.simple.yaml --wallets 200 --cycles 2<button class="btn small copy-btn" data-copy="codeVibe" type="button"><span data-i18n="copy">копировать</span></button></pre>
+  </div>
+</section>
+
+<!-- 04 QUICKSTART -->
+<section class="block" data-reveal id="quickstart">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">04</span><h2 data-i18n="s3_h">Попробовать без спешки</h2></div>
+    <p class="sec-sub" data-i18n="s3_sub">Первая цель — Windows/PowerShell и exe-сборка, но Python 3.12 работает везде. Начните с 3–5 кошельков: так проще понять, что происходит.</p>
+    <div class="grid2">
+      <div>
+<pre class="code" id="codeStart">git clone https://github.com/ssrjkk/harvest.git
+cd harvest
+pip install -r requirements.txt
+python main.py             <span data-i18n="code_menu"># меню: сеть → фарм</span>
+python auto.py --dry-run   <span data-i18n="code_dry"># холостой прогон без транзакций</span><button class="btn small copy-btn" data-copy="codeStart" type="button"><span data-i18n="copy">копировать</span></button></pre>
+        <div class="label" style="margin:14px 0 6px" data-i18n="flags_h">Флаги auto.py</div>
+        <div class="table-wrap"><table class="t">
+          <tr><th>Flag</th><th data-i18n="flags_d">Эффект</th></tr>
+          <tr><td class="mono">--wallets N</td><td data-i18n="fl1">N кошельков (0 — из конфига; по умолчанию 50)</td></tr>
+          <tr><td class="mono">--cycles N</td><td data-i18n="fl2">N циклов (0 — бесконечно)</td></tr>
+          <tr><td class="mono">--config FILE</td><td data-i18n="fl3">Конфиг ($FARMER_CONFIG → config.yaml)</td></tr>
+          <tr><td class="mono">--skip-faucet / --skip-farm</td><td data-i18n="fl4">Пропустить кран / фарм</td></tr>
+          <tr><td class="mono">--schedule H</td><td data-i18n="fl5">Пайплайн каждые H часов (мин. 0.05)</td></tr>
+          <tr><td class="mono">--batch / --workers / --fast</td><td data-i18n="fl6">Пачка крана · воркеры · минимальные задержки</td></tr>
+          <tr><td class="mono">--dry-run / --export / --encrypt</td><td data-i18n="fl7">Холостой прогон · экспорт CSV+JSON · AES-шифрование</td></tr>
+          <tr><td class="mono">--history N / --doctor / --version</td><td data-i18n="fl8">История циклов · диагностика · версия</td></tr>
+        </table></div>
+        <p class="note" data-i18n="start_note">Совет: сначала --dry-run, потом 3 кошелька и один цикл. Ферма не требует доверия — все шаги видны в логах.</p>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="exe_h">Сборка exe · портал · тесты · публикация поля</div>
+<pre class="code" id="codeExe">pip install -r requirements.txt
+pyinstaller harvest.spec --noconfirm --clean
+Unblock-File dist\harvest\harvest.exe
+
+pip install -r requirements-portal.txt
+python -m portal                <span data-i18n="code_portal"># aiohttp + API + бот</span>
+
+python -m pytest tests -q       <span data-i18n="code_tests"># локальная проверка</span>
+
+python publish_dash.py          <span data-i18n="code_publish"># state.json → gh-pages → поле сайта</span><button class="btn small copy-btn" data-copy="codeExe" type="button"><span data-i18n="copy">копировать</span></button></pre>
+        <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
+        <p class="note" data-i18n="menu_p">1 — создать кошельки · 2 — один цикл · 3 — live-консоль (p — пауза, q — стоп) · 4 — монитор балансов · 5 — кран на всех · 6 — статистика · 7/8 — экспорт/импорт JSON · C — история · 9 — диагностика RPC · D — doctor · B — бэкапы · G — локальная веб-панель (FastAPI, 127.0.0.1:8080) · L — лицензия · S — смена сети · H — справка. С аргументами main.py делегирует в auto (так же ведёт себя exe).</p>
+        <p class="note" data-i18n="docs_more">Подробности — в <a href="docs.html">доках</a> и в DOCUMENTATION.md. Если что-то не сходится, это баг, а не «фича»: напишите автору.</p>
+      </div>
+    </div>
+  </div>
+</section></main>
+
+<footer>
+  <div class="wrap cols">
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">QA-стенд для EVM-тестнетов · © 2026 ssrjkk · MIT</span></div>
+    <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+  </div>
+</footer>
+<div class="cmdk" id="cmdk">
+  <div class="cmdk-scrim" id="cmdkScrim"></div>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="harvest">
+    <input class="cmdk-in" id="cmdkIn" type="text" autocomplete="off" spellcheck="false" placeholder="Команда или раздел…" data-i18n-ph="cmdk_ph" aria-label="Команда или раздел">
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="harvest"></div>
+    <div class="cmdk-foot"><span data-i18n="cmdk_hint">↑↓ выбор · Enter выполнить · Esc закрыть</span><kbd class="cmdk-kbd">Ctrl</kbd><kbd class="cmdk-kbd">K</kbd></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="assets/common.js" defer></script>
+<script>
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+}
+</script>
+</body>
+</html>

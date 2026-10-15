@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="terminal">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Поле — harvest</title>
+<meta name="description" content="Снимок состояния фермы harvest: сетка кошельков, метрики, история, кран и Telegram-бот. Данные публикует сама ферма.">
+<meta name="theme-color" content="#14110A">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Поле — harvest">
+<meta property="og:description" content="Снимок состояния фермы harvest: сетка кошельков, метрики, история, кран и Telegram-бот. Данные публикует сама ферма.">
+<meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
+<meta property="og:url" content="https://ssrjkk.github.io/harvest/field.html">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L22 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<script>/* rv = разрешено показывать анимацию появления. Ставится до отрисовки,
+   иначе контент моргает: сначала виден, потом прячется до пересечения.
+   Через 2.5с после load класс снимается: если common.js не загрузился,
+   страница обязана остаться читаемой, а не пустой. */
+try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/terminal.css">
+<noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
+</head>
+<body class="is-loading">
+<a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
+
+<header class="topbar">
+  <div class="titlebar">
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span style="display:flex;gap:8px;align-items:center">
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
+      <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
+      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss / Terminal">◐</button>
+      <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
+    </span>
+  </div>
+  <nav class="main" id="mainNav" aria-label="Sections">
+    <a class="btn navlink" href="index.html" data-i18n="nav_home">Главная</a>
+    <a class="btn navlink" href="field.html" aria-current="page" data-i18n="nav_field">Поле</a>
+    <a class="btn navlink" href="demo.html" data-i18n="nav_demo">Демо</a>
+    <a class="btn navlink" href="docs.html" data-i18n="nav_docs">Доки</a>
+  </nav>
+</header>
+<div class="nav-scrim" id="navScrim" hidden></div>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
+
+<main id="main">
+<span id="live" aria-hidden="true"></span>
+<section class="block" data-reveal id="field">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — что происходит сейчас</h2><span class="pill" id="updated" aria-live="polite">—</span></div>
+
+    <div class="toolbar" id="fxFilters" role="toolbar" data-i18n-aria="aria_filters" aria-label="Фильтры поля" style="overflow-x:auto">
+      <button class="btn small on" data-f="all" type="button" aria-pressed="true" data-i18n-aria="aria_f_all" aria-label="Все кошельки" data-i18n="f_all">ВСЕ</button>
+      <button class="btn small" data-f="i" type="button" aria-pressed="false" data-i18n-aria="aria_f_i" aria-label="Спящие">i</button>
+      <button class="btn small" data-f="w" type="button" aria-pressed="false" data-i18n-aria="aria_f_w" aria-label="Работающие">w</button>
+      <button class="btn small" data-f="o" type="button" aria-pressed="false" data-i18n-aria="aria_f_o" aria-label="Успешные">o</button>
+      <button class="btn small" data-f="e" type="button" aria-pressed="false" data-i18n-aria="aria_f_e" aria-label="С ошибками">e</button>
+      <button class="btn small" data-f="r" type="button" aria-pressed="false" data-i18n-aria="aria_f_r" aria-label="Отдыхающие">r</button>
+      <button class="btn small" id="fxZoom" type="button" aria-pressed="true">ПАНОРАМА</button>
+      <label class="visually-hidden" for="fxQ" data-i18n="aria_q">Номер кошелька</label>
+      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…" data-i18n-aria="aria_q" aria-label="Номер кошелька">
+    </div>
+    <div class="inset" id="fxInspector" role="status" style="padding:8px 12px;margin:8px 0"><span class="note">—</span></div>
+    <p class="sec-sub" data-i18n="sl_sub">Сюда ферма публикует снимок: метрики, историю и сетку кошельков. Сайт перечитывает state.json раз в минуту, публикация обычно идёт раз в 30 минут. Если снимка ещё нет, ниже будет пусто — это нормально, а не поломка сайта.</p>
+    <div id="liveAlert" role="alert"></div>
+    <div id="staleAlert" role="alert" hidden></div>
+    <div class="termline" id="term" aria-live="polite">
+      <span class="tstat"><i class="dot mut" id="dot" aria-hidden="true"></i><b id="status">—</b></span>
+      <span><span data-i18n="t_net">сеть</span> <b id="net">—</b></span>
+      <span>health <b id="health">—</b></span>
+      <span class="cursor" aria-hidden="true"></span>
+    </div>
+    <p class="note" id="lastCycle">—</p>
+    <div id="fieldEmpty" hidden>
+      <p><span data-i18n="fe_t">Данных ещё нет. Когда ферма опубликует первый снимок, поле оживёт. Можно запустить вручную:</span>
+      <code id="feCmd">python auto.py --wallets 50 --cycles 5</code>
+      <button class="btn small" data-copy="feCmd" type="button" data-i18n="copy">копировать</button>
+      <span data-i18n="fe_pub">затем <code>python publish_dash.py</code>.</span></p>
+    </div>
+    <div class="field-grid" id="fieldGrid" role="grid" data-i18n-aria="aria_grid" aria-label="Сетка кошельков" tabindex="0"></div>
+    <div class="field-legend" id="fieldLegend">
+      <span><i class="sw s-i"></i><span data-i18n="lg_i">спит</span></span>
+      <span><i class="sw s-w"></i><span data-i18n="lg_w">работает</span></span>
+      <span><i class="sw s-o"></i><span data-i18n="lg_o">успех</span></span>
+      <span><i class="sw s-e"></i><span data-i18n="lg_e">ошибка</span></span>
+      <span><i class="sw s-r"></i><span data-i18n="lg_r">отдыхает</span></span>
+      <span class="note" id="fieldMore"></span>
+    </div>
+    <div class="cell-tip" id="cellTip" hidden></div>
+    <div class="grid5">
+      <div class="kpi"><div class="k" data-i18n="k_act">Действий</div><div class="v" id="cActions">—</div><div class="sub" id="sActions">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_proc">Обработано</div><div class="v" id="cProcessed">—</div><div class="sub" id="sProcessed">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_err">Ошибок</div><div class="v" id="cErrors">—</div><div class="sub" id="sErrors">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_cyc">Циклов</div><div class="v" id="cCycles">—</div><div class="sub" id="sCycles">—</div></div>
+      <div class="kpi"><div class="k" data-i18n="k_wal">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
+    </div>
+    <div id="pnlBox" hidden>
+      <div class="label" style="margin:18px 0 6px" data-i18n="pnl_h">PnL последнего прогона</div>
+      <div class="grid4">
+        <div class="kpi"><div class="k" data-i18n="pnl_ok">Успешных действий</div><div class="v" id="pnlOk">—</div><div class="sub" id="pnlRate">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_farm">Δ фарма</div><div class="v" id="pnlFarm">—</div><div class="sub" id="pnlSample">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_faucet">Δ крана</div><div class="v" id="pnlFaucet">—</div><div class="sub" id="pnlWindow">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_fail">Отказов</div><div class="v" id="pnlFail">—</div><div class="sub" id="pnlWhen">—</div></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div>
+          <div class="label" style="margin-bottom:6px" data-i18n="pnl_types">По типам действий</div>
+          <div class="table-wrap"><table class="t"><tr><th data-i18n="pnl_type">Действие</th><th>ok</th><th data-i18n="pnl_fail_short">ошибок</th></tr><tbody id="tPnlTypes"><tr><td colspan="3" class="note">—</td></tr></tbody></table></div>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:6px" data-i18n="pnl_reasons">Причины отказов</div>
+          <div class="table-wrap"><table class="t"><tr><th data-i18n="pnl_reason">Причина</th><th data-i18n="pnl_cnt">случаев</th></tr><tbody id="tPnlReasons"><tr><td colspan="2" class="note">—</td></tr></tbody></table></div>
+        </div>
+      </div>
+      <p class="note" data-i18n="pnl_note">Только агрегаты: адреса кошельков в публичную ветку не попадают. Полный отчёт с разбивкой по кошелькам и ссылками на эксплорер ферма пишет локально (pnl_report.html).</p>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div><div class="label" data-i18n="ch1">Действия / ошибки по истории</div><canvas class="chart" id="chartMain" width="600" height="150" role="img" data-i18n-aria="aria_ch1" aria-label="Действия и ошибки"></canvas></div>
+      <div><div class="label" data-i18n="ch2">Обработано кошельков</div><canvas class="chart" id="chartProc" width="600" height="150" role="img" data-i18n-aria="aria_ch2" aria-label="Обработано"></canvas></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="tw">Топ кошельков</div>
+        <div class="table-wrap"><table class="t"><tr><th>#</th><th data-i18n="w_act">actions</th></tr><tbody id="tWallets"><tr><td colspan="2" class="note">—</td></tr></tbody></table></div>
+      </div>
+      <div>
+        <div class="label" style="margin-bottom:6px" data-i18n="ch">История циклов</div>
+        <div class="table-wrap"><table class="t"><tr><th>#</th><th>status</th><th>actions</th><th>errors</th><th>s</th><th>wallets</th></tr><tbody id="tHistory"><tr><td colspan="6" class="note">—</td></tr></tbody></table></div>
+      </div>
+    </div>
+    <div class="label" style="margin:16px 0 8px" data-i18n="nets_h">Сети</div>
+    <div class="grid4" id="nets"></div>
+    <div class="toolbar">
+      <a class="btn small" href="https://explorer.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood explorer</a>
+      <a class="btn small" href="https://faucet.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood faucet</a>
+    </div>
+  </div>
+</section><!-- FAUCET -->
+<section class="block" data-reveal id="faucet">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="fx_h">Кран и диагностика</h2></div>
+    <p class="sec-sub" data-i18n="fx_p1">Кран сначала проверяет ключ и квоту, и только потом просит монеты. Без CHAINSTACK_API_KEY стратегия просто не включается — это не ошибка, а честный пропуск.</p>
+    <p class="note" data-i18n="fx_p2">Ключ: console.chainstack.com → user/settings/api-keys. Держите его в env CHAINSTACK_API_KEY, не в конфиге.</p>
+  </div>
+</section><!-- BOT -->
+<section class="block" data-reveal id="bot">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="bot_h">Telegram-бот</h2></div>
+    <p class="sec-sub" data-i18n="bot_p">Бот фермы показывает поле, считает PnL и понимает команды: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /cmd, /cfg, /check, /ref, /cancel, /help, плюс пошаговые мастера /cmd и /cfg. Для связи с автором есть отдельный @ssrjkk_bot.</p>
+    <div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">t.me/harvest_testnet_bot</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div>
+  </div>
+</section></main>
+
+<footer>
+  <div class="wrap cols">
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">QA-стенд для EVM-тестнетов · © 2026 ssrjkk · MIT</span></div>
+    <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+  </div>
+</footer>
+<div class="cmdk" id="cmdk">
+  <div class="cmdk-scrim" id="cmdkScrim"></div>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="harvest">
+    <input class="cmdk-in" id="cmdkIn" type="text" autocomplete="off" spellcheck="false" placeholder="Команда или раздел…" data-i18n-ph="cmdk_ph" aria-label="Команда или раздел">
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="harvest"></div>
+    <div class="cmdk-foot"><span data-i18n="cmdk_hint">↑↓ выбор · Enter выполнить · Esc закрыть</span><kbd class="cmdk-kbd">Ctrl</kbd><kbd class="cmdk-kbd">K</kbd></div>
+  </div>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="assets/common.js" defer></script>
+<script src="assets/field.js" defer></script>
+<script>
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+# gh-pages: только собранный сайт. Всё остальное игнорируется,
+# чтобы случайный `git add -A` не утащил секреты (.key/.env) или код.
+*
+!.gitignore
+!index.html
+!.nojekyll
+!state.json
+!assets/
+!assets/**
