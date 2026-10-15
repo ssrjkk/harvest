@@ -729,7 +729,7 @@ Rate-limit:
 | farming | [3,8] действ., паузы [5,20] с, цикл 1–2 ч | [5,15], [3,15] с, 30–60 мин | [5,12], [2,10] с, 20–40 мин | [3,8], [5,20] с, 1–2 ч |
 | workers | 20 | 30 | 30 | 20 |
 | rpc_rate_limit | 50 | 80 | 80 | 50 |
-| БД | `farming_state.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` | `farming_vibevibe.db` / `master.key` |
+| БД | `farming_state.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` | `farming_state.db` / `master.key` |
 
 vibe/vibe — permissionless token launchpad на Robinhood Chain testnet
 (5% сапплая для тестнет-участников). ABI (`abi/vibevibe.json`) содержит

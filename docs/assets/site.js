@@ -8,7 +8,7 @@ const fmt=n=>{n=Number(n);if(!isFinite(n))return "—";if(Math.abs(n)>=1e6)retur
 
 /* ---------- theme ---------- */
 const themes=["paper","ink","field"];
-let theme=localStorage.getItem("hv-theme")||"paper";
+let theme=localStorage.getItem("hv-theme")||"ink";
 function applyTheme(){document.documentElement.dataset.theme=theme;$("#themeBtn").textContent=theme==="paper"?"◐":theme==="ink"?"◑":"◒";}
 $("#themeBtn").addEventListener("click",()=>{theme=themes[(themes.indexOf(theme)+1)%themes.length];localStorage.setItem("hv-theme",theme);applyTheme();drawLive();drawChart();});
 applyTheme();
@@ -164,6 +164,7 @@ function renderLive(s){
   if(!s){
     $("#liveAlert").innerHTML='<div class="alert">'+(lang==="en"?"state.json not published yet — the farm will upload metrics. The rest of the site already works.":"state.json ещё не опубликован — ферма скоро загрузит метрики. Остальной сайт уже работает.")+'</div>';
     $("#nets").innerHTML=FALLBACK_NETS.map(netCard).join("");
+    paintTicker(null);
     setPill("off","—");return;
   }
   $("#liveAlert").innerHTML="";
@@ -189,6 +190,7 @@ function renderLive(s){
   $("#updated").textContent=(lang==="en"?"updated: ":"обновлено: ")+(s.updated_at||"—");
   const nets=(s.networks&&s.networks.length)?s.networks:FALLBACK_NETS;
   $("#nets").innerHTML=nets.map(n=>netCard(n,n.slug===s.network)).join("");
+  paintTicker(nets);
   live.actions=(s.chart?.actions||[]).slice(-60);
   live.errors=(s.chart?.errors||[]).slice(-60);
   live.proc=(s.chart?.processed||[]).slice(-60);
@@ -210,6 +212,12 @@ function netCard(n,cur){
     <div class="rewards">${esc(n.rewards||"—")}</div><ul>${acts}</ul></div>`;
 }
 function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textContent=txt;}
+function paintTicker(nets){
+  try{
+    const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
+    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1158 TESTS · MIT · ").repeat(2);
+  }catch(e){}
+}
 function drawLive(){
   lineChart($("#chartMain"),[live.actions,live.errors]);
   lineChart($("#chartProc"),[live.proc]);
@@ -244,7 +252,7 @@ window.addEventListener("resize",drawLive);
 /* ---------- config builder ---------- */
 const NETS={
 robinhood:{file:"config_robinhood.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"300000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 0.4\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_swap\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_mint\n    contract: "0x0000000000000000000000000000000000000000"\n    method: mint\n    weight: 0.25'},
-vibevibe:{file:"config_vibevibe.yaml",db:"farming_vibevibe.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"100000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001'},
+vibevibe:{file:"config_vibevibe.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"100000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001'},
 flop:{file:"config_flop.yaml",db:"farming_flop.db",chain:99999,rpc:"https://rpc.testnet.floplabs.io",faucet:"0.01 → 0.1",lo:5,hi:15,delays:"  delay_between_actions: [3, 15]\n  delay_between_cycles: [1800, 3600]",gas:"300000 / 0.01",workers:30,actions:'  - type: flop_compute\n    contract: "0x0000000000000000000000000000000000000000"\n    method: submitTask\n    weight: 0.4\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: flop_validate\n    contract: "0x0000000000000000000000000000000000000000"\n    method: validateTask\n    weight: 0.25\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: flop_stake\n    contract: "0x0000000000000000000000000000000000000000"\n    method: stake\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.01'},
 arc:{file:"config_arc.yaml",db:"farming_arc.db",chain:5042002,rpc:"https://rpc.testnet.arc.network",faucet:"0.01 → 0.1",lo:5,hi:12,delays:"  delay_between_actions: [2, 10]\n  delay_between_cycles: [1200, 2400]",gas:"200000 / 0.005",workers:30,actions:'  - type: arc_launch\n    contract: "0x0000000000000000000000000000000000000000"\n    method: launchToken\n    weight: 0.3\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: arc_trade\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.003\n  - type: arc_add_liquidity\n    contract: "0x0000000000000000000000000000000000000000"\n    method: addLiquidity\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.005'},
 simple:{file:"config.simple.yaml",db:"farming_simple.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.003 → 0.015",lo:2,hi:4,delays:"  delay_between_actions: [8, 25]\n  delay_between_cycles: [2700, 6300]",gas:"21000 / 0.0006",workers:24,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.00005\n    max_amount: 0.0004'}
