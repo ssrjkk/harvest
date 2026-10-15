@@ -1,5 +1,6 @@
 """Тесты БД: инициализация, сохранение/чтение кошельков (шифрование), счётчики, бэкапы."""
 
+import os
 import sys
 import tempfile
 import unittest
@@ -14,6 +15,7 @@ try:
 except ImportError:
     HAS_ETH = False
 
+from core.crypto import MasterKeyError
 from core.database import Database, _redact_rpc_url
 
 
@@ -301,12 +303,14 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         await self.db.close()
 
     async def test_any_seed_encrypted_states(self):
-        # БД без master-ключа хранит seed-значения как есть
+        # Fail-closed: БД без master-ключа ОТКАЗЫВАЕТСЯ писать seed-данные
+        # (раньше молча хранила открытым текстом — см. security-аудит).
         plain_db = Database(str(self.dir / "plain.db"))
         await plain_db.init()
-        await plain_db.save_wallets_batch([("aa1", "k1", "m1")])
+        with self.assertRaises(MasterKeyError):
+            await plain_db.save_wallets_batch([("aa1", "k1", "m1")])
         self.assertFalse(await plain_db.any_seed_encrypted())
-        self.assertEqual(await plain_db.count_wallets(), 1)
+        self.assertEqual(await plain_db.count_wallets(), 0)
         await plain_db.close()
         # с ключом — значения получают префикс шифрования
         await self.db.init()
@@ -356,10 +360,16 @@ class TestDatabaseBackupMigrate(unittest.IsolatedAsyncioTestCase):
         self.td.cleanup()
 
     async def test_migrate_legacy_seeds_encrypts_plaintext(self):
-        # БД без ключа хранит seed открытым текстом
+        # Legacy-строки (открытый текст) имитируем прямой SQL-вставкой:
+        # save_wallets_batch без ключа теперь отказывает (fail-closed).
         plain = Database(str(self.dir / "legacy.db"))
         await plain.init()
-        await plain.save_wallets_batch([("0xaa", "0xkey", "seed words")])
+        conn = await plain._connect()
+        await conn.execute(
+            "INSERT INTO wallets (address, private_key, mnemonic) VALUES (?, ?, ?)",
+            ("0xaa", "0xkey", "seed words"),
+        )
+        await conn.commit()
         self.assertFalse(await plain.any_seed_encrypted())
         await plain.close()
         # Открытие с ключом мигрирует открытые значения в зашифрованные
@@ -370,6 +380,31 @@ class TestDatabaseBackupMigrate(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(wallets[0]["private_key"], "0xkey")
         self.assertEqual(wallets[0]["mnemonic"], "seed words")
         await keyed.close()
+
+    async def test_save_without_key_raises_fail_closed(self):
+        # Явный контракт fail-closed: запись seed-данных без master-ключа
+        # запрещена громким исключением, а не тихим plaintext.
+        keyless = Database(str(self.dir / "nokey.db"))
+        await keyless.init()
+        with self.assertRaises(MasterKeyError):
+            await keyless.save_wallets_batch([("aa9", "k9", "m9")])
+        self.assertEqual(await keyless.count_wallets(), 0)
+        await keyless.close()
+
+    async def test_backup_file_owner_only(self):
+        # Бэкап с приватными ключами: файл доступен только владельцу.
+        # Права выставляются ДО replace (окна с широким доступом нет).
+        await self.db.init()
+        await self.db.save_wallets_batch([("aa1", "k1", "m1")])
+        path = await self.db.backup_now()
+        self.assertIsNotNone(path)
+        self.assertTrue(Path(path).exists())
+        if os.name != "nt":
+            import stat
+
+            mode = stat.S_IMODE(os.stat(path).st_mode)
+            self.assertEqual(mode, 0o600, f"бэкап доступен не только владельцу: {oct(mode)}")
+        await self.db.close()
 
     async def test_backup_now_postgres_returns_none(self):
         self.db.is_postgres = True

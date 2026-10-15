@@ -22,6 +22,7 @@ from typing import overload
 import aiosqlite
 
 from core.crypto import _ENC_PREFIX
+from core.crypto import MasterKeyError
 from core.crypto import decrypt_seed as _decrypt_seed
 from core.crypto import encrypt_seed as _encrypt_seed
 from core.utils import restrict_file_permissions
@@ -272,7 +273,16 @@ class Database:
             self._db = None
 
     def _encrypt(self, value: str | None) -> str | None:
-        """Шифрует seed-строку текущим master-ключом (без ключа — как есть)."""
+        """Шифрует seed-строку текущим master-ключом (fail-closed).
+
+        Без ключа запись seed-данных запрещена: молчаливое сохранение
+        приватных ключей открытым текстом исключено. Raises MasterKeyError.
+        """
+        if value is not None and self._key is None:
+            raise MasterKeyError(
+                "master_key не задан — отказ от записи seed-данных открытым текстом. "
+                "Создайте Database с master_key=resolve_master_key(config)."
+            )
         return _encrypt_seed(self._key, value)
 
     def _decrypt(self, value: str | None) -> str | None:
@@ -307,6 +317,11 @@ class Database:
                 finally:
                     dst.close()
                     src.close()
+                # Права ДО замены: tmp создаётся с дефолтными правами процесса —
+                # без этого другой локальный пользователь мог бы прочитать бэкап
+                # с приватными ключами в окно между созданием tmp и replace.
+                # replace() сохраняет права tmp, итог тоже защищён.
+                restrict_file_permissions(str(tmp_path))
                 tmp_path.replace(backup_path)
             except Exception as e:
                 logger.warning(f"DB backup failed: {e}")
@@ -714,7 +729,8 @@ class Database:
         """
         if not rows:
             return True
-        # Шифруем seed-данные перед записью (legacy: без ключа — как есть)
+        # Шифруем seed-данные перед записью. Fail-closed: без master-ключа
+        # _encrypt бросает MasterKeyError (громко), а не пишет открытый текст.
         rows = [(addr, self._encrypt(pk), self._encrypt(mn)) for addr, pk, mn in rows]
         db = await self._connect()
         # WAL + synchronous=NORMAL (глобально) коммитит до сброса на диск: при

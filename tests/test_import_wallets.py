@@ -27,7 +27,9 @@ class TestImportWallets(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.td = tempfile.TemporaryDirectory()
         self.dir = Path(self.td.name)
-        self.db = Database(str(self.dir / "state.db"))
+        # Импорт в production всегда идёт в БД с master-ключом
+        # (cli/session резолвит ключ до меню) — тест верен prod-поведению.
+        self.db = Database(str(self.dir / "state.db"), master_key=b"\x33" * 32)
 
     async def asyncTearDown(self):
         await self.db.close()

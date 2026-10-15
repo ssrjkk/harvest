@@ -307,11 +307,11 @@ async def init_system(_: None = Depends(_verify_request_auth)):
         await enforce_license_async(config)
 
         try:
-            resolve_master_key(config)
+            key = resolve_master_key(config)
         except Exception as e:
             return {"ok": False, "message": f"Master key error: {e}"}
 
-        db = Database(config["database"]["path"])
+        db = Database(config["database"]["path"], master_key=key)
         await db.init()
         _state["db"] = db
 

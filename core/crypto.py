@@ -72,6 +72,11 @@ def resolve_master_key(config: dict, ignore_env: bool = False) -> bytes:
         if len(key) != 32:
             raise MasterKeyError("FARMER_MASTER_KEY должен быть ровно 32 байта (64 hex)")
         _require_crypto()
+        logger.warning(
+            "FARMER_MASTER_KEY задан через env: переменные окружения видны другим "
+            "процессам пользователя и могут утечь в логи/дампы/CI. Для production "
+            "предпочтите файл database.master_key (0600) или KMS/keyring."
+        )
         return key
 
     path = config.get("database", {}).get("master_key", "master.key")
