@@ -115,10 +115,15 @@ def resolve_master_key(config: dict, ignore_env: bool = False) -> bytes:
 
 
 def encrypt_seed(key: bytes | None, plaintext: str | None) -> str | None:
-    """Шифрует seed-строку. Возвращает 'enc:' + hex(nonce + ciphertext)."""
-    if key is None or plaintext is None:
-        # Plaintext-режим возможен только у БД без настроенного ключа
-        return plaintext
+    """Шифрует seed-строку. Возвращает 'enc:' + hex(nonce + ciphertext).
+
+    Fail-closed: без ключа шифровать нечего — отказ вместо молчаливого
+    plaintext (защита в глубину; вызывающий Database._encrypt тоже проверяет).
+    """
+    if plaintext is None:
+        return None
+    if key is None:
+        raise MasterKeyError("master_key не задан — отказ от хранения seed-данных открытым текстом")
     aes = _aesgcm()
     if aes is None:
         raise MasterKeyError("cryptography не установлена — шифрование seed-данных невозможно")

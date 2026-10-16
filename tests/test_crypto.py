@@ -32,6 +32,12 @@ class TestCryptoRoundtrip(unittest.TestCase):
         self.assertIsNone(decrypt_seed(None, None))
         self.assertIsNone(decrypt_seed(bytes(range(32)), None))
 
+    def test_encrypt_without_key_raises_fail_closed(self):
+        from core.crypto import MasterKeyError
+
+        with self.assertRaises(MasterKeyError):
+            encrypt_seed(None, "0xsecret")
+
     def test_wrong_key_fails(self):
         enc = encrypt_seed(bytes(range(32)), "0x" + "aa" * 32)
         with self.assertRaises(ValueError):

@@ -373,7 +373,7 @@ class TestApiClientBranches(_PortalApiBase, unittest.IsolatedAsyncioTestCase):
 
     async def test_google_callback_choked_redirects_rate(self):
         client, _app = await self._client()
-        for _ in range(api._GLOBAL_MAX):
+        for _ in range(api._CHOKE_GLOBAL_MAX):
             api._choke_allowed_global("google_cb")
         async with client:
             resp = await client.get("/auth/google/callback?code=x&state=y", allow_redirects=False)

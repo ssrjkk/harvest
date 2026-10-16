@@ -275,6 +275,7 @@ class TestBotExport(unittest.TestCase):
 
     def test_send_wallets_file(self):
         try:
+            import portal.bot_telegram as bt
             from portal.bot_telegram import send_wallets_file
         except Exception:  # noqa: BLE001
             self.skipTest("aiogram не установлен")
@@ -282,9 +283,17 @@ class TestBotExport(unittest.TestCase):
         class _Bot:
             def __init__(self):
                 self.sent = []
+                self.deleted = []
+                self.delete_message = mock.AsyncMock(
+                    side_effect=self._del
+                )
 
-            async def send_document(self, chat_id, document, caption):
-                self.sent.append((chat_id, document.filename, caption))
+            async def _del(self, chat_id, message_id):
+                self.deleted.append((chat_id, message_id))
+
+            async def send_document(self, chat_id, document, caption, **kwargs):
+                self.sent.append((chat_id, document.filename, caption, kwargs))
+                return mock.Mock(message_id=777)
 
         class _Daemon:
             async def export_wallets(self, fmt):
@@ -293,16 +302,29 @@ class TestBotExport(unittest.TestCase):
         async def scenario():
             bot = _Bot()
             daemon = _Daemon()
-            await send_wallets_file(bot, 123, daemon, "csv")
+            old, bt._EXPORT_AUTODELETE_S = bt._EXPORT_AUTODELETE_S, 0
+            try:
+                await send_wallets_file(bot, 123, daemon, "csv")
+                await asyncio.sleep(0.05)
+            finally:
+                bt._EXPORT_AUTODELETE_S = old
             return bot
 
         bot = asyncio.run(scenario())
         self.assertEqual(bot.sent[0][0], 123)
         self.assertEqual(bot.sent[0][1], "wallets.csv")
+        # protect_content запрещает пересылку ключей, файл best-effort удаляется.
+        self.assertTrue(bot.sent[0][3].get("protect_content"))
+        self.assertEqual(bot.deleted, [(123, 777)])
 
 
 class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
     """Прямые ветки dispatcher'а: /export команда и export:* callback."""
+
+    def setUp(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
 
     def _cfg(self):
         prev = {k: os.environ.get(k) for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY")}
@@ -368,12 +390,49 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Не удалось", msg.answer.await_args.args[0])
 
     async def test_export_callback_csv(self):
+        """Новый флоу: export:csv/json — только подтверждение, файл шлёт export:yes:*."""
         dp, daemon = self._dispatch()
         call = mock.Mock()
         call.from_user.id = 123
         call.data = "export:csv"
         call.message.bot = mock.Mock()
         call.message.answer = mock.AsyncMock()
+        call.message.edit_text = mock.AsyncMock()
+        call.answer = mock.AsyncMock()
+        with mock.patch("portal.bot_telegram.send_wallets_file", new=mock.AsyncMock()) as swf:
+            await dp.callback_query.handlers[0].callback(call)
+        swf.assert_not_awaited()
+        call.message.edit_text.assert_awaited_once()
+        text = call.message.edit_text.await_args.args[0]
+        self.assertIn("подтверждение", text)
+        kb = call.message.edit_text.await_args.kwargs["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("export:yes:csv", payloads)
+        self.assertIn("menu:home", payloads)
+
+    async def test_export_callback_json_confirm(self):
+        dp, daemon = self._dispatch()
+        call = mock.Mock()
+        call.from_user.id = 123
+        call.data = "export:json"
+        call.message.bot = mock.Mock()
+        call.message.answer = mock.AsyncMock()
+        call.message.edit_text = mock.AsyncMock()
+        call.answer = mock.AsyncMock()
+        with mock.patch("portal.bot_telegram.send_wallets_file", new=mock.AsyncMock()) as swf:
+            await dp.callback_query.handlers[0].callback(call)
+        swf.assert_not_awaited()
+        text = call.message.edit_text.await_args.args[0]
+        self.assertIn("JSON", text)
+
+    async def test_export_yes_sends_file(self):
+        dp, daemon = self._dispatch()
+        call = mock.Mock()
+        call.from_user.id = 123
+        call.data = "export:yes:csv"
+        call.message.bot = mock.Mock()
+        call.message.answer = mock.AsyncMock()
+        call.message.edit_text = mock.AsyncMock()
         call.answer = mock.AsyncMock()
         with mock.patch("portal.bot_telegram.send_wallets_file", new=mock.AsyncMock()) as swf:
             await dp.callback_query.handlers[0].callback(call)
@@ -384,9 +443,10 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         dp, daemon = self._dispatch()
         call = mock.Mock()
         call.from_user.id = 123
-        call.data = "export:json"
+        call.data = "export:yes:json"
         call.message.bot = mock.Mock()
         call.message.answer = mock.AsyncMock()
+        call.message.edit_text = mock.AsyncMock()
         call.answer = mock.AsyncMock()
         with mock.patch(
             "portal.bot_telegram.send_wallets_file", new=mock.AsyncMock(side_effect=RuntimeError("boom"))
