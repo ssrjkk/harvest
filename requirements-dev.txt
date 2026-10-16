@@ -1,4 +1,4 @@
-# HARVEST — зависимости для разработки и CI (тесты, линтер).
+# harvest — зависимости для разработки и CI (тесты, линтер).
 # Установка: pip install -r requirements-dev.txt
 pytest>=8.0,<9
 pytest-cov>=5.0,<7

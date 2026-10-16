@@ -57,7 +57,7 @@ class GroupManager:
             return {"id": row[0], "name": row[1], "color": row[2], "created_at": row[3], "count": 0}
         except Exception as e:
             if "UNIQUE" in str(e).upper():
-                raise ValueError(f"Group '{name}' already exists")
+                raise ValueError(f"Group '{name}' already exists") from e
             raise
 
     async def delete_group(self, group_id: int) -> bool:

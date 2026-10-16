@@ -1,4 +1,4 @@
-"""HARVEST // BOT-RENDER — единый рендер текстов Telegram-бота (п.1 ТЗ, этап 2).
+"""harvest // BOT-RENDER — единый рендер текстов Telegram-бота (п.1 ТЗ, этап 2).
 
 Все экраны строятся здесь; хендлеры только вызывают render_* и отправляют.
 parse_mode HTML, динамика экранирована, лимит 4096 с усечением «…».
@@ -165,7 +165,7 @@ def render_home(
     stamp = esc(updated or datetime.now(UTC).strftime("%H:%M UTC"))
     grid = render_grid(cells, cells_total)
     lines = [
-        "<b>HARVEST // ПОЛЕ</b>",
+        "<b>harvest // ПОЛЕ</b>",
         f"{mark}  {net} · {chain}",
         LABELS["sep"],
         f"кошельки  {wallets}      цикл {cycle} / {total_s}",
@@ -191,7 +191,7 @@ def render_home(
 
 def render_alert(text: str) -> str:
     """Алерты владельцу через единый рендер (п.7 ТЗ). Без секретов."""
-    return ensure_limit(f"<b>HARVEST // АЛЕРТ</b>\n{esc(redact_token(text))}")
+    return ensure_limit(f"<b>harvest // АЛЕРТ</b>\n{esc(redact_token(text))}")
 
 
 # ---------------- строки RU/EN и новые экраны (п.2-6 ТЗ) ----------------
@@ -255,7 +255,7 @@ def tr(key: str, lang: str = "ru", **kw: object) -> str:
 def render_stop_confirm(state: dict, lang: str = "ru") -> str:
     net = esc(state.get("network", "—"))
     return ensure_limit(
-        "<b>HARVEST // СТОП</b>\n"
+        "<b>harvest // СТОП</b>\n"
         f"Остановить фарм ({net})?\n"
         "Текущий цикл прервётся, состояние сохранится."
     )
@@ -281,7 +281,7 @@ def render_danger(mode: str, lang: str, enc_available: bool = True) -> str:
         if lang == "ru"
         else "The file message is deleted after 60 s (best-effort, not guaranteed across restarts)."
     )
-    head = "HARVEST // ОПАСНАЯ ЗОНА" if lang == "ru" else "HARVEST // DANGER ZONE"
+    head = "harvest // ОПАСНАЯ ЗОНА" if lang == "ru" else "harvest // DANGER ZONE"
     return ensure_limit(
         f"<b>{head}</b>\n{warn}\n{restart}\n\n"
         f"{'Режим' if lang == 'ru' else 'Mode'}: <b>{m}</b> · "
@@ -300,7 +300,7 @@ def render_export_confirm(fmt: str, enc: bool = False, lang: str = "ru") -> str:
         else "The file contains <b>all private keys</b>. "
         "Forwarding is blocked, the message deletes itself in 60 s."
     )
-    head = "HARVEST // ЭКСПОРТ — подтверждение"
+    head = "harvest // ЭКСПОРТ — подтверждение"
     return ensure_limit(f"<b>{head}</b>\nФайл {kind} {warn}\nПродолжить?")
 
 
@@ -312,12 +312,12 @@ def render_keys_confirm(page: int, lang: str = "ru") -> str:
         else f"Reveal private keys (p. {page})? "
         "The message is forward-protected and deletes itself in 60 s."
     )
-    return ensure_limit("<b>HARVEST // КЛЮЧИ</b>\n" + warn)
+    return ensure_limit("<b>harvest // КЛЮЧИ</b>\n" + warn)
 
 
 def render_enc_ask(lang: str = "ru") -> str:
     return ensure_limit(
-        "<b>HARVEST // ПАРОЛЬ</b>\n"
+        "<b>harvest // ПАРОЛЬ</b>\n"
         + (
             "Пришли пароль для .enc одной строкой — сообщение с паролем "
             "потру удалить, но лучше удали его сам(а). /cancel — отмена."
@@ -329,7 +329,7 @@ def render_enc_ask(lang: str = "ru") -> str:
 
 
 def render_scale(wallet_count: object, lang: str = "ru") -> str:
-    head = "HARVEST // МАСШТАБ" if lang == "ru" else "HARVEST // SCALE"
+    head = "harvest // МАСШТАБ" if lang == "ru" else "harvest // SCALE"
     body = (
         f"кошельков: <b>{esc(wallet_count)}</b>\n"
         "Создание — до 50 за вызов (защита HTTP/RPC)."
@@ -342,7 +342,7 @@ def render_scale(wallet_count: object, lang: str = "ru") -> str:
 def render_profiles(summary: dict, lang: str = "ru") -> str:
     """Экран разнообразия профилей флота (бот): только агрегаты, без адресов."""
     n = summary.get("n", 0)
-    head = "HARVEST // ПРОФИЛИ" if lang == "ru" else "HARVEST // PROFILES"
+    head = "harvest // ПРОФИЛИ" if lang == "ru" else "harvest // PROFILES"
     if lang == "ru":
         body = (
             f"кошельков: <b>{esc(n)}</b>\n"
@@ -365,7 +365,7 @@ def render_profiles(summary: dict, lang: str = "ru") -> str:
 
 
 def render_builder(lang: str = "ru") -> str:
-    head = "HARVEST // КОНСТРУКТОР" if lang == "ru" else "HARVEST // BUILDER"
+    head = "harvest // КОНСТРУКТОР" if lang == "ru" else "harvest // BUILDER"
     body = (
         "CMD — готовая команда auto.py. CFG — готовый YAML файлом.\n"
         "Ручной ввод тоже работает: /cmd vibe 50 5"
@@ -377,7 +377,7 @@ def render_builder(lang: str = "ru") -> str:
 
 
 def render_master_done(cmd: str, lang: str = "ru") -> str:
-    head = "HARVEST // ГОТОВО" if lang == "ru" else "HARVEST // DONE"
+    head = "harvest // ГОТОВО" if lang == "ru" else "harvest // DONE"
     return ensure_limit(f"<b>{head}</b>\n<pre>{esc(cmd)}</pre>")
 
 
@@ -389,7 +389,7 @@ def render_wallets_list(
     pages = max(1, (total + per_page - 1) // per_page)
     page = max(1, min(page, pages))
     chunk = wallets[(page - 1) * per_page : (page - 1) * per_page + per_page]
-    head = "HARVEST // КОШЕЛЬКИ" if lang == "ru" else "HARVEST // WALLETS"
+    head = "harvest // КОШЕЛЬКИ" if lang == "ru" else "harvest // WALLETS"
     lines = [f"<b>{head}</b> · {total} · {page}/{pages}", ""]
     if not chunk:
         lines.append(

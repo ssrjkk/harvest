@@ -1,4 +1,4 @@
-﻿# HARVEST v2.3.0
+﻿# harvest v2.3.0
 
 [![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -26,11 +26,11 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 
 | Хиро | Поле |
 |---|---|
-| ![HARVEST — главная](docs/screenshots/shot-hero.png) | ![HARVEST — поле фермы](docs/screenshots/shot-live.png) |
+| ![harvest — главная](docs/screenshots/shot-hero.png) | ![harvest — поле фермы](docs/screenshots/shot-live.png) |
 
 | Мастер новичка | Про-справочник |
 |---|---|
-| ![HARVEST — мастер за 3 шага](docs/screenshots/shot-wizard.png) | ![HARVEST — справочник параметров](docs/screenshots/shot-pro.png) |
+| ![harvest — мастер за 3 шага](docs/screenshots/shot-wizard.png) | ![harvest — справочник параметров](docs/screenshots/shot-pro.png) |
 
 Метрики поля публикует `python publish_dash.py` с машины фермы в
 изолированную ветку `gh-pages` (один amend-коммит, история `master`

@@ -557,7 +557,7 @@ class TestExportConfirm(unittest.IsolatedAsyncioTestCase):
         call = _C(uid=123, data="menu:home")
         await dp.callback_query.handlers[0].callback(call)
         self.assertEqual(len(call.message.edits), 1)
-        self.assertIn("HARVEST // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
         kb = call.message.edits[0][1]["reply_markup"]
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
         self.assertIn("v1:run:start", payloads)
@@ -946,8 +946,9 @@ class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
     async def test_run_bot_conflict(self):
         import asyncio as _aio
 
-        import portal.bot_telegram as bt
         from aiogram.exceptions import TelegramConflictError
+
+        import portal.bot_telegram as bt
 
         cfg = _cfg()
         cfg.telegram_token = "123:ABC"
@@ -1065,8 +1066,9 @@ class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
     async def test_run_bot_notify_409_failure_quiet(self):
         import asyncio as _aio
 
-        import portal.bot_telegram as bt
         from aiogram.exceptions import TelegramConflictError
+
+        import portal.bot_telegram as bt
 
         cfg = _cfg()
         cfg.telegram_token = "123:ABC"

@@ -6,6 +6,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from colorama import Fore, Style
+from eth_account import Account
 
 from core import ui
 from core.database import Database
@@ -13,8 +14,6 @@ from core.faucet import Faucet
 from core.network import NetworkManager
 from core.performance import effective_gen_workers, effective_max_workers
 from core.wallet import WalletManager
-
-from eth_account import Account
 
 
 async def screen_make_wallets(u: ui.UI, config: dict, db: Database) -> None:

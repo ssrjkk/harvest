@@ -1,4 +1,4 @@
-# HARVEST GUI - Веб-интерфейс
+# harvest GUI - Веб-интерфейс
 
 > LEGACY: этот файл описывает старый FastAPI-GUI (`core/web_gui.py`, `core/static/index.html`).
 > Актуальный портал — aiohttp (`portal/api.py`, `portal/static/index.html`):

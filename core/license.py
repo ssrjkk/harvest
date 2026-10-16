@@ -348,7 +348,7 @@ if __name__ == "__main__":
 
     p = argparse.ArgumentParser(
         prog="core.license",
-        description="Служебные команды владельца лицензий HARVEST",
+        description="Служебные команды владельца лицензий harvest",
     )
     sub = p.add_subparsers(dest="cmd", required=True)
     sp = sub.add_parser("setpass", help="Вычислить hash пароля для license.json")

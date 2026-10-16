@@ -81,7 +81,7 @@ def render_card(state: dict, cells: str = "", total: int = 0) -> bytes:
     f_big = _font(24)
     f_med = _font(20)
 
-    draw.text((pad, 18), "HARVEST // ПОЛЕ", font=f_title, fill=pal["gold"])
+    draw.text((pad, 18), "harvest // ПОЛЕ", font=f_title, fill=pal["gold"])
     draw.text((pad, 58), f"{mark}  {state.get('network', '—')} · {state.get('chain_id', '—')}",
               font=f_big, fill=mark_color)
     draw.line([(pad, 100), (width - pad, 100)], fill=pal["line"], width=2)

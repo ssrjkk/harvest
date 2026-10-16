@@ -1,4 +1,4 @@
-/* HARVEST — login page */
+/* harvest — login page */
 (function () {
   "use strict";
   const $ = (id) => document.getElementById(id);

@@ -1,4 +1,4 @@
-# HARVEST PORTAL — опциональный Caddy (публичный HTTPS).
+# harvest PORTAL — опциональный Caddy (публичный HTTPS).
 # Используется как override: compose -f docker-compose.yml -f docker-compose.caddy.yml up -d
 # Секреты — в .env: PORTAL_ALLOW_PASSWORD_HTTP пустое, PORTAL_TRUST_PROXY=1.
 services:

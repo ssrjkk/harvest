@@ -37,7 +37,7 @@ def _state(**kw):
 class TestRenderHome(unittest.TestCase):
     def test_snapshot_novice(self):
         t = R.render_home(_state(), mode="novice", cells="o" * 20, cells_total=20)
-        self.assertIn("HARVEST // ПОЛЕ", t)
+        self.assertIn("harvest // ПОЛЕ", t)
         self.assertIn("[RUN]", t)
         self.assertIn("vibe/vibe · 46630", t)
         self.assertIn("кошельки  50", t)
@@ -50,7 +50,7 @@ class TestRenderHome(unittest.TestCase):
             _state(workers=8, rpc_ok="3/3", gas_limit=100000, cmd="python auto.py --wallets 50"),
             mode="pro", cells="e" * 5, cells_total=5,
         )
-        self.assertIn("HARVEST // ПОЛЕ", t)
+        self.assertIn("harvest // ПОЛЕ", t)
         self.assertIn("workers 8", t)
         self.assertIn("python auto.py", t)
         self.assertLessEqual(len(t), 4096)
@@ -137,7 +137,7 @@ class TestTokenRedaction(unittest.TestCase):
         self.assertNotIn("secret-token_here", R.redact_token(tb))
 
     def test_plain_text_untouched(self):
-        self.assertEqual(R.redact_token("HARVEST // ПОЛЕ [RUN]"), "HARVEST // ПОЛЕ [RUN]")
+        self.assertEqual(R.redact_token("harvest // ПОЛЕ [RUN]"), "harvest // ПОЛЕ [RUN]")
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")

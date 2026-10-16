@@ -21,8 +21,7 @@ from typing import overload
 
 import aiosqlite
 
-from core.crypto import _ENC_PREFIX
-from core.crypto import MasterKeyError
+from core.crypto import _ENC_PREFIX, MasterKeyError
 from core.crypto import decrypt_seed as _decrypt_seed
 from core.crypto import encrypt_seed as _encrypt_seed
 from core.utils import restrict_file_permissions

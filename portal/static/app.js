@@ -1,4 +1,4 @@
-/* HARVEST — command center terminal */
+/* harvest — command center terminal */
 
 const $ = (id) => document.getElementById(id);
 let actionsSeries = [], errorsSeries = [], procSeries = [];

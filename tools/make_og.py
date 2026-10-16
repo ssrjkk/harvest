@@ -49,7 +49,7 @@ def main() -> int:
     # Золотая плашка слева + рамка.
     d.rectangle([0, 0, 26, H], fill=GOLD)
     d.rectangle([0, 0, W - 1, H - 1], outline=GOLD, width=4)
-    d.text((90, 90), "HARVEST v2.3.0", font=f_mono, fill=GOLD)
+    d.text((90, 90), "harvest v2.3.0", font=f_mono, fill=GOLD)
     d.text((86, 170), "ФЕРМЕР", font=f_disp, fill=CREAM)
     d.text((86, 320), "ТЕСТНЕТОВ", font=f_disp, fill=GOLD)
     d.text((90, 500), f"EVM TESTNET FARMER · MIT · {args.wallets} WALLETS · {args.cycles} CYCLES",

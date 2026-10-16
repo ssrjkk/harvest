@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""HARVEST — thin entry point. All CLI logic lives in cli/ package."""
+"""harvest — thin entry point. All CLI logic lives in cli/ package."""
 
 import asyncio
 import sys

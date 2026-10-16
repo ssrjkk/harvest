@@ -1,4 +1,4 @@
-# HARVEST PORTAL — публичный HTTPS-реверс (Caddy).
+# harvest PORTAL — публичный HTTPS-реверс (Caddy).
 #
 # Установка:  скопируйте в deploy/caddy/Caddyfile и подставьте домен,
 #             затем:  docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build

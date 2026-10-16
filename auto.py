@@ -101,7 +101,7 @@ def parse_args() -> argparse.Namespace:
 def banner() -> None:
     print(f"""
 {Fore.CYAN}{"=" * 60}
-   HARVEST  -  AUTO MODE
+   harvest  -  AUTO MODE
    {version_line()}
 {"=" * 60}{Style.RESET_ALL}""")
 

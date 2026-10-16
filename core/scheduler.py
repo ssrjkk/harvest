@@ -213,7 +213,7 @@ class Scheduler:
                         await self._execute_task(task)
                 await asyncio.wait_for(self._stop_event.wait(), timeout=10)
                 break
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except Exception as e:
                 logger.error("Scheduler loop error: %s", e)

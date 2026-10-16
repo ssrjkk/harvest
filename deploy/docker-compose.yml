@@ -1,4 +1,4 @@
-# HARVEST PORTAL — docker compose (Linux VPS).
+# harvest PORTAL — docker compose (Linux VPS).
 # Запуск из этого каталога:  docker compose up -d --build
 # Конфигурация secret'ов — ./.env (копия .env.example).
 name: harvest

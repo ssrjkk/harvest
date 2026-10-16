@@ -550,7 +550,7 @@ if HAS_BOT:
             self.assertTrue(msg.answers)
             args, kwargs = msg.answers[0]
             # /start ведёт на новое Поле (п.2 ТЗ).
-            self.assertIn("HARVEST // ПОЛЕ", args[0])
+            self.assertIn("harvest // ПОЛЕ", args[0])
             self.assertIn("reply_markup", kwargs)
 
         async def test_help_handler_paths(self):
@@ -562,7 +562,7 @@ if HAS_BOT:
             self.assertEqual(m1.answers[0][0][0], "Неизвестная команда. /help — список возможностей.")
             m2 = _TgMessage(user_id=123, text="/help")
             await dp.message.handlers[1].callback(m2)
-            self.assertIn("HARVEST PORTAL", m2.answers[0][0][0])
+            self.assertIn("harvest PORTAL", m2.answers[0][0][0])
             m3 = _TgMessage(user_id=999, text="/help")
             await dp.message.handlers[1].callback(m3)
             self.assertEqual(m3.answers, [])
@@ -708,7 +708,7 @@ if HAS_BOT:
             call = _TgCallback(user_id=123, data="stats", message=msg)
             await dp.callback_query.handlers[0].callback(call)
             self.assertTrue(msg.edits)
-            self.assertIn("HARVEST", msg.edits[0][0][0])
+            self.assertIn("harvest", msg.edits[0][0][0])
 
         async def test_callback_answer_failure_swallowed(self):
             cfg = _make_cfg()

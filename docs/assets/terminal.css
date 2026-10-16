@@ -1,4 +1,4 @@
-/* HARVEST terminal — Y2K command center. Vanilla, no deps. Reads state.json. */
+/* harvest terminal — Y2K command center. Vanilla, no deps. Reads state.json. */
 :root{
   --bg:#05060a; --panel:#0a0d16; --panel2:#111625; --inset:#020306;
   --ink:#f1f5f9; --dim:#94a3b8; --line:#475569; --edge:#94a3b8;

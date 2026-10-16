@@ -1,4 +1,4 @@
-"""HARVEST PORTAL — Telegram-бот + Mini App + веб-сайт поверх ядра фармера.
+"""harvest PORTAL — Telegram-бот + Mini App + веб-сайт поверх ядра фармера.
 
 Единый доступ: Google-логин или мастер-ключ (FARMER_MASTER_KEY).
 """

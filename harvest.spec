@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec для HARVEST — Robinhood Chain Farmer.
+"""PyInstaller spec для harvest — Robinhood Chain Farmer.
 
 Сборка:  pyinstaller harvest.spec
 Результат: dist/harvest/harvest.exe

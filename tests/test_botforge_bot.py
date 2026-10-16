@@ -55,7 +55,7 @@ class TestFormatting(unittest.TestCase):
              "pool": {"actions": 5, "errors": 1, "processed": 4, "cycles": 2},
              "updated_at": "<script>"}
         )
-        self.assertIn("HARVEST", text)
+        self.assertIn("harvest", text)
         self.assertIn("&lt;script&gt;", text)
 
     def test_fmt_wallets_page_spoilers(self):

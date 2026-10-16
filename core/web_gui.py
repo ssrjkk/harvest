@@ -1,4 +1,4 @@
-"""Веб-интерфейс для фармера HARVEST.
+"""Веб-интерфейс для фармера harvest.
 
 FastAPI backend + статический frontend. Управление через браузер:
 старт/стоп фарм, создание кошельков, кран, статистика, мониторинг,
@@ -169,7 +169,7 @@ async def lifespan(app: FastAPI):
         await _state["db"].close()
 
 
-app = FastAPI(title="HARVEST GUI", lifespan=lifespan)
+app = FastAPI(title="harvest GUI", lifespan=lifespan)
 
 static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
@@ -273,7 +273,7 @@ async def root():
     html_path = static_dir / "index.html"
     if html_path.exists():
         return html_path.read_text(encoding="utf-8")
-    return "<h1>HARVEST GUI</h1><p>Frontend not found</p>"
+    return "<h1>harvest GUI</h1><p>Frontend not found</p>"
 
 
 @app.get("/api/status")

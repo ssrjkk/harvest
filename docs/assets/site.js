@@ -1,4 +1,4 @@
-﻿/* HARVEST site app — vanilla JS, no deps. Live pulpit reads state.json; tools run locally. */
+﻿/* harvest site app — vanilla JS, no deps. Live pulpit reads state.json; tools run locally. */
 (function(){
 "use strict";
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -20,7 +20,7 @@ skip:"Skip to content",nav_live:"Field",nav_terminal:"Terminal",nav_overview:"Ov
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
-th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1335 · 54 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
+th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1422 · 56 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
 cta_live:"Live field",cta_demo:"Demo zone",
 hero_note:"The field reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
@@ -68,7 +68,7 @@ a7:"Local FastAPI pulpit: buttons, WebSocket log, top and history (main.py → G
 a_n:"Per-layer detail: §3 of DOCUMENTATION.md in the repo (entry points, portal, configs, Tier-2 for real RPCs/contracts).",
 s6_h:"Portal & Telegram",s6_sub:"python -m portal starts aiohttp (web + API) and, with a token, the bot. Secrets via env only. Fail-closed: non-loopback bind with no login method refuses to start.",
 po_d:"Purpose",po1:"Session signing, min 16 chars",po2:"BotFather token",po3:"Default-deny user_id list",po4:"DB master key / web-login PIN",po6:"Farmer DB path / farmer config",
-tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, /doctor, /history, /export — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: HARVEST // X sections, [RUN]/[STOP]/[ok] marks, no emoji. Values escaped, generic error replies.",
+tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, /doctor, /history, /export — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, no emoji. Values escaped, generic error replies.",
 dp_p:"Ready kit: Dockerfile + compose, long-polling with no public URL, Caddy for HTTPS later, .env template, healthcheck, data volume.",
 s7_h:"Security — closed by default",
 b1_h:"Encryption",b1_p:"Seeds: AES-256-GCM (12B nonce, AAD wallet-seed). Export files: AES-256-CBC v2 — PBKDF2-SHA256 100k, separated encrypt/MAC keys, HMAC verified before writing.",
@@ -270,7 +270,7 @@ function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textC
 function paintTicker(nets){
   try{
     const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
-    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1335 TESTS · MIT · ").repeat(2);
+    $("#tickerIn").textContent=("harvest v2.3.0 · "+list.join(" · ")+" · 1422 TESTS · MIT · ").repeat(2);
   }catch(e){}
 }
 function drawLive(){
@@ -336,7 +336,7 @@ function buildYaml(){
   if(!Number.isInteger(alo)||alo<0){alo=n.lo;}
   if(!Number.isInteger(ahi)||ahi<alo){ahi=n.hi;}
   const g=$("#cfgGas").value.split("/").map(s=>s.trim());const gas=g[0]||"100000", mgas=g[1]||"0.003";
-  return `# HARVEST — ${n.file} (generated in browser)\nnetwork:\n  rpc_url: ${rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${w}\n  seed: ""\nfaucet:\n  enabled: true\n  min_balance: ${fmin}\n  target_balance: ${fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${alo}, ${ahi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${gas}\n  min_gas_for_action: ${mgas}\nthreading:\n  max_workers: ${wk}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${db}\n  master_key: master.key\n`;
+  return `# harvest — ${n.file} (generated in browser)\nnetwork:\n  rpc_url: ${rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${w}\n  seed: ""\nfaucet:\n  enabled: true\n  min_balance: ${fmin}\n  target_balance: ${fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${alo}, ${ahi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${gas}\n  min_gas_for_action: ${mgas}\nthreading:\n  max_workers: ${wk}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${db}\n  master_key: master.key\n`;
 }
 $("#cfgNet").addEventListener("change",e=>{const n=NETS[e.target.value];$("#cfgRpc").value=n.rpc;$("#cfgDb").value=n.db;$("#cfgWorkers").value=n.workers;$("#cfgFaucet").value=n.faucet;$("#cfgActions").value=`[${n.lo}, ${n.hi}]`;$("#cfgGas").value=n.gas;});
 $("#cfgGen").addEventListener("click",()=>{$("#cfgOut").textContent=buildYaml();toast("yaml ready");});
@@ -535,7 +535,7 @@ $("#wCopyCmd").addEventListener("click",()=>{
 });
 $("#wDlCfg").addEventListener("click",()=>{
   const n=NETS[wst.net];
-  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: ${n.fmin}\n  target_balance: ${n.fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${n.lo}, ${n.hi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${n.glim}\n  min_gas_for_action: ${n.mgas}\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
+  const y=`# harvest — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: ${n.fmin}\n  target_balance: ${n.fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${n.lo}, ${n.hi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${n.glim}\n  min_gas_for_action: ${n.mgas}\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
   dl(n.file,y,"text/yaml");
 });
 wStep(1);

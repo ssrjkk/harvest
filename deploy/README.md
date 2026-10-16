@@ -1,4 +1,4 @@
-# Deploy HARVEST Portal (Linux VPS / Docker)
+# Deploy harvest Portal (Linux VPS / Docker)
 
 Портал = веб-дашборд + API + Telegram-бот (aiogram, long-polling) + Mini App.
 

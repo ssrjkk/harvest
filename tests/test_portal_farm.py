@@ -487,7 +487,7 @@ class TestBalanceAlerts(FarmProxyTestBase):
         self.assertIsNone(self.daemon._balance_alerts_task)
 
     async def test_monitor_truncates_over_limit(self):
-        addrs = ["0x%040d" % i for i in range(101)]
+        addrs = [f"0x{i:040d}" for i in range(101)]
         self.daemon.db = _FakeBalanceDb([{"address": a} for a in addrs])
         net = _FakeNetwork(balances={a: 9.0 for a in addrs})
         self.daemon.pool = _ProxyPool(net)

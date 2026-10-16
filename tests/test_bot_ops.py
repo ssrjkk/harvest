@@ -164,7 +164,7 @@ class TestOpsFormat(unittest.TestCase):
         s = ops.fmt_status(self._data())
         self.assertIn("[RUN]", s)
         self.assertIn("80.0%", s)
-        self.assertIn("HARVEST // ПОЛЕ", s)
+        self.assertIn("harvest // ПОЛЕ", s)
         evil = self._data(wallet_count="<b>x</b>")
         self.assertIn("&lt;b&gt;x&lt;/b&gt;", ops.fmt_status(evil))
 
@@ -208,7 +208,7 @@ class TestOpsFormat(unittest.TestCase):
         self.assertIn("&lt;key&gt;", s)
 
     def test_ref_text(self):
-        self.assertIn("HARVEST // СПРАВКА", ops.REF_TEXT)
+        self.assertIn("harvest // СПРАВКА", ops.REF_TEXT)
         self.assertLess(len(ops.REF_TEXT), 4000)
 
 

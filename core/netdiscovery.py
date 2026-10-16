@@ -1,6 +1,6 @@
 """Автоконфигурация сетей: разведка живых тестнетов и генерация конфига.
 
-Прорывная фича «zero-config»: HARVEST сам находит живую сеть из встроенного
+Прорывная фича «zero-config»: harvest сам находит живую сеть из встроенного
 реестра (проба RPC: chain_id / blockNumber / gasPrice), сканирует свежие блоки
 и предлагает ТОП вызываемых контрактов (подсказка протокола), после чего
 собирает рабочий конфиг config_auto.yaml — RPC, chain_id, символ, explorer,
@@ -523,7 +523,7 @@ async def auto_discover(
 
 
 def _parse_cli() -> argparse.Namespace:
-    p = argparse.ArgumentParser(prog="netdiscovery", description="Автоконфигурация сети HARVEST")
+    p = argparse.ArgumentParser(prog="netdiscovery", description="Автоконфигурация сети harvest")
     p.add_argument("--scan", action="store_true", help="Проба всех сетей реестра")
     p.add_argument("--hunt", action="store_true", help="Хантинг топ-контрактов (по первой живой сети)")
     p.add_argument("--rpc", default=None, help="Разведать конкретный RPC вместо скана")

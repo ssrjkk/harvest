@@ -1,7 +1,7 @@
 @echo off
 chcp 65001 >nul
 echo ============================================
-echo   HARVEST - Сборка EXE
+echo   harvest - Сборка EXE
 echo ============================================
 echo.
 

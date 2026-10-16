@@ -205,7 +205,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         call = _C(data="v1:home:show")
         await dp.callback_query.handlers[0].callback(call, _State())
         text = call.message.edits[0][0][0]
-        self.assertIn("HARVEST // ПОЛЕ", text)
+        self.assertIn("harvest // ПОЛЕ", text)
         self.assertIn("[STOP]", text)
         self.assertIn("vibe/vibe · 46630", text)
         kb = call.message.edits[0][1]["reply_markup"]
@@ -246,13 +246,13 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         await dp.callback_query.handlers[0].callback(call, _State())
         self.assertTrue(
             any(a[0] and "устарел" in str(a[0][0]).lower() for a in call.answered))
-        self.assertIn("HARVEST // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
 
     async def test_unknown_v1_redraws_home(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())
         call = _C(data="v1:nope:nope")
         await dp.callback_query.handlers[0].callback(call, _State())
-        self.assertIn("HARVEST // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
 
     async def test_stop_confirm_flow(self):
         daemon = HomeDaemon()
@@ -265,7 +265,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         call2 = _C(data="v1:run:stop_yes")
         await cb(call2, _State())
         self.assertEqual(daemon.stopped, 1)
-        self.assertIn("HARVEST // ПОЛЕ", call2.message.edits[0][0][0])
+        self.assertIn("harvest // ПОЛЕ", call2.message.edits[0][0][0])
 
     async def test_start_redraws(self):
         daemon = HomeDaemon()
@@ -299,7 +299,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         msg = _M(uid=123, text="/start")
         await dp.message.handlers[0].callback(msg, st)
         self.assertEqual(await st.get_data(), {})
-        self.assertIn("HARVEST // ПОЛЕ", msg.answers[0][0][0])
+        self.assertIn("harvest // ПОЛЕ", msg.answers[0][0][0])
 
     async def test_cancel_clears(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())

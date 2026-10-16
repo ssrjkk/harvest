@@ -1,5 +1,5 @@
 # ============================================================
-#  Deploy HARVEST to a Hugging Face Space.
+#  Deploy harvest to a Hugging Face Space.
 #
 #  One-time setup:
 #    1) huggingface.co -> New Space -> SDK: Docker (Blank), CPU basic, Public

@@ -1,4 +1,4 @@
-/* HARVEST terminal — live wiring to state.json. No deps, no fake data. */
+/* harvest terminal — live wiring to state.json. No deps, no fake data. */
 (function(){
 "use strict";
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -40,7 +40,7 @@ function renderTicker(){
   const el=$("#tick");if(!el)return;
   const net=S?(esc(S.network||"—")):"—";
   const upd=S?esc(S.updated_at||"—"):"—";
-  el.innerHTML=("HARVEST v2.3.0 · "+net.toUpperCase()+" · <span id='tickTests'>1421 TESTS</span> · MIT · "+t("updated")+": "+upd+" ·&nbsp;").repeat(2);
+  el.innerHTML=("harvest v2.3.0 · "+net.toUpperCase()+" · <span id='tickTests'>1422 TESTS</span> · MIT · "+t("updated")+": "+upd+" ·&nbsp;").repeat(2);
 }
 function renderHead(){
   const pill=$("#livePill");
@@ -109,7 +109,7 @@ function renderTables(){
   if(tw)tw.innerHTML=(S.top_wallets||[]).map(w=>"<tr><td class='num'>#"+esc(w.n)+"</td><td class='num'>"+esc(w.actions)+"</td></tr>").join("")||'<tr><td colspan="2" class="note">'+t("nodata")+"</td></tr>";
 }
 function renderSpecs(){
-  const el=$("#specTests");if(el)el.textContent="1421 tests · 56 files";
+  const el=$("#specTests");if(el)el.textContent="1422 tests · 56 files";
 }
 function applyLang(){
   document.querySelectorAll("[data-l]").forEach(e=>{e.textContent=t(e.dataset.l);});

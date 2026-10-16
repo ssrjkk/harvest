@@ -1,11 +1,11 @@
-"""HARVEST // OPS — логика Telegram-бота в дизайне сайта (без эмодзи).
+"""harvest // OPS — логика Telegram-бота в дизайне сайта (без эмодзи).
 
 Чистые функции без зависимости от aiogram-хендлеров: форматирование
 поля/статистики/истории/балансов/сетей, конструктор команды `/cmd`,
 генератор конфига `/cfg` из shipped YAML, проверка вставленного YAML
 `/check` настоящим валидатором и сжатый справочник `/ref`.
 
-Стиль сообщений — как ops-board сайта: секции `HARVEST // X`,
+Стиль сообщений — как ops-board сайта: секции `harvest // X`,
 маркеры `[RUN]` / `[STOP]` / `[PAUSE]`, `[ok]` / `[warn]` / `[err]`,
 таблицы в `<pre>`, значения экранированы. Секреты никогда не печатаются:
 проверка сообщает только итоги, входной текст не цитируется.
@@ -70,7 +70,7 @@ def fmt_status(data: dict) -> str:
     per_cycle = f"{actions / cycles:.1f}" if cycles else "—"
     state = _state_mark(bool(data.get("running")), bool(pool.get("paused")))
     lines = [
-        "<b>HARVEST // ПОЛЕ</b>",
+        "<b>harvest // ПОЛЕ</b>",
         f"состояние: <b>{state}</b> · health: <b>{float(data.get('health_factor', 0.0)):.2f}</b>",
         "<pre>"
         f"кошельки  {_esc(data.get('wallet_count', '-'))}\n"
@@ -91,7 +91,7 @@ def fmt_stats(data: dict) -> str:
     db = data.get("db", {}) or {}
     state = _state_mark(bool(data.get("running")), bool(pool.get("paused")))
     lines = [
-        "<b>HARVEST // СТАТА</b>",
+        "<b>harvest // СТАТА</b>",
         f"состояние: <b>{state}</b>",
         "<pre>"
         f"кошельки  {_esc(data.get('wallet_count', '-'))}\n"
@@ -125,7 +125,7 @@ def fmt_doctor(data: dict) -> str:
         if errors and errors > actions * 0.5 + 50:
             problems.append("накоплено много ошибок")
     lines = [
-        "<b>HARVEST // ДОКТОР</b>",
+        "<b>harvest // ДОКТОР</b>",
         f"ферма: {_state_mark(bool(data.get('running')))} · "
         f"ядро: {'[ok] подключено' if pool else '[err] НЕ ПОДКЛЮЧЕНО'}",
         f"health: {health:.2f}",
@@ -148,7 +148,7 @@ def fmt_doctor(data: dict) -> str:
 
 
 def fmt_history(rows: list[dict]) -> str:
-    lines = ["<b>HARVEST // ИСТОРИЯ</b>", ""]
+    lines = ["<b>harvest // ИСТОРИЯ</b>", ""]
     if not rows:
         lines.append("Пусто — циклы ещё не завершались.")
         lines.append(_FOOT)
@@ -169,8 +169,8 @@ def fmt_history(rows: list[dict]) -> str:
 
 def fmt_balances(bals: list[dict]) -> str:
     if not bals:
-        return "<b>HARVEST // БАЛАНСЫ</b>\n\nКошельков пока нет — создайте кнопкой [+ СОЗДАТЬ] в /wallets."
-    lines = ["<b>HARVEST // БАЛАНСЫ</b>", ""]
+        return "<b>harvest // БАЛАНСЫ</b>\n\nКошельков пока нет — создайте кнопкой [+ СОЗДАТЬ] в /wallets."
+    lines = ["<b>harvest // БАЛАНСЫ</b>", ""]
     total = 0.0
     unknown = 0
     for b in bals:
@@ -190,7 +190,7 @@ def fmt_balances(bals: list[dict]) -> str:
 
 
 def fmt_networks(networks: list[dict]) -> str:
-    lines = ["<b>HARVEST // СЕТИ</b>", ""]
+    lines = ["<b>harvest // СЕТИ</b>", ""]
     for n in networks or []:
         if n.get("running"):
             mark = "[RUN]"
@@ -229,7 +229,7 @@ def _fmt_wallets_page(wallets: list[dict], page: int = 1, per_page: int = 4) -> 
     page = max(1, min(page, pages))
     start = (page - 1) * per_page
     chunk = wallets[start : start + per_page]
-    lines = [f"<b>HARVEST // КОШЕЛЬКИ</b> · всего {total} · стр. {page}/{pages}", ""]
+    lines = [f"<b>harvest // КОШЕЛЬКИ</b> · всего {total} · стр. {page}/{pages}", ""]
     if not chunk:
         lines.append("Кошельков пока нет — создайте кнопкой [+ СОЗДАТЬ] ниже.")
     for i, w in enumerate(chunk, start + 1):
@@ -269,7 +269,7 @@ def parse_cycles(text: str) -> int | None:
 # ---------------- /cmd ----------------
 
 CMD_USAGE = (
-    "<b>HARVEST // КОМАНДА</b>\n"
+    "<b>harvest // КОМАНДА</b>\n"
     "Собирает готовую команду auto.py. Формат:\n"
     "<code>/cmd &lt;сеть&gt; [кошельки] [циклы] [nofaucet]</code>\n"
     "сети: <code>vibevibe</code> <code>robinhood</code> <code>flop</code> "
@@ -312,13 +312,13 @@ def parse_cmd_args(text: str) -> str:
         cmd = build_command(slug, wallets, cycles, skip)
     except ValueError as e:
         return f"[err] {_esc(e)}\n" + CMD_USAGE
-    return f"<b>HARVEST // КОМАНДА</b>\n<code>{_esc(cmd)}</code>\n{_FOOT}"
+    return f"<b>harvest // КОМАНДА</b>\n<code>{_esc(cmd)}</code>\n{_FOOT}"
 
 
 # ---------------- /cfg ----------------
 
 CFG_USAGE = (
-    "<b>HARVEST // КОНФИГ</b>\n"
+    "<b>harvest // КОНФИГ</b>\n"
     "Присылает готовый YAML под сеть (без секретов). Формат:\n"
     "<code>/cfg &lt;сеть&gt; [кошельки]</code>\n"
     "сети: <code>vibevibe</code> <code>robinhood</code> <code>flop</code> "
@@ -358,7 +358,7 @@ def build_config_yaml(slug: str, wallets: int = 50) -> tuple[str, str]:
         raise ValueError(f"{filename}: не прошёл валидацию: {e}") from e
     warns = config_warnings(cfg)
     head = "".join(f"# замечание валидатора: {w}\n" for w in warns[:5])
-    head += f"# HARVEST — {filename} (собрано ботом, wallets.count={wallets})\n"
+    head += f"# harvest — {filename} (собрано ботом, wallets.count={wallets})\n"
     return filename, head + yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True)
 
 
@@ -434,7 +434,7 @@ def check_config_text(text: str) -> tuple[bool, list[str]]:
 
 # ---------------- /ref ----------------
 
-REF_TEXT = """<b>HARVEST // СПРАВКА</b>
+REF_TEXT = """<b>harvest // СПРАВКА</b>
 <pre>network.rpc_url   https URL или список
 network.chain_id  ≥1 (99999 = заглушка flop)
 wallets.count     ≥0

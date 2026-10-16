@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HARVEST v2.3.0 — EVM testnet farmer</title>
-<meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живое поле, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
+<title>harvest v2.3.0 — EVM testnet farmer</title>
+<meta name="description" content="harvest — автоматический фермер EVM-тестнетов: живое поле, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
 <meta name="theme-color" content="#14110A">
 <meta property="og:type" content="website">
-<meta property="og:title" content="HARVEST v2.3.0 — EVM testnet farmer">
+<meta property="og:title" content="harvest v2.3.0 — EVM testnet farmer">
 <meta property="og:description" content="Живое поле фермы, конструктор конфигов, симулятор и полный справочник. MIT, © 2026 ssrjkk.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -20,9 +20,9 @@
 
 <header class="topbar">
   <div class="wrap topbar-in">
-    <a class="brand" href="#top" aria-label="HARVEST home">
+    <a class="brand" href="#top" aria-label="harvest home">
       <span class="brand-mark">H</span>
-      <span class="brand-name">HARVEST</span>
+      <span class="brand-name">harvest</span>
       <span class="brand-ver">v2.3.0</span>
       <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span>
     </a>
@@ -51,7 +51,7 @@
   </div>
 </header>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">HARVEST v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1335 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1422 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- HERO -->
@@ -66,7 +66,7 @@
           <table>
             <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
             <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1335 · 54 файла · зелёный прогон</td></tr>
+            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1422 · 56 файлов · зелёный прогон</td></tr>
             <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
             <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
             <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
@@ -228,7 +228,7 @@ Unblock-File dist\harvest\harvest.exe
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + бот
 
-python -m pytest tests -q       # 1335 tests · 54 files
+python -m pytest tests -q       # 1422 tests · 56 files
 
 python publish_dash.py          # state.json → gh-pages → поле сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
@@ -575,7 +575,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
         <tr><td class="mono">PORTAL_DB / PORTAL_FARM_CONFIG</td><td data-i18n="po6">Путь к БД / конфиг фермера</td></tr>
       </table></div>
       <div>
-        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза фермы, поле и статистика, ссылки, экспорт CSV/JSON, команды /doctor, /history, /export — плюс конструкторы /cmd (готовая команда), /cfg (готовый YAML файлом), /check (проверка YAML валидатором) и /ref (справочник). Стиль сообщений — как этот сайт: секции HARVEST // X, маркеры [RUN]/[STOP]/[ok], без эмодзи. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
+        <div class="card"><div class="label">Telegram</div><h3>@harvest_testnet_bot</h3><p data-i18n="tg_p">Старт/стоп/пауза фермы, поле и статистика, ссылки, экспорт CSV/JSON, команды /doctor, /history, /export — плюс конструкторы /cmd (готовая команда), /cfg (готовый YAML файлом), /check (проверка YAML валидатором) и /ref (справочник). Стиль сообщений — как этот сайт: секции harvest // X, маркеры [RUN]/[STOP]/[ok], без эмодзи. Значения экранируются, колбэки — с generic-ответами об ошибках.</p><div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">бот фермы</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div></div>
         <div class="card" style="margin-top:12px"><div class="label">deploy/</div><h3>VPS / Docker</h3><p data-i18n="dp_p">Готовый кит: Dockerfile + compose, long-polling без публичного URL, Caddy для HTTPS позже, .env-шаблон, healthcheck, volume для данных.</p></div>
       </div>
     </div>
@@ -601,7 +601,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
     <div class="grid2">
       <div>
-<pre class="code">python -m pytest tests -q   # 1335 tests · 54 files</pre>
+<pre class="code">python -m pytest tests -q   # 1422 tests · 56 files</pre>
         <ul class="tight note">
           <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
           <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>
@@ -650,7 +650,7 @@ SOFTWARE.</div>
 
 <footer>
   <div class="wrap cols">
-    <div><b class="mono">HARVEST v2.3.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><b class="mono">harvest v2.3.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
     <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>

@@ -1,4 +1,4 @@
-"""HARVEST BOT FORGE — автономное поле фермы (24/7 в облаке, без ПК).
+"""harvest BOT FORGE — автономное поле фермы (24/7 в облаке, без ПК).
 
 Читает state.json с GitHub Pages (метрики фермы, которые публикует
 publish_dash.py с твоего ПК). Кошельки с ключами и сид-фразами читает
@@ -102,7 +102,7 @@ def fmt_status(s):
     if pool.get("paused"):
         state += " ⏸"
     return (
-        "📊 <b>HARVEST — статус</b>\n\n"
+        "📊 <b>harvest — статус</b>\n\n"
         f"Ферма: <b>{state}</b>\n"
         f"• Действий: <b>{pool.get('actions', 0)}</b> · ошибок: <b>{pool.get('errors', 0)}</b>\n"
         f"• Обработано: <b>{pool.get('processed', 0)}</b> · циклов: <b>{pool.get('cycles', 0)}</b>\n"
@@ -154,7 +154,7 @@ async def main():
             await m.answer("⛔ Нет доступа.", parse_mode=ParseMode.HTML)
             return
         await m.answer(
-            "Привет! Это <b>HARVEST</b> — поле фермы.\n"
+            "Привет! Это <b>harvest</b> — поле фермы.\n"
             "• /status — текущее состояние + прогресс\n"
             "• /wallets — кошельки с ключами и сид-фразами\n"
             "• /help — справка\n\n"
@@ -213,7 +213,7 @@ async def main():
         )
         await cb.answer()
 
-    print("HARVEST BotForge started, polling...")
+    print("harvest BotForge started, polling...")
     await dp.start_polling(bot)
 
 

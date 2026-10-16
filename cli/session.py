@@ -11,15 +11,6 @@ from pathlib import Path
 import yaml
 from colorama import Fore, Style
 
-from core import ui
-from core.config import load_config as _load_config
-from core.crypto import MasterKeyError, resolve_master_key
-from core.database import Database
-from core.license import LicenseError, enforce_license_async
-from core.logger import setup_logging
-from core.version import VERSION
-from core.wallet import WalletManager
-
 from cli.menu import menu
 from cli.screens.backups import screen_backups
 from cli.screens.diagnostics import screen_doctor, screen_rpc_diag
@@ -30,11 +21,19 @@ from cli.screens.license import screen_license
 from cli.screens.monitor import screen_monitor
 from cli.screens.stats import screen_history, screen_stats
 from cli.screens.wallets import import_wallets, request_faucet_all, screen_make_wallets
+from core import ui
+from core.config import load_config as _load_config
+from core.crypto import MasterKeyError, resolve_master_key
+from core.database import Database
+from core.license import LicenseError, enforce_license_async
+from core.logger import setup_logging
+from core.version import VERSION
+from core.wallet import WalletManager
 
 logger = logging.getLogger(__name__)
 CONFIG_FILE = os.environ.get("FARMER_CONFIG", "config.yaml")
 
-BANNER_TITLE = "HARVEST"
+BANNER_TITLE = "harvest"
 BANNER_SUB = (
     f"v{VERSION} · Testnet Automation · Robinhood Chain\n"
     "  RPC + ThreadPool + асинхронный пул — быстрый фарм\n"
@@ -233,11 +232,11 @@ async def main_async() -> None:
         return
     if len(configs) == 1:
         await run_session(u, configs[0][0])
-        u.panel("ДО ВСТРЕЧИ", "  Спасибо за использование HARVEST!", color="cyan")
+        u.panel("ДО ВСТРЕЧИ", "  Спасибо за использование harvest!", color="cyan")
         return
     while True:
         path = screen_testnet_select(u, configs)
         if path is None:
-            u.panel("ДО ВСТРЕЧИ", "  Спасибо за использование HARVEST!", color="cyan")
+            u.panel("ДО ВСТРЕЧИ", "  Спасибо за использование harvest!", color="cyan")
             return
         await run_session(u, path)

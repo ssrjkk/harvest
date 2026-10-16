@@ -1,4 +1,4 @@
-/* HARVEST Mini App — Поле внутри Telegram. Без фреймворков.
+/* harvest Mini App — Поле внутри Telegram. Без фреймворков.
    Глифы сетки — те же iwoer, что в portal/wallet_cells.py. */
 (function () {
   "use strict";

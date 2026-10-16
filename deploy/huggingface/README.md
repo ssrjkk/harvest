@@ -8,7 +8,7 @@ app_port: 8080
 pinned: false
 ---
 
-# HARVEST — Telegram farm control panel
+# harvest — Telegram farm control panel
 
 Веб-панель + Telegram-бот для управления фермером тестнет-сетей (EVM).
 Автор: [@ssrjkk_bot](https://t.me/ssrjkk_bot).

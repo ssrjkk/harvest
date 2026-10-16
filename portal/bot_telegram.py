@@ -1,8 +1,8 @@
-"""Telegram-бот HARVEST PORTAL: статистика, старт/стоп, пауза, ссылки,
+"""Telegram-бот harvest PORTAL: статистика, старт/стоп, пауза, ссылки,
 кнопка Mini App, живой мониторинг с алертами. Long-polling (без открытых
 портов — дружит с любым хостингом).
 
-Стиль сообщений — ops-board сайта (раздел 05): секции `HARVEST // X`,
+Стиль сообщений — ops-board сайта (раздел 05): секции `harvest // X`,
 маркеры `[RUN]`/`[STOP]`, `[ok]`/`[warn]`, таблицы в <pre>, без эмодзи.
 Форматирование живёт в portal/bot_ops.py (там же чистые функции
 команд /cmd, /cfg, /check, /ref).
@@ -139,7 +139,7 @@ async def _wiz_start_cmd(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(CmdWizard.net)
     await message.answer(
-        "<b>HARVEST // МАСТЕР</b>\nШаг 1/4 — сеть:",
+        "<b>harvest // МАСТЕР</b>\nШаг 1/4 — сеть:",
         parse_mode=ParseMode.HTML,
         reply_markup=_wiz_nets_kb("wiz:cmd"),
     )
@@ -149,7 +149,7 @@ async def _wiz_start_cfg(message: Message, state: FSMContext) -> None:
     await state.clear()
     await state.set_state(CfgWizard.net)
     await message.answer(
-        "<b>HARVEST // МАСТЕР</b>\nШаг 1/2 — сеть для YAML:",
+        "<b>harvest // МАСТЕР</b>\nШаг 1/2 — сеть для YAML:",
         parse_mode=ParseMode.HTML,
         reply_markup=_wiz_nets_kb("wiz:cfg"),
     )
@@ -166,7 +166,7 @@ async def _wiz_finish_cmd(message: Message, state: FSMContext, skip_faucet: bool
         return
     await state.clear()
     await message.answer(
-        f"<b>HARVEST // ГОТОВО</b>\n<code>{_esc(cmd)}</code>\n{_FOOT}",
+        f"<b>harvest // ГОТОВО</b>\n<code>{_esc(cmd)}</code>\n{_FOOT}",
         parse_mode=ParseMode.HTML,
     )
     from aiogram.types import BufferedInputFile
@@ -464,7 +464,7 @@ async def setup_bot_commands(bot: Bot) -> None:
         except Exception:  # noqa: BLE001
             logger.warning("setMyCommands не удался", exc_info=True)
         for text, method in (
-            ("HARVEST PORTAL — живое поле фермы: фарм, конструкторы, экспорт.",
+            ("harvest PORTAL — живое поле фермы: фарм, конструкторы, экспорт.",
              "set_my_description"),
             ("Поле фермы, конструкторы команд, безопасный экспорт.",
              "set_my_short_description"),
@@ -625,7 +625,7 @@ async def _auto_delete_file(bot: Bot, chat_id: int, message_id: int, delay_s: fl
 
 
 _HOME_TEXT = (
-    "Это <b>HARVEST PORTAL</b> — живое поле фермы.\n"
+    "Это <b>harvest PORTAL</b> — живое поле фермы.\n"
     "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
     "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
 )
@@ -681,7 +681,7 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
 
 
 _HELP_TEXT = (
-    "<b>HARVEST PORTAL</b> — живое поле фермы.\n\n"
+    "<b>harvest PORTAL</b> — живое поле фермы.\n\n"
     "Поле и диагностика:\n"
     "• /status — живой статус (успех %, средние, health)\n"
     "• /monitor — живой мониторинг с алертами\n"
@@ -1453,7 +1453,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await state.clear()
         await state.update_data(m_kind=action, m_started=time.monotonic())
         await call.message.answer(
-            "<b>HARVEST // МАСТЕР</b>\nШаг 1/3 — сеть:",
+            "<b>harvest // МАСТЕР</b>\nШаг 1/3 — сеть:",
             parse_mode=ParseMode.HTML,
             reply_markup=await _master_nets_kb(lang),
         )
@@ -1598,14 +1598,14 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             return True
         _ok, lines = _check_config_text(data["m_yaml"])
         await call.message.answer(
-            "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
+            "<b>harvest // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
         return True
     if screen == "master" and action == "restart":
         if state is not None:
             await state.clear()
             await state.update_data(m_started=time.monotonic())
         await call.message.answer(
-            "<b>HARVEST // МАСТЕР</b>\nШаг 1/3 — сеть:",
+            "<b>harvest // МАСТЕР</b>\nШаг 1/3 — сеть:",
             parse_mode=ParseMode.HTML,
             reply_markup=await _master_nets_kb(lang),
         )
@@ -1662,13 +1662,13 @@ def _bot_ops_check(text: str) -> str:
     _, _, rest = text.partition("\n")
     if not rest.strip():
         return (
-            "<b>HARVEST // ПРОВЕРКА</b>\n"
+            "<b>harvest // ПРОВЕРКА</b>\n"
             "Вставьте YAML следующими строками:\n"
             "<code>/check</code> + перенос строки + конфиг.\n"
             "Пример — вкладка «Про → Проверка» на сайте."
         )
     _ok, lines = _check_config_text(rest)
-    return "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines)
+    return "<b>harvest // ПРОВЕРКА</b>\n" + "\n".join(lines)
 
 
 async def _answer_cfg(message: Message, text: str) -> None:
@@ -1861,7 +1861,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             await message.answer("[err] Не удалось прочитать файл.")
             return
         await message.answer(
-            "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML
+            "<b>harvest // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML
         )
 
     @dp.callback_query()
@@ -2033,7 +2033,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data == "links":
                 links = load_links(cfg.links_path)
                 title = html.escape(str(links.get("title", "Наши ссылки"))[:200])
-                lines = [f"<b>HARVEST // ССЫЛКИ — {title}</b>", ""]
+                lines = [f"<b>harvest // ССЫЛКИ — {title}</b>", ""]
                 # Ограничение размера: сообщение >4096 символов Telegram отвергнет.
                 for item in links.get("items", [])[:15]:
                     url = html.escape(str(item["url"])[:300], quote=True)
@@ -2076,7 +2076,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data in ("export:csv", "export:json"):
                 fmt = data.split(":")[1]
                 await call.message.edit_text(
-                    "<b>HARVEST // ЭКСПОРТ — подтверждение</b>\n"
+                    "<b>harvest // ЭКСПОРТ — подтверждение</b>\n"
                     f"Файл ({fmt.upper()}) содержит <b>все приватные ключи</b>.\n"
                     "Пересылка запрещена, сообщение удалится через 60 с.\n"
                     "Продолжить?",
@@ -2219,7 +2219,7 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
         try:
             await notify_owner(
                 cfg,
-                "HARVEST запущен.\nСайт: " + cfg.public_base_url,
+                "harvest запущен.\nСайт: " + cfg.public_base_url,
             )
         except Exception:  # noqa: BLE001
             logger.warning("Не удалось отправить адрес владельцу", exc_info=True)
