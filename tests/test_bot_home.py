@@ -933,6 +933,12 @@ class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
                     for b in row]
         self.assertIn("v1:profiles:show", [b.callback_data for b in payloads])
 
+    async def test_profiles_text_command(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        msg = _M(uid=123, text="/profiles")
+        await dp.message.handlers[1].callback(msg, _State())
+        self.assertIn("ПРОФИЛИ", msg.answers[0][0][0])
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -301,7 +301,7 @@ class TestBotCommands(unittest.TestCase):
     def test_commands_ru(self):
         names = [c for c, _d in bt.BOT_COMMANDS_RU]
         for must in ("start", "cmd", "cfg", "check", "ref", "doctor",
-                     "history", "export", "wallets", "balance"):
+                     "history", "export", "wallets", "balance", "profiles"):
             self.assertIn(must, names)
 
 

@@ -440,6 +440,7 @@ BOT_COMMANDS_RU: list[tuple[str, str]] = [
     ("history", "История циклов"),
     ("balance", "Балансы кошельков"),
     ("wallets", "Список кошельков"),
+    ("profiles", "Профили флота"),
     ("export", "Скачать кошельки (с подтверждением)"),
     ("network", "Переключение сети"),
     ("cmd", "Конструктор команды"),
@@ -700,6 +701,7 @@ _HELP_TEXT = (
     "• /ref — сжатый справочник параметров\n\n"
     "Кошельки:\n"
     "• /wallets — список (ключи под спойлером)\n"
+    "• /profiles — разнообразие профилей флота\n"
     "• /export [json] — скачать все кошельки (CSV)\n\n"
     "/start — главное меню\n/help — эта справка\n\n"
     "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
@@ -1804,6 +1806,17 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         elif text == "/network":
             answer, kb = _networks_view(daemon)
             await message.answer(answer, parse_mode=ParseMode.HTML, reply_markup=kb)
+        elif text == "/profiles":
+            try:
+                wallets = await daemon.all_wallets()
+            except Exception:  # noqa: BLE001
+                wallets = []
+            cfgd = getattr(daemon, "config", None) or {}
+            beh = (cfgd.get("behavior") or {}) if isinstance(cfgd, dict) else {}
+            summary = _bot_ops.profiles_summary(
+                [w.get("address", "") for w in wallets if isinstance(w, dict)], beh)
+            _mode, lang = await _mode_lang(daemon, message.from_user.id if message.from_user else None)
+            await message.answer(_R.render_profiles(summary, lang), parse_mode=ParseMode.HTML)
         elif text == "/balance":
             try:
                 bals = await daemon.wallet_balances()
