@@ -94,7 +94,7 @@ proxy:
 
 # ---------- База данных ----------
 database:
-  path: "farming_state.db"     # SQLite для хранения прогресса
+  path: "farming_robinhood.db"   # SQLite для хранения прогресса (своя БД на сеть)
   master_key: "master.key"     # файл ключа для шифрования seed-данных в БД (или env FARMER_MASTER_KEY, 64 hex)
   log_keep: 200000             # сколько последних записей actions_log хранить (подрезка)
 
