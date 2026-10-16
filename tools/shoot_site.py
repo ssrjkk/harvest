@@ -119,7 +119,7 @@ def _matrix(browser, args, out: Path) -> int:
                 )
                 ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
                 ok_burger = (metrics["burger"] != "none") if width <= 900 else True
-                ok_nav = metrics["navLinks"] == 9
+                ok_nav = metrics["navLinks"] == 11
                 status = "ok" if (ok_scroll and ok_burger and ok_nav) else "FAIL"
                 if status == "FAIL":
                     fails += 1
