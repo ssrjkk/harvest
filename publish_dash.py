@@ -38,6 +38,72 @@ DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 _CELLS_MAX = 400  # максимум клеток сетки; остальные — подписью «+N»
 
 
+def _plural_files(n: int) -> str:
+    """файл/файла/файлов для счётчика (публикация, чтобы не править руками)."""
+    if n % 10 == 1 and n % 100 != 11:
+        return "файл"
+    if 2 <= n % 10 <= 4 and n % 100 not in (12, 13, 14):
+        return "файла"
+    return "файлов"
+
+
+def collect_test_counts() -> tuple[int | None, int | None]:
+    """Число (тестов, файлов) через pytest --collect-only.
+
+    Для подстановки в gh-pages копии при публикации (числа в master —
+    лишь fallback-снапшот, руками не правим). Ошибка/таймаут → (None, None).
+    """
+    import re
+
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests/", "--collect-only",
+             "--ignore=tests/test_load_opt.py"],
+            cwd=ROOT, capture_output=True, text=True, timeout=180,
+        )
+    except Exception:  # noqa: BLE001
+        return None, None
+    out = (r.stdout or "") + "\n" + (r.stderr or "")
+    m = re.search(r"(\d+)\s+tests?\s+collected", out)
+    if not m:
+        return None, None
+    files = len({line.split("::")[0] for line in out.splitlines()
+                 if line.startswith("tests/")})
+    return int(m.group(1)), files or None
+
+
+def inject_test_counts(site_dir: Path, tests: int, files: int) -> int:
+    """Подставляет свежие счётчики в gh-pages копии (index.html, site.js).
+
+    Возвращает число замен. Только эти два файла; DOCUMENTATION/README
+    в gh-pages не едут и остаются снапшотом.
+    """
+    import re
+
+    targets = [site_dir / "index.html", site_dir / "assets" / "site.js"]
+    patterns = [
+        (re.compile(r"\d[\d\s]*\s+TESTS"), f"{tests} TESTS"),
+        (re.compile(r"\d+\s*·\s*\d+\s+файл[а-я]*"), f"{tests} · {files} {_plural_files(files)}"),
+        (re.compile(r"\d+\s+tests\s*·\s*\d+\s+files"), f"{tests} tests · {files} files"),
+    ]
+    made = 0
+    for path in targets:
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for rx, repl in patterns:
+            text, n = rx.subn(repl, text)
+            made += n
+        try:
+            path.write_text(text, encoding="utf-8")
+        except OSError:
+            pass
+    return made
+
+
 def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None) -> str:
     """Один символ состояния кошелька: i idle, w working, o ok, e err, r rest.
 
@@ -143,6 +209,14 @@ def publish(state: dict) -> None:
     for d in SITE_DIRS:
         shutil.rmtree(wt / d, ignore_errors=True)
         shutil.copytree(DOCS / d, wt / d)
+    # Счётчики тестов — генерацией при публикации (не руками): gh-pages копии
+    # получают свежие числа, master остаётся fallback-снапшотом.
+    counted = collect_test_counts()
+    if counted[0] and counted[1]:
+        n = inject_test_counts(wt, counted[0], counted[1])
+        print(f"счётчики тестов: {counted[0]} · {counted[1]} ({n} замен)")
+    else:
+        print("счётчики тестов: пропуск (pytest недоступен)")
     (wt / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     git("add", "-f", *SITE_FILES, *SITE_DIRS, "state.json", cwd=wt)
     if git("diff", "--cached", "--quiet", cwd=wt, check=False).returncode == 0:

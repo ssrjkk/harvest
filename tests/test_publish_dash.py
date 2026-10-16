@@ -86,6 +86,35 @@ class TestPublishDash(unittest.TestCase):
         self.assertEqual(publish_dash._cell_state(2, 5, 3, 3), "e")
         self.assertEqual(publish_dash._cell_state(4, 4, 1, 3), "r")
 
+    def test_plural_files(self):
+        self.assertEqual(publish_dash._plural_files(1), "файл")
+        self.assertEqual(publish_dash._plural_files(54), "файла")
+        self.assertEqual(publish_dash._plural_files(5), "файлов")
+        self.assertEqual(publish_dash._plural_files(11), "файлов")
+
+    def test_inject_counts(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "assets").mkdir()
+            (root / "index.html").write_text(
+                "1335 TESTS · 1335 · 54 файла", encoding="utf-8")
+            (root / "assets" / "site.js").write_text(
+                "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
+            n = publish_dash.inject_test_counts(root, 1400, 55)
+            self.assertGreater(n, 0)
+            html = (root / "index.html").read_text(encoding="utf-8")
+            self.assertIn("1400 TESTS", html)
+            self.assertIn("1400 · 55 файлов", html)
+            self.assertNotIn("1335", html)
+            js = (root / "assets" / "site.js").read_text(encoding="utf-8")
+            self.assertIn("1400 tests · 55 files", js)
+
+    def test_collect_counts_matches_suite(self):
+        n, m = publish_dash.collect_test_counts()
+        self.assertIsNotNone(n)
+        self.assertGreater(n, 1300)
+        self.assertGreaterEqual(m, 54)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

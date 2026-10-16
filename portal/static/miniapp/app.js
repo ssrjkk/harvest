@@ -173,7 +173,7 @@
         return '<button class="tma-btn" data-c="' + c + '">' + (c === 0 ? "∞" : c) + "</button>";
       }).join("");
     } else {
-      h += "<p>Профиль</p>" + presets.profiles.map(function (p) {
+      h += "<p>Профиль (быстрый = --fast: меньше задержек, заметнее)</p>" + presets.profiles.map(function (p) {
         return '<button class="tma-btn" data-p="' + p + '">' + p + "</button>";
       }).join("") +
         '<div class="tma-row"><button class="tma-btn" data-f="1">С краном</button>' +

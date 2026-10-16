@@ -1347,8 +1347,6 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             ]), link_preview_options=_NO_PREVIEW)
         return True
     if screen == "diag" and action == "card":
-        from aiogram.types import BufferedInputFile
-
         from portal import status_card as _card
 
         if not _card.available():
@@ -1509,7 +1507,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             return True
         await state.update_data(m_cycles=n)
         await call.message.answer(
-            "Шаг 3/3 — профиль:",
+            "Шаг 3/3 — профиль (быстрый = --fast: меньше задержек, заметнее):",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="[Тихий]", callback_data="v1:master:profile:quiet"),
                  InlineKeyboardButton(text="[Обычный]", callback_data="v1:master:profile:normal"),
