@@ -58,6 +58,37 @@ def _cfg(config: dict, key: str, default):
     return (config.get("behavior") or {}).get(key, default)
 
 
+def _draw_bounded(rng: random.Random, config: dict, key: str, default: float,
+                  lo: float, hi: float) -> float:
+    """Поковолочное значение knob'а: скаляр — как раньше (фиксировано),
+    пара [lo, hi] — розыгрыш на кошелёк. Детерминировано адресом через rng."""
+    raw = _cfg(config, key, default)
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        a, b = float(raw[0]), float(raw[1])
+        if b < a:
+            a, b = b, a
+        return max(lo, min(hi, rng.uniform(a, b)))
+    try:
+        return max(lo, min(hi, float(raw)))
+    except (TypeError, ValueError):
+        return max(lo, min(hi, float(default)))
+
+
+def cfg_hi(config: dict, key: str, default: float) -> float:
+    """Верхняя граница knob'а для бюджетных расчётов (таймауты пула):
+    скаляр — сам, пара — её максимум. Не роняет float() на списке."""
+    raw = (config.get("behavior") or {}).get(key, default)
+    if isinstance(raw, (list, tuple)) and len(raw) == 2:
+        try:
+            return float(max(raw[0], raw[1]))
+        except (TypeError, ValueError):
+            pass
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def _as_range(value, default: tuple[float, float]) -> tuple[float, float]:
     """Нормализует диапазон из конфига в пару (lo, hi).
 
@@ -104,7 +135,7 @@ def profile_for(address: str, config: dict) -> WalletProfile:
     actions_lo = rng.randint(gmin, max(gmin, gmax - width + 1))
     actions_width = width
 
-    mix = float(_cfg(config, "action_mix", 0.4))
+    mix = _draw_bounded(rng, config, "action_mix", 0.4, 0.0, 2.0)
     multipliers: dict[str, float] = {}
     if mix > 0:
         lo = 1.0 - min(mix, 1.0)
@@ -114,17 +145,24 @@ def profile_for(address: str, config: dict) -> WalletProfile:
         for atype in _ALL_ACTION_TYPES:
             multipliers[atype] = max(0.1, rng.uniform(lo, hi))
 
-    jitter = max(0.0, min(0.9, float(_cfg(config, "amount_jitter", 0.25))))
+    jitter = _draw_bounded(rng, config, "amount_jitter", 0.25, 0.0, 0.9)
     amount_min_mul = max(0.1, 1.0 + rng.uniform(-jitter, jitter * 0.6))
     amount_max_mul = max(0.1, 1.0 + rng.uniform(-jitter * 0.4, jitter))
 
-    gas_deviation = max(0.0, min(0.5, rng.uniform(0.0, float(_cfg(config, "gas_deviation", 0.06)))))
-    odd_amount_prob = max(0.0, min(1.0, float(_cfg(config, "odd_amount_prob", 0.15))))
-    faucet_skip_prob = max(0.0, min(1.0, float(_cfg(config, "faucet_skip_prob", 0.1))))
-    daily_window_strength = max(0.0, min(1.0, float(_cfg(config, "daily_window", 0.3))))
-    burst_prob = max(0.0, min(1.0, float(_cfg(config, "burst_prob", 0.05))))
-    burst_mult = max(1.0, min(5.0, float(_cfg(config, "burst_multiplier", 1.6))))
-    rest_prob = max(0.0, min(1.0, float(_cfg(config, "rest_probability", 0.05))))
+    gas_deviation = _draw_bounded(rng, config, "gas_deviation", 0.06, 0.0, 0.5)
+    if not isinstance(_cfg(config, "gas_deviation", 0.06), (list, tuple)):
+        # Скаляр — старое поведение: розыгрыш в [0, v] (не фиксированное v).
+        try:
+            gv = max(0.0, min(0.5, float(_cfg(config, "gas_deviation", 0.06))))
+        except (TypeError, ValueError):
+            gv = 0.06
+        gas_deviation = max(0.0, min(0.5, rng.uniform(0.0, gv)))
+    odd_amount_prob = _draw_bounded(rng, config, "odd_amount_prob", 0.15, 0.0, 1.0)
+    faucet_skip_prob = _draw_bounded(rng, config, "faucet_skip_prob", 0.1, 0.0, 1.0)
+    daily_window_strength = _draw_bounded(rng, config, "daily_window", 0.3, 0.0, 1.0)
+    burst_prob = _draw_bounded(rng, config, "burst_prob", 0.05, 0.0, 1.0)
+    burst_mult = _draw_bounded(rng, config, "burst_multiplier", 1.6, 1.0, 5.0)
+    rest_prob = _draw_bounded(rng, config, "rest_probability", 0.05, 0.0, 1.0)
 
     # Staggered start: детерминированный стартовый сдвиг кошелька (анти-сибил).
     # Воркер-пул не стартует все кошельки одновременно — каждый входит плавно.

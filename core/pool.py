@@ -18,7 +18,7 @@ import time
 from pathlib import Path
 
 from core.actions import ActionExecutor
-from core.behavior import WalletProfile, profile_for
+from core.behavior import WalletProfile, cfg_hi, profile_for
 from core.database import Database
 from core.farmer import Farmer
 from core.faucet import Faucet
@@ -193,7 +193,7 @@ class FarmerPool:
             # закладываем запас по burst/scale, чтобы не ловить ложные таймауты.
             beh = config.get("behavior") or {}
             if beh.get("enabled", True):
-                burst = max(1.0, float(beh.get("burst_multiplier", 1.6)))
+                burst = max(1.0, cfg_hi(config, "burst_multiplier", 1.6))
                 scale_hi = 1.0
                 raw_scale = beh.get("action_delay_scale", (1.0, 1.5))
                 if isinstance(raw_scale, (list, tuple)) and len(raw_scale) == 2:
@@ -270,8 +270,7 @@ class FarmerPool:
         max_delay = (
             max(farm["delay_between_actions"]) if isinstance(farm.get("delay_between_actions"), (list, tuple)) else 20
         )
-        beh = self.config.get("behavior") or {}
-        burst = max(1.0, float(beh.get("burst_multiplier", 1.6))) if not profile.neutral else 1.0
+        burst = max(1.0, cfg_hi(self.config, "burst_multiplier", 1.6)) if not profile.neutral else 1.0
         actions_eff = max_actions
         if not profile.neutral:
             actions_eff = max(max_actions * max(2.0, burst), max_actions * profile.activity)

@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.behavior import gas_multiplier, profile_for, time_of_day_factor
+from core.behavior import cfg_hi, gas_multiplier, profile_for, time_of_day_factor
 
 
 def _cfg(**kw):
@@ -159,6 +159,47 @@ class TestScalarRanges(unittest.TestCase):
         p = profile_for(ADDR_A, _cfg(action_delay_scale=1.0, cycle_delay_scale=1.0))
         self.assertAlmostEqual(p.delay_actions_scale, 1.0)
         self.assertAlmostEqual(p.delay_cycles_scale, 1.0)
+
+
+class TestRangeDraws(unittest.TestCase):
+    """Пара [lo, hi] — розыгрыш на кошелёк; скаляр — как раньше (фиксировано)."""
+
+    def test_scalar_stays_fixed(self):
+        p = profile_for(
+            ADDR_A,
+            _cfg(rest_probability=0.05, burst_prob=0.07, odd_amount_prob=0.2,
+                 faucet_skip_prob=0.1, daily_window=0.3, burst_multiplier=1.6),
+        )
+        self.assertAlmostEqual(p.rest_prob, 0.05)
+        self.assertAlmostEqual(p.burst_prob, 0.07)
+        self.assertAlmostEqual(p.odd_amount_prob, 0.2)
+        self.assertAlmostEqual(p.faucet_skip_prob, 0.1)
+        self.assertAlmostEqual(p.daily_window_strength, 0.3)
+        self.assertAlmostEqual(p.burst_mult, 1.6)
+
+    def test_range_draw_deterministic(self):
+        kw = dict(rest_probability=[0.0, 1.0], burst_multiplier=[1.0, 5.0])
+        p1 = profile_for(ADDR_A, _cfg(**kw))
+        p2 = profile_for(ADDR_A, _cfg(**kw))
+        self.assertEqual(p1.rest_prob, p2.rest_prob)
+        self.assertEqual(p1.burst_mult, p2.burst_mult)
+
+    def test_range_draw_varies_across_wallets(self):
+        vals = {
+            profile_for(f"0x{i:040x}", _cfg(odd_amount_prob=[0.0, 1.0])).odd_amount_prob
+            for i in range(20)
+        }
+        self.assertGreater(len(vals), 1)
+
+    def test_range_draw_clamped(self):
+        p = profile_for(ADDR_A, _cfg(burst_multiplier=[10.0, 99.0], rest_probability=[-5.0, -1.0]))
+        self.assertLessEqual(p.burst_mult, 5.0)
+        self.assertGreaterEqual(p.rest_prob, 0.0)
+
+    def test_cfg_hi(self):
+        self.assertEqual(cfg_hi({"behavior": {"burst_multiplier": 1.6}}, "burst_multiplier", 1.6), 1.6)
+        self.assertEqual(cfg_hi({"behavior": {"burst_multiplier": [1.3, 2.5]}}, "burst_multiplier", 1.6), 2.5)
+        self.assertEqual(cfg_hi({}, "burst_multiplier", 1.6), 1.6)
 
 
 if __name__ == "__main__":
