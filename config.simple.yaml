@@ -28,7 +28,7 @@ faucet:
   min_balance: 0.003
   target_balance: 0.015
   retries: 2
-  max_concurrent: 6
+  max_concurrent: 12
   strategies:
     # chainstack — MCP-кран: нужен CHAINSTACK_API_KEY в переменных окружения
     # (https://console.chainstack.com/user/settings/api-keys). Без ключа стратегия
@@ -67,19 +67,19 @@ advanced:
 # action_mix опущен: тип действия один, индивидуальные предпочтения не на что влиять.
 behavior:
   enabled: true
-  activity: [0.5, 1.5]
-  rest_probability: 0.05
-  rest_cycles: [1, 3]
-  action_delay_scale: [0.7, 1.5]
-  cycle_delay_scale: [0.8, 1.8]
-  amount_jitter: 0.3
-  gas_deviation: 0.06
-  odd_amount_prob: 0.2
-  faucet_skip_prob: 0.1
-  daily_window: 0.3
-  burst_prob: 0.05
-  burst_multiplier: 1.6
-  start_delay: [0, 3]
+  activity: [0.3, 2.0]
+  rest_probability: [0.02, 0.12]
+  rest_cycles: [1, 4]
+  action_delay_scale: [0.5, 2.0]
+  cycle_delay_scale: [0.6, 2.2]
+  amount_jitter: [0.2, 0.45]
+  gas_deviation: [0.02, 0.12]
+  odd_amount_prob: [0.05, 0.35]
+  faucet_skip_prob: [0.05, 0.25]
+  daily_window: [0.1, 0.6]
+  burst_prob: [0.02, 0.12]
+  burst_multiplier: [1.3, 2.5]
+  start_delay: [0, 8]
 
 # ---------- Параллелизм ----------
 threading:
