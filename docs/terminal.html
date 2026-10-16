@@ -2,85 +2,11 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>harvest // ТЕРМИНАЛ — живое поле фермы</title>
-<meta name="description" content="harvest терминал: живое поле фермы на 1000 кошельков, сети, история циклов. Читает state.json. Только тестнеты.">
-<link rel="stylesheet" href="assets/terminal.css">
+<meta http-equiv="refresh" content="0; url=index.html#field">
+<link rel="canonical" href="index.html">
+<title>harvest — переезд на главную</title>
 </head>
 <body>
-<div class="topbar">
-  <div class="titlebar">
-    <span>harvest_os // terminal.exe — EVM TESTNET FARMER · PYTHON 3.12 · MIT</span>
-    <span style="display:flex;gap:8px;align-items:center">
-      <span id="livePill"><span class="pill dim">STOP</span></span>
-      <button class="btn" id="langRu" type="button" style="padding:2px 10px">RU</button><button class="btn" id="langEn" type="button" style="padding:2px 10px">EN</button>
-      <a class="btn" href="index.html" style="padding:2px 10px;text-decoration:none">← harvest</a>
-    </span>
-  </div>
-  <div class="ticker"><div class="ticker-in" id="tick">harvest ·&nbsp;</div></div>
-</div>
-
-<div class="wrap">
-  <div class="win hero">
-    <div class="titlebar gold"><span data-l="field">ПОЛЕ</span><span id="netLine">—</span></div>
-    <h1 data-l="field">ПОЛЕ</h1>
-    <p class="note">state.json · 60s poll · <span id="specTests">1422 tests · 56 files</span></p>
-    <div id="liveAlert"></div>
-  </div>
-
-  <div class="win pane" style="margin-top:16px">
-    <div class="titlebar"><span><span data-l="field">ПОЛЕ</span> // <span data-l="cells">ячейки</span></span><span id="statLine">—</span></div>
-    <div style="padding:12px">
-      <div class="toolbar" id="filters">
-        <button class="btn on" data-f="all" type="button" data-l="all">ВСЕ</button>
-        <button class="btn" data-f="i" type="button">i</button>
-        <button class="btn" data-f="w" type="button">w</button>
-        <button class="btn" data-f="o" type="button">o</button>
-        <button class="btn" data-f="e" type="button">e</button>
-        <button class="btn" data-f="r" type="button">r</button>
-        <button class="btn" id="zoomBtn" type="button">250 ДЕТАЛЬНО</button>
-        <input class="btn" id="q" inputmode="numeric" style="cursor:text" placeholder="поиск #…">
-      </div>
-      <div id="cells" class="cells inset detail"></div>
-      <h2 class="secttl" style="margin-top:12px" data-l="inspector">ИНСПЕКТОР</h2>
-      <div id="inspector" class="inset" style="padding:10px 12px"><span class="note">—</span></div>
-    </div>
-  </div>
-
-  <div class="grid2" style="margin-top:16px">
-    <div class="win pane">
-      <div class="titlebar"><span data-l="history">ИСТОРИЯ ЦИКЛОВ</span></div>
-      <div style="padding:12px">
-        <table class="t"><tr><th>#</th><th>actions</th><th>errors</th><th>s</th><th>wallets</th></tr><tbody id="tHistory"></tbody></table>
-        <table class="t" style="margin-top:12px"><tr><th colspan="2" data-l="top">ТОП КОШЕЛЬКОВ</th></tr><tbody id="tWallets"></tbody></table>
-        <table class="t" style="margin-top:12px"><tbody id="stats"></tbody></table>
-      </div>
-    </div>
-    <div class="win pane">
-      <div class="titlebar"><span data-l="networks">СЕТИ</span></div>
-      <div style="padding:12px;display:grid;gap:8px" id="nets"></div>
-    </div>
-  </div>
-
-  <div class="win pane" style="margin-top:16px">
-    <div class="titlebar gold"><span data-l="faucet">КРАН И ДИАГНОСТИКА</span></div>
-    <div style="padding:12px;font-size:12px">
-      <p>Проба крана — handshake без траты квоты; запрос — <code>tools/call request_testnet_funds</code>, доливает адрес до максимума сети, повтор безопасен. Без ключа стратегия молча исключается на pre-flight.</p>
-      <p class="note">Faucet probe is a quota-free handshake; top-up fills to the network maximum. Without a key the strategy is silently excluded at pre-flight.</p>
-      <p>Ключ: console.chainstack.com → user/settings/api-keys (env <code>CHAINSTACK_API_KEY</code>, в конфиги не пишется).</p>
-    </div>
-  </div>
-
-  <div class="win pane" style="margin-top:16px">
-    <div class="titlebar"><span data-l="bot">TELEGRAM-БОТ</span></div>
-    <div style="padding:12px;font-size:12px">
-      <p><a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">t.me/harvest_testnet_bot</a> — бот фермы: Поле, [Профили], /profiles, конструкторы /cmd /cfg, проверка /check.</p>
-      <p class="note">Автор: <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
-    </div>
-  </div>
-
-  <footer>harvest v2.3.0 · EVM testnet farmer · © 2026 ssrjkk · MIT · <a href="index.html">docs</a></footer>
-</div>
-<script src="assets/terminal.js"></script>
+<p>Терминал переехал на <a href="index.html#field">главную страницу</a>.</p>
 </body>
 </html>

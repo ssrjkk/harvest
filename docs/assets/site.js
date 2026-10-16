@@ -16,7 +16,7 @@ applyTheme();
 
 /* ---------- i18n ---------- */
 const EN={
-skip:"Skip to content",nav_live:"Field",nav_terminal:"Terminal",nav_overview:"Overview",nav_networks:"Networks",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
+skip:"Skip to content",nav_live:"Field",nav_terminal:"Terminal",nav_faucet:"Faucet",nav_bot:"Bot",nav_specs:"Facts",nav_overview:"Overview",nav_networks:"Networks",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
@@ -81,6 +81,7 @@ q2:"Where are my demo keys?",a_q2:"Only in this tab's memory. The site is static
 q3:"What about 0x0 contracts in config?",a_q3:"Stubs by design: the validator passes them with a remark, runtime falls back to transfer. Fill in real addresses from the Tier-2 docs when ready.",
 q4:"Why is the field empty?",a_q4:"It comes alive after the first publish: run python publish_dash.py on the farm machine (scheduled every 30 min by default, 15–60 allowed). Everything else already works.",
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
+f_all:"ALL",fx_h:"Faucet & diagnostics",fx_p1:"Faucet probe is a quota-free handshake; top-up fills to the network maximum. Without a key the strategy is silently excluded at pre-flight.",fx_p2:"Key: console.chainstack.com → user/settings/api-keys (env CHAINSTACK_API_KEY, never in configs).",bot_h:"Telegram bot",bot_p:"Farm bot: Field, [Profiles], /profiles, /cmd /cfg builders, /check validation. Author contact is separate.",specs_h:"Facts",
 ft:"EVM testnet farmer · © 2026 ssrjkk · MIT",
 mode_new:"Beginner",mode_pro:"Pro",mode_hint:"Beginner — 3 steps in plain words. Pro — builders, simulator, reference.",
 w_s1:"Network",w_s2:"Scale",w_s3:"Launch",
@@ -163,10 +164,10 @@ $("#cmdCopy")?.addEventListener("click",()=>{const t=$("#cmdOut").textContent;(n
 /* ---------- live pulpit (state.json) ---------- */
 let live={actions:[],errors:[],proc:[]};
 const FALLBACK_NETS=[
- {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",tagline:"Permissionless launchpad на Robinhood Chain",description:"Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",rewards:"5% сапплая VIBE · торговля, стейкинг, клейм наград",activities:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"]},
- {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",tagline:"Базовый L2-тестнет Robinhood",description:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",rewards:"Базовый тестнет-эирдроп и опыт",activities:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"]},
- {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",tagline:"Launchpad Flop Labs",description:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",rewards:"Тестнет-баллы и эирдроп",activities:["Compute / validate / stake","Трансферы"]},
- {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",tagline:"Launchpad Minara.Fun",description:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",rewards:"Тестнет-эирдроп за активности",activities:["Запуск / торговля / добавление ликвидности","Трансферы"]}
+ {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Permissionless launchpad на Robinhood Chain",description:"Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",rewards:"5% сапплая VIBE · торговля, стейкинг, клейм наград",activities:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"]},
+ {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Базовый L2-тестнет Robinhood",description:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",rewards:"Базовый тестнет-эирдроп и опыт",activities:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"]},
+ {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",faucet:"",explorer:"",tagline:"Launchpad Flop Labs",description:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",rewards:"Тестнет-баллы и эирдроп",activities:["Compute / validate / stake","Трансферы"]},
+ {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",faucet:"",explorer:"https://explorer.testnet.arc.network",tagline:"Launchpad Minara.Fun",description:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",rewards:"Тестнет-эирдроп за активности",activities:["Запуск / торговля / добавление ликвидности","Трансферы"]}
 ];
 async function loadState(){
   try{const r=await fetch("state.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;return await r.json();}
@@ -260,11 +261,12 @@ function renderLive(s){
 }
 function netCard(n,cur){
   const acts=(n.activities||[]).map(a=>"<li>"+esc(a)+"</li>").join("");
+  const links=[n.faucet?'<a href="'+esc(n.faucet)+'" target="_blank" rel="noopener">faucet</a>':"",n.explorer?'<a href="'+esc(n.explorer)+'" target="_blank" rel="noopener">explorer</a>':""].filter(Boolean).join(" · ");
   return `<div class="net"><div><span class="name">${esc(n.name)}</span>${cur?' <span class="cur">'+(lang==="en"?"current":"текущая")+"</span>":""}</div>
     <div class="meta">chain ${esc(n.chain_id)} · ${esc(n.currency)}</div>
     <div class="tag">${esc(n.tagline||"")}</div>
     <div class="desc">${esc(n.description||"")}</div>
-    <div class="rewards">${esc(n.rewards||"—")}</div><ul>${acts}</ul></div>`;
+    <div class="rewards">${esc(n.rewards||"—")}</div><ul>${acts}</ul>${links?'<div class="toolbar">'+links+"</div>":""}</div>`;
 }
 function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textContent=txt;}
 function paintTicker(nets){

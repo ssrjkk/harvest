@@ -73,7 +73,7 @@ def collect_test_counts() -> tuple[int | None, int | None]:
 
 
 def inject_test_counts(site_dir: Path, tests: int, files: int) -> int:
-    """Подставляет свежие счётчики в gh-pages копии (index/terminal, site/terminal.js).
+    """Подставляет свежие счётчики в gh-pages копии (index/terminal, site.js).
 
     Возвращает число замен. DOCUMENTATION/README
     в gh-pages не едут и остаются снапшотом.
@@ -81,7 +81,7 @@ def inject_test_counts(site_dir: Path, tests: int, files: int) -> int:
     import re
 
     targets = [site_dir / "index.html", site_dir / "terminal.html",
-               site_dir / "assets" / "site.js", site_dir / "assets" / "terminal.js"]
+               site_dir / "assets" / "site.js"]
     patterns = [
         (re.compile(r"\d[\d\s]*\s+TESTS"), f"{tests} TESTS"),
         (re.compile(r"\d+\s*·\s*\d+\s+файл[а-я]*"), f"{tests} · {files} {_plural_files(files)}"),

@@ -14,90 +14,52 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/terminal.css">
 </head>
 <body class="is-loading">
 <a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
 
 <header class="topbar">
-  <div class="wrap topbar-in">
-    <a class="brand" href="#top" aria-label="harvest home">
-      <span class="brand-mark">H</span>
-      <span class="brand-name">harvest</span>
-      <span class="brand-ver">v2.3.0</span>
-      <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span>
-    </a>
-    <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
-    <nav class="main" id="mainNav" aria-label="Sections">
-      <a href="#field" data-i18n="nav_live">Поле</a>
-      <a href="terminal.html" data-i18n="nav_terminal">Терминал</a>
-      <a href="#overview" data-i18n="nav_overview">Обзор</a>
-      <a href="#networks" data-i18n="nav_networks">Сети</a>
-      <a href="#quickstart" data-i18n="nav_start">Запуск</a>
-      <a href="#app" data-i18n="nav_app">Демо</a>
-      <a href="#arch" data-i18n="nav_arch">Устройство</a>
-      <a href="#portal" data-i18n="nav_portal">Портал</a>
-      <a href="#security" data-i18n="nav_sec">Безопасность</a>
-      <a href="#license" data-i18n="nav_license">Лицензия</a>
-    </nav>
-    <div class="top-actions">
-      <div class="seg" role="group" aria-label="Language">
-        <button id="langRu" class="on" type="button">RU</button><button id="langEn" type="button">EN</button>
-      </div>
-      <div class="seg" role="group" aria-label="Theme">
-        <button id="themeBtn" type="button" title="Paper / Ink / Moss">◐</button>
-      </div>
-      <a class="btn small primary" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a>
-    </div>
+  <div class="titlebar">
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.3.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span style="display:flex;gap:8px;align-items:center">
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
+      <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
+      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss">◐</button>
+      <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
+    </span>
   </div>
+  <nav class="main" id="mainNav" aria-label="Sections" style="padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px">
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#field" data-i18n="nav_live">Поле</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#faucet" data-i18n="nav_faucet">Кран</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#bot" data-i18n="nav_bot">Бот</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#specs" data-i18n="nav_specs">Факты</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#overview" data-i18n="nav_overview">Обзор</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#quickstart" data-i18n="nav_start">Запуск</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#app" data-i18n="nav_app">Демо</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#arch" data-i18n="nav_arch">Устройство</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#portal" data-i18n="nav_portal">Портал</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#security" data-i18n="nav_sec">Безопасность</a>
+    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#license" data-i18n="nav_license">Лицензия</a>
+  </nav>
 </header>
 
 <div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1422 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- HERO -->
-<div class="hero" id="top">
+<div class="hero win" id="top" style="margin-bottom:16px">
+  <div class="titlebar gold"><span>EVM TESTNET FARMER · PYTHON 3.12 · MIT · © 2026 SSRJKK</span><span>STATE.JSON · 60S POLL</span></div>
   <div class="wrap">
-    <div class="kicker"><span class="dot-live"></span><span data-i18n="kick">EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk</span></div>
     <h1 data-i18n="h1">Фермер тестнетов,<br><em>а не лотерея.</em></h1>
     <p class="lede" data-i18n="lede">Массовая генерация кошельков, краны, асинхронный фарминг транзакций с «человеческими» профилями поведения, мульти-RPC с EMA-скорингом, веб-портал и Telegram-бот. Ниже — живое поле фермы, полная документация и рабочая браузерная зона: конфиг, команды, кошельки, симулятор.</p>
-    <div class="hero-grid">
-      <div>
-        <div class="stat-table">
-          <table>
-            <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
-            <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1422 · 56 файлов · зелёный прогон</td></tr>
-            <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
-            <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
-            <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
-            <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num">exe через PyInstaller · Docker + compose</td></tr>
-          </table>
-        </div>
-        <div class="hero-cta">
-          <a class="btn accent" href="#field" data-i18n="cta_live">Живое поле</a>
-          <a class="btn" href="#app" data-i18n="cta_demo">Демо-зона</a>
-          <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">Telegram-бот фермы</a>
-        </div>
-        <p class="note" data-i18n="hero_note">Поле читает state.json, который публикует ферма. Остальной сайт полностью статический: ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
-      </div>
-      <div>
-        <div class="terminal" aria-label="Quick commands">
-          <div class="terminal-bar"><i></i><i></i><i></i><span>powershell — harvest</span></div>
-<pre><span class="c-dim"># установка</span>
-pip install -r requirements.txt
-
-<span class="c-dim"># интерактивное меню: сеть → фарм</span>
-python main.py
-
-<span class="c-dim"># авто-режим: 50 кошельков, 5 циклов</span>
-python auto.py --wallets 50 --cycles 5
-
-<span class="c-dim"># самодиагностика</span>
-python auto.py --doctor</pre>
-        </div>
-        <p class="note" style="margin-top:10px"><span data-i18n="contacts">Автор:</span> <b>ssrjkk</b> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
-      </div>
+    <div class="hero-cta">
+      <a class="btn accent" href="#field" data-i18n="cta_live">Живое поле</a>
+      <a class="btn" href="#app" data-i18n="cta_demo">Демо-зона</a>
+      <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">Telegram-бот фермы</a>
     </div>
+    <p class="note" data-i18n="hero_note">Поле читает state.json, который публикует ферма. Остальной сайт полностью статический: ключи из демо-генератора не покидают браузер. Только тестнеты.</p>
+    <p class="note"><span data-i18n="contacts">Автор:</span> <b>ssrjkk</b> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
   </div>
 </div>
 
@@ -106,6 +68,18 @@ python auto.py --doctor</pre>
 <section class="block" id="field">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
+
+    <div class="toolbar" id="fxFilters">
+      <button class="btn small on" data-f="all" type="button" data-i18n="f_all">ВСЕ</button>
+      <button class="btn small" data-f="i" type="button">i</button>
+      <button class="btn small" data-f="w" type="button">w</button>
+      <button class="btn small" data-f="o" type="button">o</button>
+      <button class="btn small" data-f="e" type="button">e</button>
+      <button class="btn small" data-f="r" type="button">r</button>
+      <button class="btn small" id="fxZoom" type="button">250</button>
+      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…">
+    </div>
+    <div class="inset" id="fxInspector" style="padding:8px 12px;margin:8px 0"><span class="note">—</span></div>
     <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Сайт перечитывает state.json раз в минуту (60 с); издатель работает по своему расписанию — по умолчанию каждые 30 минут (планировщик HarvestDashPublish, допустимо 15–60). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
     <div id="liveAlert"></div>
     <div class="termline" id="term">
@@ -157,6 +131,40 @@ python auto.py --doctor</pre>
       <a class="btn small" href="https://explorer.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood explorer</a>
       <a class="btn small" href="https://faucet.testnet.chain.robinhood.com" target="_blank" rel="noopener">Robinhood faucet</a>
     </div>
+  </div>
+</section>
+
+<!-- FAUCET -->
+<section class="block" id="faucet">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="fx_h">Кран и диагностика</h2></div>
+    <p class="sec-sub" data-i18n="fx_p1">Проба крана — handshake без траты квоты; запрос — tools/call request_testnet_funds, доливает адрес до максимума сети, повтор безопасен. Без ключа стратегия молча исключается на pre-flight.</p>
+    <p class="note" data-i18n="fx_p2">Ключ: console.chainstack.com → user/settings/api-keys (env CHAINSTACK_API_KEY, в конфиги не пишется).</p>
+  </div>
+</section>
+
+<!-- BOT -->
+<section class="block" id="bot">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="bot_h">Telegram-бот</h2></div>
+    <p class="sec-sub" data-i18n="bot_p">Бот фермы: Поле, [Профили], /profiles, конструкторы /cmd /cfg, проверка /check. Контакт автора — отдельно.</p>
+    <div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">t.me/harvest_testnet_bot</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div>
+  </div>
+</section>
+
+<!-- SPECS -->
+<section class="block" id="specs">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="specs_h">Факты</h2></div>
+    <div class="table-wrap"><table class="t">
+      <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
+      <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
+      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1422 · 56 файлов · зелёный прогон</td></tr>
+      <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
+      <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
+      <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
+      <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num">exe через PyInstaller · Docker + compose</td></tr>
+    </table></div>
   </div>
 </section>
 
@@ -655,6 +663,56 @@ SOFTWARE.</div>
   </div>
 </footer>
 <div class="toast" id="toast"></div>
+<script>
+/* harvest: фильтры/зум/поиск/инспектор поля поверх site.js (только чтение DOM). */
+(function(){
+"use strict";
+var filter="all",zoom250=true,query="",sel=-1;
+function L(){return document.documentElement.lang==="en"?"en":"ru";}
+function cells(){return Array.prototype.slice.call(document.querySelectorAll("#fieldGrid .cell"));}
+function apply(){
+  var list=cells();
+  list.forEach(function(el,i){
+    var ok=true;
+    if(filter!=="all")ok=el.classList.contains("c-"+filter);
+    if(ok&&query)ok=String(i+1).indexOf(query)!==-1;
+    el.style.display=ok?"":"none";
+  });
+  var box=document.getElementById("fxInspector");
+  if(box){
+    if(sel>=0&&list[sel]){
+      var cls=list[sel].className;
+      var st=(cls.match(/c-([iwoer])/)||[])[1]||"i";
+      var names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
+      box.innerHTML="<b>#"+(sel+1)+"</b> · "+names[st][L()];
+    }else{box.innerHTML='<span class="note">—</span>';}
+  }
+  var z=document.getElementById("fxZoom");
+  if(z)z.textContent=zoom250?(L()==="en"?"250 DETAIL":"250 ДЕТАЛЬНО"):(L()==="en"?"PANORAMA":"ПАНОРАМА");
+  var g=document.getElementById("fieldGrid");
+  if(g){
+    if(zoom250){g.classList.remove("zoom");list.forEach(function(el){el.textContent="";});}
+    else{g.classList.add("zoom");list.forEach(function(el,i){el.textContent=String(i+1);});}
+  }
+  var q=document.getElementById("fxQ");
+  if(q)q.placeholder=L()==="en"?"search #…" :"поиск #…";
+}
+document.addEventListener("click",function(e){
+  var b=e.target.closest?e.target.closest("#fxFilters [data-f]"):null;
+  if(b){filter=b.dataset.f;sel=-1;
+    Array.prototype.forEach.call(document.querySelectorAll("#fxFilters [data-f]"),function(x){x.classList.remove("on");});
+    b.classList.add("on");apply();return;}
+  if(e.target.closest&&e.target.closest("#fxZoom")){zoom250=!zoom250;apply();return;}
+  var c=e.target.closest?e.target.closest("#fieldGrid .cell"):null;
+  if(c){var list=cells();sel=list.indexOf(c);apply();}
+});
+document.addEventListener("input",function(e){
+  if(e.target&&e.target.id==="fxQ"){query=e.target.value.replace(/\D/g,"");apply();}
+});
+new MutationObserver(apply).observe(document.getElementById("fieldGrid"),{childList:true});
+apply();
+})();
+</script>
 <script src="assets/site.js" defer></script>
 </body>
 </html>
