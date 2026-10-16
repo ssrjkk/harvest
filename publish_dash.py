@@ -6,7 +6,7 @@ state.json в изолированной ветке gh-pages, где лежит 
 Мастер-ветка от этого не растёт: в gh-pages всегда один коммит, он
 перезаписывается через amend.
 
-Запуск по расписанию (Windows Task Scheduler) каждые 5 минут:
+Запуск по расписанию (Windows Task Scheduler, задача HarvestDashPublish) каждые 30 минут:
     python publish_dash.py
 Для push нужен токен: set GITHUB_TOKEN=ghp_...
 """
@@ -23,13 +23,14 @@ from pathlib import Path
 import aiosqlite
 
 from portal.networks import NETWORKS
+from portal.wallet_cells import build_cells
 
 ROOT = Path(__file__).resolve().parent
 DOCS = ROOT / "docs"
 DASH_BRANCH = "gh-pages"
 SITE_DIR = ROOT / ".dash-site"
 # Файлы сайта в ветке gh-pages (корень): лендинг + ассеты. state.json дописывается рядом.
-SITE_FILES = ("index.html", ".nojekyll")
+SITE_FILES = ("index.html", ".nojekyll", "robots.txt")
 SITE_DIRS = ("assets",)
 DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 
@@ -38,14 +39,13 @@ _CELLS_MAX = 400  # максимум клеток сетки; остальные
 
 
 def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None) -> str:
-    """Один символ состояния кошелька: i idle, w working, o ok, e err, r rest."""
-    if attempts > actions:
-        return "e"
-    if latest is not None and last_cycle == latest:
-        return "o" if actions > 0 else "w"
-    if last_cycle >= 0:
-        return "r"
-    return "i"
+    """Один символ состояния кошелька: i idle, w working, o ok, e err, r rest.
+
+    Единая реализация — portal/wallet_cells.py (сайт и бот используют её же).
+    """
+    from portal.wallet_cells import cell_state
+
+    return cell_state(actions, attempts, last_cycle, latest)
 
 
 async def collect() -> dict:
@@ -73,9 +73,8 @@ async def collect() -> dict:
                 (_CELLS_MAX,),
             ) as cur:
                 sample = await cur.fetchall()
-            cells = "".join(
-                _cell_state(a or 0, t or 0, -1 if c is None else c, latest)
-                for a, t, c in sample
+            cells = build_cells(
+                [(a or 0, t or 0, c) for a, t, c in sample], latest
             )
         except Exception:  # noqa: BLE001 — старая схема без колонок: все idle
             cells = ""

@@ -1,4 +1,4 @@
-/* HARVEST site app — vanilla JS, no deps. Live pulpit reads state.json; tools run locally. */
+﻿/* HARVEST site app — vanilla JS, no deps. Live pulpit reads state.json; tools run locally. */
 (function(){
 "use strict";
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
@@ -20,7 +20,7 @@ skip:"Skip to content",nav_live:"Field",nav_overview:"Overview",nav_networks:"Ne
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
-th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1199 · 44 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
+th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1317 · 54 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
 cta_live:"Live field",cta_demo:"Demo zone",
 hero_note:"The field reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
@@ -270,7 +270,7 @@ function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textC
 function paintTicker(nets){
   try{
     const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
-    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1199 TESTS · MIT · ").repeat(2);
+    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1317 TESTS · MIT · ").repeat(2);
   }catch(e){}
 }
 function drawLive(){
@@ -320,18 +320,21 @@ window.addEventListener("resize",drawLive);
 
 /* ---------- config builder ---------- */
 const NETS={
-robinhood:{file:"config_robinhood.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"300000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 0.4\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_swap\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_mint\n    contract: "0x0000000000000000000000000000000000000000"\n    method: mint\n    weight: 0.25'},
-vibevibe:{file:"config_vibevibe.yaml",db:"farming_state.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"100000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001'},
-flop:{file:"config_flop.yaml",db:"farming_flop.db",chain:99999,rpc:"https://rpc.testnet.floplabs.io",faucet:"0.01 → 0.1",lo:5,hi:15,delays:"  delay_between_actions: [3, 15]\n  delay_between_cycles: [1800, 3600]",gas:"300000 / 0.01",workers:30,actions:'  - type: flop_compute\n    contract: "0x0000000000000000000000000000000000000000"\n    method: submitTask\n    weight: 0.4\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: flop_validate\n    contract: "0x0000000000000000000000000000000000000000"\n    method: validateTask\n    weight: 0.25\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: flop_stake\n    contract: "0x0000000000000000000000000000000000000000"\n    method: stake\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.01'},
-arc:{file:"config_arc.yaml",db:"farming_arc.db",chain:5042002,rpc:"https://rpc.testnet.arc.network",faucet:"0.01 → 0.1",lo:5,hi:12,delays:"  delay_between_actions: [2, 10]\n  delay_between_cycles: [1200, 2400]",gas:"200000 / 0.005",workers:30,actions:'  - type: arc_launch\n    contract: "0x0000000000000000000000000000000000000000"\n    method: launchToken\n    weight: 0.3\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: arc_trade\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.003\n  - type: arc_add_liquidity\n    contract: "0x0000000000000000000000000000000000000000"\n    method: addLiquidity\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.005'},
-simple:{file:"config.simple.yaml",db:"farming_simple.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.003 → 0.015",lo:2,hi:4,delays:"  delay_between_actions: [8, 25]\n  delay_between_cycles: [2700, 6300]",gas:"21000 / 0.0006",workers:24,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.00005\n    max_amount: 0.0004'}
+robinhood:{file:"config_robinhood.yaml",db:"farming_robinhood.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",fmin:"0.005",fmax:"0.05",glim:"300000",mgas:"0.003",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"300000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 0.4\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_swap\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.001\n  - type: vibevibe_mint\n    contract: "0x0000000000000000000000000000000000000000"\n    method: mint\n    weight: 0.25'},
+vibevibe:{file:"config_vibevibe.yaml",db:"farming_vibevibe.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.005 → 0.05",fmin:"0.005",fmax:"0.05",glim:"100000",mgas:"0.003",lo:3,hi:8,delays:"  delay_between_actions: [5, 20]\n  delay_between_cycles: [3600, 7200]",gas:"100000 / 0.003",workers:20,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.0001\n    max_amount: 0.001'},
+flop:{file:"config_flop.yaml",db:"farming_flop.db",chain:99999,rpc:"https://rpc.testnet.floplabs.io",faucet:"0.01 → 0.1",fmin:"0.01",fmax:"0.1",glim:"300000",mgas:"0.01",lo:5,hi:15,delays:"  delay_between_actions: [3, 15]\n  delay_between_cycles: [1800, 3600]",gas:"300000 / 0.01",workers:30,actions:'  - type: flop_compute\n    contract: "0x0000000000000000000000000000000000000000"\n    method: submitTask\n    weight: 0.4\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: flop_validate\n    contract: "0x0000000000000000000000000000000000000000"\n    method: validateTask\n    weight: 0.25\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: flop_stake\n    contract: "0x0000000000000000000000000000000000000000"\n    method: stake\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.01'},
+arc:{file:"config_arc.yaml",db:"farming_arc.db",chain:5042002,rpc:"https://rpc.testnet.arc.network",faucet:"0.01 → 0.1",fmin:"0.01",fmax:"0.1",glim:"200000",mgas:"0.005",lo:5,hi:12,delays:"  delay_between_actions: [2, 10]\n  delay_between_cycles: [1200, 2400]",gas:"200000 / 0.005",workers:30,actions:'  - type: arc_launch\n    contract: "0x0000000000000000000000000000000000000000"\n    method: launchToken\n    weight: 0.3\n    min_amount: 0.001\n    max_amount: 0.01\n  - type: arc_trade\n    contract: "0x0000000000000000000000000000000000000000"\n    method: swap\n    weight: 0.35\n    min_amount: 0.0001\n    max_amount: 0.005\n  - type: transfer\n    target: random_wallet\n    weight: 0.2\n    min_amount: 0.0001\n    max_amount: 0.003\n  - type: arc_add_liquidity\n    contract: "0x0000000000000000000000000000000000000000"\n    method: addLiquidity\n    weight: 0.15\n    min_amount: 0.001\n    max_amount: 0.005'},
+simple:{file:"config.simple.yaml",db:"farming_simple.db",chain:46630,rpc:"https://rpc.testnet.chain.robinhood.com",faucet:"0.003 → 0.015",fmin:"0.003",fmax:"0.015",glim:"21000",mgas:"0.0006",lo:2,hi:4,delays:"  delay_between_actions: [8, 25]\n  delay_between_cycles: [2700, 6300]",gas:"21000 / 0.0006",workers:24,actions:'  - type: transfer\n    target: random_wallet\n    weight: 1.0\n    min_amount: 0.00005\n    max_amount: 0.0004'}
 };
 function buildYaml(){
   const key=$("#cfgNet").value, n=NETS[key];
   const rpc=$("#cfgRpc").value.trim()||n.rpc, db=$("#cfgDb").value.trim()||n.db;
   const w=Math.max(1,parseInt($("#cfgWallets").value||"50",10)), wk=Math.max(1,parseInt($("#cfgWorkers").value||String(n.workers),10));
   const f=$("#cfgFaucet").value.split("→").map(s=>s.trim());const fmin=f[0]||"0.005", fmax=f[1]||"0.05";
-  const am=$("#cfgActions").value.replace(/[\[\]]/g,"").split(",").map(s=>s.trim());const alo=am[0]||n.lo, ahi=am[1]||n.hi;
+  const am=$("#cfgActions").value.replace(/[\[\]]/g,"").split(",").map(s=>s.trim());
+  let alo=parseInt(am[0],10), ahi=parseInt(am[1],10);
+  if(!Number.isInteger(alo)||alo<0){alo=n.lo;}
+  if(!Number.isInteger(ahi)||ahi<alo){ahi=n.hi;}
   const g=$("#cfgGas").value.split("/").map(s=>s.trim());const gas=g[0]||"100000", mgas=g[1]||"0.003";
   return `# HARVEST — ${n.file} (generated in browser)\nnetwork:\n  rpc_url: ${rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${w}\n  seed: ""\nfaucet:\n  enabled: true\n  min_balance: ${fmin}\n  target_balance: ${fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${alo}, ${ahi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${gas}\n  min_gas_for_action: ${mgas}\nthreading:\n  max_workers: ${wk}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${db}\n  master_key: master.key\n`;
 }
@@ -532,7 +535,7 @@ $("#wCopyCmd").addEventListener("click",()=>{
 });
 $("#wDlCfg").addEventListener("click",()=>{
   const n=NETS[wst.net];
-  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: 0.005\n  target_balance: 0.05\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${n.lo}, ${n.hi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: 100000\n  min_gas_for_action: 0.003\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
+  const y=`# HARVEST — ${n.file} (beginner preset, generated in browser)\nnetwork:\n  rpc_url: ${n.rpc}\n  chain_id: ${n.chain}\nwallets:\n  count: ${$("#wW").value}\n  seed: ""\nfaucet:\n  enabled: ${$("#wF").checked}\n  min_balance: ${n.fmin}\n  target_balance: ${n.fmax}\n  retries: 2\n  strategies:\n    - type: direct\n      url: https://faucet.example/claim\nactions:\n${n.actions}\nfarming:\n  actions_per_cycle: [${n.lo}, ${n.hi}]\n${n.delays}\n  skip_cycle_probability: 0.05\nadvanced:\n  gas_limit: ${n.glim}\n  min_gas_for_action: ${n.mgas}\nthreading:\n  max_workers: ${n.workers}\n  timeout_per_wallet: 0\ndatabase:\n  path: ${n.db}\n  master_key: master.key\n`;
   dl(n.file,y,"text/yaml");
 });
 wStep(1);

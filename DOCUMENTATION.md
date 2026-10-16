@@ -1,4 +1,4 @@
-# HARVEST — полная документация проекта и кода
+﻿# HARVEST — полная документация проекта и кода
 
 Версия: **v2.3.0** · Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив)
 
@@ -703,15 +703,36 @@ Rate-limit:
 - `_allowed` — default-deny по `TELEGRAM_ALLOW_IDS` (+`PORTAL_OPEN_ACCESS`).
 - Кнопки: старт/стоп/пауза/резюм фермы, статистика (`_fmt_stats`, включает
   счётчик кошельков), ссылки (`load_links`, санитизация, максимум 15 строк),
-  экспорт кошельков (`export:csv`/`export:json` → файл), Mini App
+  экспорт кошельков (`export:csv`/`export:json` → подтверждение → `export:yes:*` → файл
+  с `protect_content` + автоудаление 60с), Mini App
   (`WebAppInfo` → фронтенд шлёт initData в `/api/tg/init`), конструкторы
-  (`cmd:usage`, `cfg:usage`) и справочник (`ref`).
-- Команды: `/doctor`, `/history`, `/export [json]` — скачивание всех
+  (`cmd:usage`, `cfg:usage`) и справочник (`ref`). Все экраны — с `[ДОМОЙ]`
+  (`menu:home`), антифлуд тяжёлых операций 30с.
+- v1-навигация (этап 2 ТЗ): домашнее «ПОЛЕ» (`HARVEST // ПОЛЕ`, сетка iwoer
+  10 в ряд макс. 100 + `+N`, рендер `portal/bot_render.py`), правка на месте,
+  колбэки `v1:экран:действие[:арг]` ≤ 64 байт, stale-версия → «Экран устарел»
+  + перерисовка Поля, Запуск/Стоп не рядом (Стоп только в RUN с подтверждением),
+  Live 10 мин (правка 5с, автостоп), мастер 3 шага (сеть → масштаб → профиль
+  тихий/обычный/быстрый → кран; TTL 15 мин, сброс по /start), режимы
+  Новичок/Про + язык RU/EN (`portal/bot_settings.py`, таблица bot_settings),
+  Опасная зона (экспорт CSV/JSON/шифрованный .enc первым вариантом, ключи
+  текстом — с подтверждением, protect, удаление 60с, кулдаун 1/мин, аудит),
+  адреса без ключей — сокращённые. Токен чистится из логов
+  (`bot<id>:<secret>` → `bot<TOKEN>`), 409 — backoff + одно уведомление,
+  `bot: CONFLICT|ok` в /doctor, setMyCommands RU.
+- Команды: `/status` — живое поле, `/monitor` — мониторинг с алертом остановки,
+  `/doctor`, `/history`, `/balance`, `/network`, `/wallets`, `/export [json]` — скачивание всех
   кошельков с ключами (владельцу); `/cmd сеть [кошельки] [циклы]` — готовая
   команда auto.py; `/cfg сеть [кошельки]` — YAML shipped-конфига файлом
   (count подставлен, прогнан настоящим валидатором); `/check` + YAML
   следующими строками — проверка `validate_config` (вход не цитируется,
   секреты вычищаются); `/ref` — сжатый справочник параметров.
+- Мастера (aiogram FSM, `CmdWizard`/`CfgWizard` в `bot_telegram.py`):
+  кнопки `[CMD]`/`[CFG]` ведут по шагам (сеть → кошельки → циклы → кран),
+  свободный ввод чисел — прямо в чат, `/cancel` и кнопка `[ОТМЕНА]` закрывают
+  в любой момент, любая другая команда выходит из мастера и выполняется
+  обычным путём. YAML можно прислать и файлом (лимит 16 КБ, только
+  `.yaml`/`.yml`/`.txt`) — проверяется тем же валидатором.
 - Стиль сообщений — ops-board сайта (`portal/bot_ops.py`): секции
   `HARVEST // X`, маркеры `[RUN]`/`[STOP]`, `[ok]`/`[warn]`, без эмодзи.
 - Все значения из daemon проходят `html.escape` (defense-in-depth);
@@ -736,7 +757,7 @@ Rate-limit:
 | farming | [3,8] действ., паузы [5,20] с, цикл 1–2 ч | [5,15], [3,15] с, 30–60 мин | [5,12], [2,10] с, 20–40 мин | [3,8], [5,20] с, 1–2 ч |
 | workers | 20 | 30 | 30 | 20 |
 | rpc_rate_limit | 50 | 80 | 80 | 50 |
-| БД | `farming_state.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` | `farming_state.db` / `master.key` |
+| БД | `farming_robinhood.db` / `master.key` | `farming_flop.db` / `master_flop.key` | `farming_arc.db` / `master_arc.key` | `farming_vibevibe.db` / `master.key` |
 
 vibe/vibe — permissionless token launchpad на Robinhood Chain testnet
 (5% сапплая для тестнет-участников). ABI (`abi/vibevibe.json`) содержит
@@ -793,13 +814,22 @@ transfer); реальные адреса подставляются операт
   в путях, валидация типов без падений.
 - В exe бандлятся только шаблоны (abi + `config.example.yaml`); боевые
   конфиги и секреты — рядом с exe / через env.
+- **Защитный контур портала** (`portal/shield/`, включается по умолчанию,
+  выключается `PORTAL_GUARD_ENABLED=0`): decay-скоринг риска
+  (LOW/MEDIUM-tarpit/HIGH-shadowban), иерархический троттлинг
+  (global + per-actor read/write + penalty box), идемпотентность мутаций
+  (`@idempotent`), санитизация входящих, CircuitBreaker + ретраи на
+  `google_exchange`, throttle WS-подключений (лимит клиентов),
+  correlation_id, security-аудит с маскированием (`/api/guard`).
+  Хранилище in-memory с TTL-сборкой; переход на Redis — замена
+  `AsyncStore`/`MemoryStore`. Нагрузочные тесты: `tests/test_shield_*.py`.
 
 ---
 
 ## 7. Тесты
 
-`tests/` — 44 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
-1199 тестов, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
+`tests/` — 54 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
+1317 тестов, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
 через `HARVEST_LOAD=1`, в обычном CI пропускается):
 
 - ядро: `test_workpool`, `test_pool`, `test_farmer`, `test_actions`,
@@ -819,7 +849,14 @@ transfer); реальные адреса подставляются операт
   (в т.ч. `TestPlaceholderWarnings` — `config_warnings()` про 0x0 и
   chain_id-99999);
 - портал: `test_portal_main`, `test_portal_farm`, `test_portal_auth`,
-  `test_portal_api`, `test_portal_guard`, `test_bot_telegram`;
+  `test_portal_api`, `test_portal_guard`, `test_bot_telegram`, `test_bot_render`,
+  `test_bot_home`,
+  `test_portal_wallets_export`, `test_wallets_create`, `test_groups`,
+  `test_scheduler`, `test_publish_dash`, `test_bot_monitor`, `test_botforge_bot`,
+  `test_netdiscovery`, `test_networks_switch`, `test_network_infra`;
+- щит: `test_shield_audit`, `test_shield_breaker`, `test_shield_idem`,
+  `test_shield_integration`, `test_shield_limits`, `test_shield_middleware`,
+  `test_shield_risk`, `test_shield_sanitize`;
 - покрытийные сквозные ветки: `test_cov_ui_actions_config`,
   `test_cov_portal_config_main_bot`, `test_cov_portal_api_auth_farm`,
   `test_cov_doctor_faucet_vibevibe`.

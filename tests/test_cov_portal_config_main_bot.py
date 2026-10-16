@@ -510,6 +510,7 @@ if HAS_BOT:
         def setUp(self):
             self.cfg = _make_cfg()
             self.cfg.telegram_allow_ids = [123]
+            bot_telegram._flood_last.clear()
 
         def test_allowed_default_deny(self):
             self.assertFalse(bot_telegram._allowed(self.cfg, None))
@@ -548,7 +549,8 @@ if HAS_BOT:
             await dp.message.handlers[0].callback(msg)
             self.assertTrue(msg.answers)
             args, kwargs = msg.answers[0]
-            self.assertIn("HARVEST PORTAL", args[0])
+            # /start ведёт на новое Поле (п.2 ТЗ).
+            self.assertIn("HARVEST // ПОЛЕ", args[0])
             self.assertIn("reply_markup", kwargs)
 
         async def test_help_handler_paths(self):
@@ -679,7 +681,8 @@ if HAS_BOT:
             self.assertEqual(pages3, 1)
             self.assertIn("Кошельков пока нет", text3)
             kb1 = bot_telegram._wallets_kb(1, 1)
-            self.assertEqual(kb1.inline_keyboard, [])
+            payloads1 = [b.callback_data for row in kb1.inline_keyboard for b in row]
+            self.assertEqual(payloads1, ["menu:home"])
             kb2 = bot_telegram._wallets_kb(1, 2)
             self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wallets:page:2")
             kb3 = bot_telegram._wallets_kb(2, 2)

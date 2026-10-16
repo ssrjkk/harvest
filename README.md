@@ -1,4 +1,4 @@
-# HARVEST v2.3.0
+﻿# HARVEST v2.3.0
 
 [![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -107,6 +107,8 @@ health, количество кошельков), старт/стоп/пауза
 
 Локальная веб-панель (FastAPI + WebSocket-лог, без Telegram): пункт `G`
 в меню `main.py` → http://127.0.0.1:8080 (`core/web_gui.py`).
+Основной портал (aiohttp + Telegram-бот + Mini App) — тот же `127.0.0.1:8080`
+(`portal/`): запускайте только одну панель за раз.
 
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
 `TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY` и др.) — та же таблица env в
@@ -131,7 +133,7 @@ core/          — ядро: config, network (мульти-RPC/EMA/1559-фолл
                  pool/farmer/workpool, vibevibe (ABI), crypto, database,
                  web_gui (локальная FastAPI-панель)
 portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
-tests/         — pytest-набор (44 файла; test_load_opt.py — нагрузка, opt-in)
+tests/         — pytest-набор (54 файла; test_load_opt.py — нагрузка, opt-in)
 docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
 tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
@@ -153,7 +155,7 @@ portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](D
 python -m pytest tests -q
 ```
 
-1199 тестов, 44 файла — полный зелёный прогон (включая контуры `wait_for_receipt`:
+1317 тестов, 54 файла — полный зелёный прогон (включая контуры `wait_for_receipt`:
 EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
 `None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
 

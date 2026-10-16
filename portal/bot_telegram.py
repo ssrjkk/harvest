@@ -21,6 +21,8 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import re
+import time
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
@@ -64,6 +66,8 @@ __all__ = [
     "_fmt_stats", "_fmt_status", "_fmt_wallets_page", "_progress_bar",
     "build_dispatcher", "run_bot", "notify_owner", "send_wallets_file",
     "LiveMonitor", "CmdWizard", "CfgWizard",
+    "BOT_COMMANDS_RU", "setup_bot_commands",
+    "ConflictTracker", "bot_conflict_status", "install_token_redaction",
 ]
 
 
@@ -185,6 +189,10 @@ async def _wiz_handle_text(message: Message, state: FSMContext) -> bool:
         await state.clear()
         await message.answer("[ОТМЕНА] Мастер закрыт.")
         return True
+    if text.startswith("/"):
+        # Команда вместо ответа — выходим из мастера и отдаём дальше.
+        await state.clear()
+        return False
     if cur == CmdWizard.wallets.state:
         n = _parse_count(text)
         if n is None:
@@ -247,19 +255,217 @@ def _esc(value: object) -> str:
     return html.escape(str(value), quote=True)
 
 
+# Антифлуд тяжёлых операций (генерация, листинг и экспорт кошельков):
+# расшифровка всех сидов и файлы — дорогая работа, не даём дёргать подряд.
+_FLOOD_INTERVAL_S = 30.0
+# Экспорт — 1 в минуту на пользователя (п.6 ТЗ) + запись в аудит-лог.
+# Ключи текстом — та же чувствительность (п.6 ТЗ).
+_FLOOD_INTERVALS: dict[str, float] = {"export": 60.0, "keys": 60.0}
+# Автоудаление сообщений с файлами экспорта (сек): ключи не лежат в истории.
+_EXPORT_AUTODELETE_S = 60.0
+_flood_last: dict[tuple[int, str], float] = {}
+
+
+def _flood_interval(op: str) -> float:
+    return _FLOOD_INTERVALS.get(op, _FLOOD_INTERVAL_S)
+
+
+def _flood_ok(tg_id: int | None, op: str) -> tuple[bool, int]:
+    """True + 0, если операцию можно выполнять, иначе False + секунды ожидания."""
+    now = time.monotonic()
+    key = (tg_id or 0, op)
+    wait = int(_flood_interval(op) - (now - _flood_last.get(key, 0.0)))
+    if wait > 0:
+        return False, wait
+    _flood_last[key] = now
+    return True, 0
+
+
+class _RedactingFilter(logging.Filter):
+    """Редакция токена бота во всех логах (п.8 ТЗ): bot<id>:<secret> → bot<TOKEN>."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            from portal.bot_render import redact_token
+        except Exception:  # noqa: BLE001
+            return True
+        if record.args:
+            try:
+                record.args = tuple(
+                    redact_token(a) if isinstance(a, str) else a for a in record.args
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            record.msg = redact_token(record.msg)
+        except Exception:  # noqa: BLE001
+            pass
+        return True
+
+
+def install_token_redaction() -> None:
+    """Вешает редакцию токена на portal- и aiogram-логгеры (идемпотентно)."""
+    for name in ("portal", "portal.bot_telegram", "aiogram", "aiogram.dispatcher"):
+        lg = logging.getLogger(name)
+        if not any(isinstance(f, _RedactingFilter) for f in lg.filters):
+            lg.addFilter(_RedactingFilter())
+
+
+class ConflictTracker:
+    """Конфликт 409 getUpdates (п.7 ТЗ): счётчик + backoff + одно уведомление.
+
+    aiogram сам ретраит polling и не падает; этот трекер убирает спам лога:
+    пишет один понятный ряд, экспоненциальный backoff отдаёт вызывающему,
+    после _NOTIFY_AFTER подряд конфликтов — одно уведомление владельцу.
+    """
+
+    _NOTIFY_AFTER = 5
+    _BASE_DELAY_S = 5.0
+    _MAX_DELAY_S = 300.0
+
+    def __init__(self) -> None:
+        self.consecutive = 0
+        self.notified = False
+        self.total = 0
+
+    def hit(self) -> float:
+        """Фиксирует конфликт. Возвращает backoff-задержку (сек)."""
+        self.consecutive += 1
+        self.total += 1
+        delay = min(self._MAX_DELAY_S, self._BASE_DELAY_S * (2 ** (self.consecutive - 1)))
+        logger.warning(
+            "Telegram 409: другой экземпляр опрашивает токен "
+            "(подряд %d, backoff %.0fс)",
+            self.consecutive,
+            delay,
+        )
+        return delay
+
+    def resolve(self) -> None:
+        self.consecutive = 0
+        self.notified = False
+
+    @property
+    def active(self) -> bool:
+        return self.consecutive > 0
+
+    def needs_notify(self) -> bool:
+        if self.consecutive >= self._NOTIFY_AFTER and not self.notified:
+            self.notified = True
+            return True
+        return False
+
+    def status(self) -> str:
+        return "CONFLICT" if self.active else "ok"
+
+
+_conflict = ConflictTracker()
+
+
+def bot_conflict_status() -> str:
+    """Строка для /doctor: bot: CONFLICT|ok (п.7 ТЗ)."""
+    return _conflict.status()
+
+
+class _ConflictLogFilter(logging.Filter):
+    """Гасит спам aiogram 'terminated by other getUpdates request'.
+
+    Первый ряд пишет трекер (понятный текст + backoff), повторы подавляются
+    до разрешения. Совместим с assertLogs в тестах (запись не удаляется —
+    подавляется только дубль на уровне handler? нет: filter возвращает False,
+    запись отбрасывается — для трекера считаем здесь же).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:  # noqa: BLE001
+            return True
+        if "terminated by other getUpdates request" in msg:
+            _conflict.hit()
+            # Оставляем каждый 10-й ряд, чтобы лог не молчал полностью.
+            return _conflict.total % 10 == 1
+        return True
+
+
 async def notify_owner(cfg: PortalConfig, text: str) -> None:
-    """Пуш-алерт владельцу (Telegram). Без токена/разрешённых — тихий no-op."""
+    """Пуш-алерт владельцу (Telegram). Без токена/разрешённых — тихий no-op.
+
+    Рендер через bot_render (п.7 ТЗ), токен вычищен (п.8 ТЗ).
+    """
     if not cfg.telegram_token or not cfg.telegram_allow_ids:
         return
+    try:
+        from portal.bot_render import render_alert
+    except Exception:  # noqa: BLE001
+        render_alert = None  # type: ignore[assignment]
+    body = render_alert(text) if render_alert is not None else text
     bot = Bot(token=cfg.telegram_token, default=_BOT_DEFAULTS)
     async with bot:
         for tg_id in cfg.telegram_allow_ids:
             try:
                 # Алерты слаем plain-text: там могут быть символы типа &, которые
                 # HTML-парсер Telegram не примет.
-                await bot.send_message(chat_id=tg_id, text=text, parse_mode=None)
+                plain = body.replace("<b>", "").replace("</b>", "")
+                await bot.send_message(chat_id=tg_id, text=plain, parse_mode=None)
             except Exception:  # noqa: BLE001
                 logger.warning("Не удалось отправить алерт %s", tg_id, exc_info=True)
+
+
+BOT_COMMANDS_RU: list[tuple[str, str]] = [
+    ("start", "Поле — главный экран"),
+    ("status", "Живое поле фермы"),
+    ("monitor", "Мониторинг с алертами"),
+    ("doctor", "Диагностика"),
+    ("history", "История циклов"),
+    ("balance", "Балансы кошельков"),
+    ("wallets", "Список кошельков"),
+    ("export", "Скачать кошельки (с подтверждением)"),
+    ("network", "Переключение сети"),
+    ("cmd", "Конструктор команды"),
+    ("cfg", "Конструктор YAML"),
+    ("check", "Проверка YAML"),
+    ("ref", "Справочник параметров"),
+    ("help", "Справка"),
+]
+
+
+async def setup_bot_commands(bot: Bot) -> None:
+    """setMyCommands + описание (п.7 ТЗ). Best-effort, без падения старта."""
+    try:
+        from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
+
+        from portal.bot_render import redact_token
+
+        commands = [BotCommand(command=c, description=d) for c, d in BOT_COMMANDS_RU]
+        try:
+            await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
+        except Exception:  # noqa: BLE001
+            logger.warning("setMyCommands не удался", exc_info=True)
+        for text, method in (
+            ("HARVEST PORTAL — живое поле фермы: фарм, конструкторы, экспорт.",
+             "set_my_description"),
+            ("Поле фермы, конструкторы команд, безопасный экспорт.",
+             "set_my_short_description"),
+        ):
+            try:
+                await getattr(bot, method)(text)
+            except Exception:  # noqa: BLE001
+                logger.warning("%s не удался: %s", method, redact_token(text))
+    except Exception:  # noqa: BLE001
+        logger.warning("setup_bot_commands пропущен", exc_info=True)
+
+
+def _refresh_home_kb(refresh_cb: str) -> InlineKeyboardMarkup:
+    """Клавиатура вида «Обновить + Домой» для экранов статистики/статуса.
+
+    Каждый экран с edit_text должен давать путь назад в menu:home,
+    иначе пользователь застревает без навигации.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data=refresh_cb)],
+        [InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")],
+    ])
 
 
 def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
@@ -268,12 +474,17 @@ def _wallets_kb(page: int, pages: int) -> InlineKeyboardMarkup:
         row.append(InlineKeyboardButton(text="◀", callback_data=f"wallets:page:{page-1}"))
     if page < pages:
         row.append(InlineKeyboardButton(text="▶", callback_data=f"wallets:page:{page+1}"))
-    return InlineKeyboardMarkup(inline_keyboard=[row]) if row else InlineKeyboardMarkup(inline_keyboard=[])
+    rows = [row] if row else []
+    rows.append([InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def _wallets_empty_kb() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
-        inline_keyboard=[[InlineKeyboardButton(text="[+ СОЗДАТЬ]", callback_data="wallets:create")]]
+        inline_keyboard=[
+            [InlineKeyboardButton(text="[+ СОЗДАТЬ]", callback_data="wallets:create")],
+            [InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")],
+        ]
     )
 
 
@@ -363,15 +574,40 @@ class LiveMonitor:
 
 
 async def send_wallets_file(bot: Bot, tg_id: int, daemon: FarmDaemon, fmt: str = "csv") -> None:
-    """Отправляет владельцу файл со всеми кошельками (CSV/JSON)."""
+    """Отправляет владельцу файл со всеми кошельками (CSV/JSON).
+
+    protect_content запрещает пересылку/сохранение из чата, сообщение
+    с файлом best-effort удаляется через _EXPORT_AUTODELETE_S секунд,
+    чтобы ключи не лежали в истории.
+    """
     from aiogram.types import BufferedInputFile
 
     content, filename = await daemon.export_wallets(fmt)
-    await bot.send_document(
+    sent = await bot.send_document(
         chat_id=tg_id,
         document=BufferedInputFile(content.encode("utf-8-sig"), filename=filename),
         caption=f"Кошельки ({fmt.upper()}) — {len(content):,} байт",
+        protect_content=True,
     )
+    asyncio.get_running_loop().create_task(
+        _auto_delete_file(bot, tg_id, sent.message_id, _EXPORT_AUTODELETE_S)
+    )
+
+
+async def _auto_delete_file(bot: Bot, chat_id: int, message_id: int, delay_s: float) -> None:
+    """Удаляет сообщение с файлом через delay_s (best-effort, без шума)."""
+    try:
+        await asyncio.sleep(max(0.0, delay_s))
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+_HOME_TEXT = (
+    "Это <b>HARVEST PORTAL</b> — живое поле фермы.\n"
+    "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
+    "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
+)
 
 
 def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarkup:
@@ -459,6 +695,7 @@ def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text="[СТОП]", callback_data="network:stop"),
             InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="network:list"),
+            InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home"),
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -467,6 +704,872 @@ def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
 def _networks_view(daemon: FarmDaemon) -> tuple[str, InlineKeyboardMarkup]:
     networks = daemon.networks_info()
     return _fmt_networks(networks), _networks_kb(networks)
+
+
+# ---------------- v1: Поле, навигация, мастер, Live (этап 2, п.2-6 ТЗ) ----------------
+# Новые колбэки вида v1:экран:действие[:арг] (см. portal/bot_render.py).
+# Legacy-колбэки без версии обрабатываются старыми ветками ниже без изменений.
+
+from portal import bot_render as _R  # noqa: E402
+
+_MASTER_TTL_S = 15 * 60.0
+_LIVE_EVERY_S = 5.0
+_LIVE_TTL_S = 10 * 60.0
+_live: dict[int, asyncio.Task] = {}
+
+
+class MasterWiz(StatesGroup):
+    """Новый мастер 3 шага (п.4 ТЗ): сеть → масштаб → профиль."""
+
+    wallets = State()
+    cycles = State()
+
+
+class EncWiz(StatesGroup):
+    """Пароль для шифрованного экспорта (п.6 ТЗ)."""
+
+    password = State()
+
+
+# Профили шага 3/3 → флаги auto.py (флагов тихий/обычный/быстрый в коде нет;
+# отображение интерпретирующее: тихий=холостой прогон, быстрый=минимальные
+# задержки — см. расхождения в отчёте).
+_PROFILES: dict[str, list[str]] = {"quiet": ["--dry-run"], "normal": [], "fast": ["--fast"]}
+_PROFILE_LABEL = {"quiet": "тихий", "normal": "обычный", "fast": "быстрый"}
+
+# Родитель для [← Назад] (Поле — для большинства, иначе указано явно).
+_BACK: dict[str, str] = {
+    "net": "v1:home:show", "scale": "v1:home:show", "wallets": "v1:home:show",
+    "history": "v1:home:show", "builder": "v1:home:show", "ref": "v1:home:show",
+    "diag": "v1:home:show", "danger": "v1:home:show", "run_stop": "v1:home:show",
+    "expask": "v1:danger:show", "master": "v1:builder:show",
+}
+
+
+def _nav_kb(back_cb: str, lang: str = "ru") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=_R.tr("btn_back", lang), callback_data=back_cb),
+        InlineKeyboardButton(text=_R.tr("btn_home", lang), callback_data="v1:home:show"),
+    ]])
+
+
+async def _safe_edit(message: Message, text: str, **kwargs) -> bool:
+    """edit_text с молчаливым глотанием 'message is not modified' (п.2 ТЗ)."""
+    try:
+        await message.edit_text(text, **kwargs)
+        return True
+    except Exception as e:  # noqa: BLE001
+        if "message is not modified" in str(e).lower():
+            return False
+        raise
+
+
+def _daemon_db_path(daemon: FarmDaemon) -> str | None:
+    path = getattr(daemon, "db_path", None)
+    return path if isinstance(path, str) and path else None
+
+
+async def _mode_lang(daemon: FarmDaemon, tg_id: int | None) -> tuple[str, str]:
+    try:
+        from portal import bot_settings as _bs
+
+        return await _bs.get_settings(_daemon_db_path(daemon), tg_id or 0)
+    except Exception:  # noqa: BLE001
+        return ("novice", "ru")
+
+
+async def _home_state(daemon: FarmDaemon) -> dict:
+    """Состояние для render_home: статистика + сеть + клетки."""
+    try:
+        stats = await daemon.statistics()
+    except Exception:  # noqa: BLE001
+        stats = {"running": False}
+    pool = stats.get("pool", {}) or {}
+    slug = str(stats.get("network") or "")
+    name, chain = slug or "—", ""
+    try:
+        infos = daemon.networks_info() if hasattr(daemon, "networks_info") else []
+    except Exception:  # noqa: BLE001
+        infos = []
+    if not isinstance(infos, list):
+        infos = []
+    for n in infos:
+        if (slug and n.get("slug") == slug) or (not slug and n.get("current")):
+            name = str(n.get("name") or n.get("slug") or "—")
+            chain = n.get("chain_id", "")
+            slug = str(n.get("slug") or slug)
+            break
+    try:
+        cells, total = await daemon.wallet_cells()  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        try:
+            total = int(stats.get("wallet_count") or 0)
+        except (TypeError, ValueError):
+            total = 0
+        cells = ("w" if stats.get("running") else "i") * min(total, 100)
+    try:
+        count = int(stats.get("wallet_count") or total or 0)
+    except (TypeError, ValueError):
+        count = total
+    return {
+        "running": bool(stats.get("running")), "paused": bool(pool.get("paused")),
+        "network": name or "—", "chain_id": chain if chain != "" else "—",
+        "wallet_count": count, "cycle": pool.get("cycles", "—"), "cycles_total": "∞",
+        "errors": pool.get("errors", 0), "health_factor": stats.get("health_factor", 0.0),
+        "workers": pool.get("dyn_workers", 0), "rpc_ok": "—", "gas_limit": "—",
+        "_cells": cells, "_total": total or count,
+    }
+
+
+def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = False) -> InlineKeyboardMarkup:
+    def _b(key: str, cbd: str) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=_R.tr(key, lang), callback_data=cbd)
+
+    run_btn = _b("btn_stop", "v1:run:stop") if running else _b("btn_start", "v1:run:start")
+    pau_btn = _b("btn_resume", "v1:run:resume") if (running and paused) else _b("btn_pause", "v1:run:pause")
+    live = _b("btn_live_off", "v1:home:live") if live_on else _b("btn_live_on", "v1:home:live")
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [run_btn, pau_btn],
+        [_b("btn_net", "v1:net:show"), _b("btn_scale", "v1:scale:show")],
+        [_b("btn_wallets", "v1:wallets:page:1"), _b("btn_history", "v1:history:show")],
+        [_b("btn_builder", "v1:builder:show"), _b("btn_ref", "v1:ref:show")],
+        [_b("btn_diag", "v1:diag:show"), _b("btn_danger", "v1:danger:show")],
+        [_b("btn_refresh", "v1:home:refresh"), live],
+    ])
+
+
+async def _render_home_tuple(
+    daemon: FarmDaemon, tg_id: int | None
+) -> tuple[str, InlineKeyboardMarkup, str]:
+    """(текст, клавиатура, lang) домашнего экрана."""
+    mode, lang = await _mode_lang(daemon, tg_id)
+    st = await _home_state(daemon)
+    text = _R.render_home(st, mode=mode, cells=st.pop("_cells"), cells_total=st.pop("_total"))
+    kb = _home_kb(bool(st.get("running")), bool(st.get("paused")), lang,
+                  live_on=bool(tg_id and _live.get(tg_id) is not None
+                               and not _live[tg_id].done()))
+    return text, kb, lang
+
+
+async def _show_home_edit(call: CallbackQuery, daemon: FarmDaemon) -> None:
+    text, kb, _lang = await _render_home_tuple(daemon, call.from_user.id if call.from_user else None)
+    await _safe_edit(call.message, text, parse_mode=ParseMode.HTML,
+                     reply_markup=kb, link_preview_options=_NO_PREVIEW)
+
+
+async def _show_home_answer(message: Message, daemon: FarmDaemon) -> None:
+    text, kb, _lang = await _render_home_tuple(
+        daemon, message.from_user.id if message.from_user else None)
+    await message.answer(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+
+
+def _master_expired(data: dict) -> bool:
+    return (time.monotonic() - float(data.get("m_started") or 0.0)) > _MASTER_TTL_S
+
+
+async def _master_nets_kb(lang: str = "ru") -> InlineKeyboardMarkup:
+    from portal.networks import NETWORKS
+
+    rows = []
+    for i in range(0, len(NETWORKS), 2):
+        rows.append([
+            InlineKeyboardButton(text=f"[{n['name']}]", callback_data=f"v1:master:net:{n['slug']}")
+            for n in NETWORKS[i : i + 2]
+        ])
+    rows.append([InlineKeyboardButton(
+        text=_R.tr("btn_cancel", lang), callback_data="v1:master:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _master_num_kb(kind: str, values: list[str], lang: str = "ru") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=f"[{v}]", callback_data=f"v1:master:{kind}:{v}")
+             for v in values]]
+    if kind == "w":
+        rows[0].append(InlineKeyboardButton(text="[своё]", callback_data="v1:master:wcustom"))
+    elif kind == "c":
+        rows[0].append(InlineKeyboardButton(text="[своё]", callback_data="v1:master:ccustom"))
+    rows.append([InlineKeyboardButton(
+        text=_R.tr("btn_cancel", lang), callback_data="v1:master:cancel")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def _master_finish(message: Message, state: FSMContext) -> None:
+    data = await state.get_data()
+    try:
+        cmd = _bot_ops.build_command(
+            data["m_net"], data["m_wallets"], data["m_cycles"],
+            not data.get("m_faucet", True))
+    except (ValueError, KeyError) as e:
+        await state.clear()
+        await message.answer(f"[err] {_esc(e)}")
+        return
+    for flag in _PROFILES.get(str(data.get("m_profile", "normal")), []):
+        cmd += f" {flag}"
+    try:
+        _fn, yaml_text = _bot_ops.build_config_yaml(data["m_net"], data["m_wallets"])
+    except ValueError as e:
+        await state.clear()
+        await message.answer(f"[err] {_esc(e)}\n<code>{_esc(cmd)}</code>", parse_mode=ParseMode.HTML)
+        return
+    await state.update_data(m_cmd=cmd, m_yaml=yaml_text)
+    await message.answer(
+        _R.render_master_done(cmd),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="[YAML файлом]", callback_data="v1:master:yaml"),
+             InlineKeyboardButton(text="[Проверить]", callback_data="v1:master:verify")],
+            [InlineKeyboardButton(text="[Начать заново]", callback_data="v1:master:restart"),
+             InlineKeyboardButton(text="[Поле]", callback_data="v1:home:show")],
+        ]),
+    )
+
+
+async def _master_handle_text(message: Message, state: FSMContext) -> bool:
+    """Свободный ввод нового мастера (свои числа). True = consumed."""
+    try:
+        cur = await state.get_state()
+    except Exception:  # noqa: BLE001
+        return False
+    text = (message.text or "").strip()
+    if text == "/cancel":
+        await state.clear()
+        await message.answer("[ОТМЕНА] Мастер закрыт.")
+        return True
+    if text.startswith("/"):
+        await state.clear()
+        return False
+    if cur == MasterWiz.wallets.state:
+        n = _parse_count(text)
+        if n is None:
+            await message.answer("[err] Нужно число 1..5000. Или /cancel.")
+            return True
+        await state.update_data(m_wallets=n)
+        await message.answer(
+            "Шаг 2/3 — циклов (0 — бесконечно) или кнопкой:",
+            reply_markup=_master_num_kb("c", ["2", "5", "∞"], "ru"),
+        )
+        return True
+    if cur == MasterWiz.cycles.state:
+        n = 0 if text == "∞" else _parse_cycles(text)
+        if n is None:
+            await message.answer("[err] Нужно число 0..100000 (0 — бесконечно). Или /cancel.")
+            return True
+        await state.update_data(m_cycles=n)
+        await message.answer(
+            "Шаг 3/3 — профиль:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="[Тихий]", callback_data="v1:master:profile:quiet"),
+                 InlineKeyboardButton(text="[Обычный]", callback_data="v1:master:profile:normal"),
+                 InlineKeyboardButton(text="[Быстрый]", callback_data="v1:master:profile:fast")],
+                [InlineKeyboardButton(text="[ОТМЕНА]", callback_data="v1:master:cancel")],
+            ]),
+        )
+        return True
+    return False
+
+
+async def _enc_handle_text(message: Message, state: FSMContext, daemon: FarmDaemon) -> bool:
+    """Пароль шифрованного экспорта. True = consumed."""
+    try:
+        cur = await state.get_state()
+    except Exception:  # noqa: BLE001
+        return False
+    if cur != EncWiz.password.state:
+        return False
+    text = (message.text or "").strip()
+    data = await state.get_data()
+    if text == "/cancel":
+        await state.clear()
+        await message.answer("[ОТМЕНА] Экспорт отменён.")
+        return True
+    if text.startswith("/"):
+        await state.clear()
+        return False
+    if not text:
+        await message.answer("[err] Пустой пароль. Пришли пароль строкой или /cancel.")
+        return True
+    fmt = str(data.get("enc_fmt", "csv"))
+    if fmt not in {"csv", "json"}:
+        fmt = "csv"
+    tg_id = message.from_user.id if message.from_user else 0
+    try:
+        await _send_encrypted(message.bot, tg_id, daemon, fmt, text)
+        logger.info("[AUDIT] export user=%s fmt=enc-%s via=button", tg_id, fmt)
+    except Exception:  # noqa: BLE001
+        logger.warning("Шифрованный экспорт упал", exc_info=True)
+        await message.answer("[err] Не удалось сформировать файл. Код: ENC-FAIL")
+        await state.clear()
+        return True
+    try:
+        await message.delete()
+    except Exception:  # noqa: BLE001
+        pass
+    await state.clear()
+    await message.answer("[ok] Зашифрованный файл выслан (удалится через 60 с). Удали сообщение с паролем.")
+    return True
+
+
+async def _send_encrypted(bot: Bot, tg_id: int, daemon: FarmDaemon, fmt: str, password: str) -> None:
+    """Шифрованный экспорт (.enc, AES-256-CBC v2 первым вариантом, п.6 ТЗ).
+
+    Пароль — только в памяти, в лог не пишется. Plaintext на диске живёт
+    только внутри TemporaryDirectory.
+    """
+    import os
+    import tempfile
+
+    from aiogram.types import BufferedInputFile
+
+    from core.exporter import encrypt_file
+
+    content, filename = await daemon.export_wallets(fmt)
+    with tempfile.TemporaryDirectory() as td:
+        src = os.path.join(td, filename)
+        with open(src, "w", encoding="utf-8-sig") as f:
+            f.write(content)
+        enc_path = encrypt_file(src, password)
+        if not enc_path.endswith(".enc"):
+            raise RuntimeError("шифрование не удалось")
+        with open(enc_path, "rb") as f:
+            data = f.read()
+    enc_name = os.path.basename(enc_path)
+    sent = await bot.send_document(
+        chat_id=tg_id,
+        document=BufferedInputFile(data, filename=enc_name),
+        caption=f"Кошельки, шифр (.enc, {fmt.upper()}) — {len(data):,} байт",
+        protect_content=True,
+    )
+    asyncio.get_running_loop().create_task(
+        _auto_delete_file(bot, tg_id, sent.message_id, _EXPORT_AUTODELETE_S)
+    )
+
+
+async def _send_keys_temp(message: Message, text: str) -> None:
+    """Ключи новым сообщением: protect + автоудаление 60с (п.6 ТЗ)."""
+    sent = await message.answer(text, parse_mode=ParseMode.HTML, protect_content=True)
+    try:
+        chat_id = message.chat.id
+    except AttributeError:
+        return
+    asyncio.get_running_loop().create_task(
+        _auto_delete_file(message.bot, chat_id, sent.message_id, _EXPORT_AUTODELETE_S)
+    )
+
+
+async def _live_loop(
+    chat_id: int,
+    message: Message,
+    daemon: FarmDaemon,
+    every: float = _LIVE_EVERY_S,
+    ttl: float = _LIVE_TTL_S,
+) -> None:
+    """Live 10 мин: правка поля каждые 5с, затем сам выключается (п.2 ТЗ)."""
+    try:
+        until = time.monotonic() + ttl
+        while time.monotonic() < until:
+            await asyncio.sleep(every)
+            mode, lang = await _mode_lang(daemon, chat_id)
+            st = await _home_state(daemon)
+            text = _R.render_home(st, mode=mode, cells=st.pop("_cells"), cells_total=st.pop("_total"))
+            kb = _home_kb(bool(st.get("running")), bool(st.get("paused")), lang, live_on=True)
+            try:
+                await _safe_edit(message, text, parse_mode=ParseMode.HTML,
+                                 reply_markup=kb, link_preview_options=_NO_PREVIEW)
+            except Exception:  # noqa: BLE001
+                logger.warning("Live: правка не удалась, останавливаю", exc_info=True)
+                break
+    except asyncio.CancelledError:
+        raise
+    finally:
+        if _live.get(chat_id) is asyncio.current_task():
+            _live.pop(chat_id, None)
+
+
+async def _live_toggle(call: CallbackQuery, daemon: FarmDaemon, lang: str = "ru") -> None:
+    chat_id = call.from_user.id if call.from_user else 0
+    task = _live.get(chat_id)
+    if task is not None and not task.done():
+        task.cancel()
+        _live.pop(chat_id, None)
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        await call.message.answer("Live выключен." if lang == "ru" else "Live off.")
+    else:
+        _live[chat_id] = asyncio.create_task(_live_loop(chat_id, call.message, daemon))
+        await call.message.answer(
+            "Live 10 мин включён: поле обновляется каждые 5 с."
+            if lang == "ru" else "Live 10 min on: field refreshes every 5 s.")
+
+
+def _danger_kb(mode: str, lang: str) -> InlineKeyboardMarkup:
+    def _b(key: str, cbd: str) -> InlineKeyboardButton:
+        return InlineKeyboardButton(text=_R.tr(key, lang), callback_data=cbd)
+
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [_b("btn_csv", "v1:exp:ask:csv"), _b("btn_json", "v1:exp:ask:json")],
+        [InlineKeyboardButton(text=_R.tr("btn_enc", lang) + " CSV", callback_data="v1:enc:ask:csv"),
+         InlineKeyboardButton(text=_R.tr("btn_enc", lang) + " JSON", callback_data="v1:enc:ask:json")],
+        [InlineKeyboardButton(
+            text=f"[Режим: {_R.tr('mode_pro' if mode == 'pro' else 'mode_novice', lang)}]",
+            callback_data="v1:danger:mode"),
+         InlineKeyboardButton(text=f"[Язык: {lang.upper()}]", callback_data="v1:danger:lang")],
+        [InlineKeyboardButton(text=_R.tr("btn_back", lang), callback_data="v1:home:show"),
+         InlineKeyboardButton(text=_R.tr("btn_home", lang), callback_data="v1:home:show")],
+    ])
+
+
+async def _stale_home(call: CallbackQuery, daemon: FarmDaemon) -> None:
+    """Устаревшая кнопка: «Экран устарел», сообщение → Поле (п.3 ТЗ)."""
+    mode, lang = await _mode_lang(daemon, call.from_user.id if call.from_user else None)
+    try:
+        await call.answer(_R.tr("stale", lang))
+    except Exception:  # noqa: BLE001
+        pass
+    await _show_home_edit(call, daemon)
+
+
+async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalConfig,
+                     daemon: FarmDaemon) -> bool:
+    """Ветка новых колбэков v1. True = обработано (включая stale)."""
+    from aiogram.types import BufferedInputFile
+
+    from portal import bot_settings as _bs
+
+    data = call.data or ""
+    uid = call.from_user.id if call.from_user else None
+    if not data.startswith("v1:"):
+        if re.match(r"^v\d+:", data):
+            # Версия не текущая → устарело: ответ + перерисовка Поля (п.3 ТЗ).
+            await _stale_home(call, daemon)
+            return True
+        return False  # legacy без версии — старые ветки
+    parsed = _R.parse_cb(data)
+    if parsed is None:
+        await _stale_home(call, daemon)
+        return True
+    screen, action, arg = parsed
+    db_path = _daemon_db_path(daemon)
+    mode, lang = await _mode_lang(daemon, uid)
+
+    async def _home() -> None:
+        await _show_home_edit(call, daemon)
+
+    async def _scale() -> None:
+        try:
+            count = await daemon.wallet_count()
+        except Exception:  # noqa: BLE001
+            count = "—"
+        await call.message.edit_text(
+            _R.render_scale(count, lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_add", lang, n=10),
+                                      callback_data="v1:scale:add:10"),
+                 InlineKeyboardButton(text=_R.tr("btn_add", lang, n=50),
+                                      callback_data="v1:scale:add:50")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data="v1:home:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+
+    if screen == "home" and action in {"show", "refresh"}:
+        await _home()
+        return True
+    if screen == "home" and action == "live":
+        await _live_toggle(call, daemon, lang)
+        return True
+    if screen == "run" and action == "start":
+        ok = await daemon.start()
+        await call.message.answer(f"[{'ok' if ok else 'err'}] start")
+        await _home()
+        return True
+    if screen == "run" and action in {"pause", "resume"}:
+        ok = await (daemon.resume() if action == "resume" else daemon.pause())
+        await call.message.answer(f"[{'ok' if ok else 'err'}] {action}")
+        await _home()
+        return True
+    if screen == "run" and action == "stop":
+        st = await _home_state(daemon)
+        await call.message.edit_text(
+            _R.render_stop_confirm(st, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_nav_kb("v1:home:show", lang),
+            link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "run" and action == "stop_yes":
+        ok = await daemon.stop()
+        await call.message.answer(f"[{'ok' if ok else 'err'}] stop")
+        await _home()
+        return True
+    if screen == "net" and action == "show":
+        answer, kb = _networks_view(daemon)
+        await call.message.edit_text(answer, parse_mode=ParseMode.HTML,
+                                     reply_markup=kb, link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "scale" and action == "show":
+        await _scale()
+        return True
+    if screen == "scale" and action == "add":
+        try:
+            n = max(1, min(int(arg or 10), 50))
+        except (TypeError, ValueError):
+            n = 10
+        ok, wait = _flood_ok(uid, "create")
+        if not ok:
+            await call.message.answer(_R.tr("cooldown", lang, n=wait))
+            return True
+        try:
+            created = await daemon.create_wallets(n)
+            await call.message.answer(f"[ok] +{len(created)}")
+        except RuntimeError:
+            await call.message.answer("[err] БД фермы не подключена.")
+        await _scale()
+        return True
+    if screen == "wallets" and action == "page":
+        try:
+            page = int(arg or 1)
+        except (TypeError, ValueError):
+            page = 1
+        wallets = await daemon.all_wallets()
+        text, pages = _R.render_wallets_list(wallets, page, 4, lang)
+        rows: list[list[InlineKeyboardButton]] = []
+        nav = []
+        if page > 1:
+            nav.append(InlineKeyboardButton(text="◀", callback_data=f"v1:wallets:page:{page-1}"))
+        if page < pages:
+            nav.append(InlineKeyboardButton(text="▶", callback_data=f"v1:wallets:page:{page+1}"))
+        if nav:
+            rows.append(nav)
+        if wallets:
+            rows.append([InlineKeyboardButton(text=_R.tr("btn_keys", lang),
+                                              callback_data=f"v1:wallets:keysask:{page}")])
+        else:
+            rows.append([InlineKeyboardButton(text="[+ СОЗДАТЬ]", callback_data="wallets:create")])
+        rows.append([InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                          callback_data="v1:home:show"),
+                     InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                          callback_data="v1:home:show")])
+        await call.message.edit_text(text, parse_mode=ParseMode.HTML,
+                                     reply_markup=InlineKeyboardMarkup(inline_keyboard=rows))
+        return True
+    if screen == "wallets" and action == "keysask":
+        try:
+            page = int(arg or 1)
+        except (TypeError, ValueError):
+            page = 1
+        await call.message.edit_text(
+            _R.render_keys_confirm(page, lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_show", lang),
+                                      callback_data=f"v1:wallets:keysyes:{page}")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data=f"v1:wallets:page:{page}"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "wallets" and action == "keysyes":
+        try:
+            page = int(arg or 1)
+        except (TypeError, ValueError):
+            page = 1
+        ok, wait = _flood_ok(uid, "keys")
+        if not ok:
+            await call.message.answer(_R.tr("cooldown", lang, n=wait))
+            return True
+        wallets = await daemon.all_wallets()
+        content, _pages = _fmt_wallets_page(wallets, page)
+        await _send_keys_temp(call.message, content)
+        logger.info("[AUDIT] keys user=%s page=%s", uid, page)
+        return True
+    if screen == "history" and action == "show":
+        answer = _fmt_history(await daemon.cycle_history())
+        await call.message.edit_text(
+            answer, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_refresh", lang),
+                                      callback_data="v1:history:show")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data="v1:home:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "builder" and action == "show":
+        await call.message.edit_text(
+            _R.render_builder(lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="CMD", callback_data="v1:master:cmd"),
+                 InlineKeyboardButton(text="CFG", callback_data="v1:master:cfg")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data="v1:home:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "ref" and action == "show":
+        await call.message.edit_text(
+            _bot_ops.REF_TEXT, parse_mode=ParseMode.HTML,
+            reply_markup=_nav_kb("v1:home:show", lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "diag" and action == "show":
+        answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}"
+        await call.message.edit_text(
+            answer, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_refresh", lang),
+                                      callback_data="v1:diag:show")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data="v1:home:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "danger" and action == "show":
+        await call.message.edit_text(
+            _R.render_danger(mode, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_danger_kb(mode, lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "danger" and action == "mode":
+        mode = await _bs.set_mode(db_path, uid or 0, "pro" if mode == "novice" else "novice")
+        await call.message.edit_text(
+            _R.render_danger(mode, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_danger_kb(mode, lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "danger" and action == "lang":
+        lang = await _bs.set_lang(db_path, uid or 0, "en" if lang == "ru" else "ru")
+        await call.message.edit_text(
+            _R.render_danger(mode, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_danger_kb(mode, lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "exp" and action == "ask":
+        fmt = arg if arg in {"csv", "json"} else "csv"
+        await call.message.edit_text(
+            _R.render_export_confirm(fmt, False, lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_confirm", lang),
+                                      callback_data=f"v1:exp:yes:{fmt}"),
+                 InlineKeyboardButton(text=_R.tr("btn_enc", lang),
+                                      callback_data=f"v1:enc:ask:{fmt}")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang),
+                                      callback_data="v1:danger:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang),
+                                      callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "exp" and action == "yes":
+        fmt = arg if arg in {"csv", "json"} else "csv"
+        ok, wait = _flood_ok(uid, "export")
+        if not ok:
+            await call.message.answer(_R.tr("cooldown", lang, n=wait))
+            return True
+        try:
+            await call.message.answer("[...] Готовлю файл кошельков…")
+            await send_wallets_file(call.message.bot, uid or 0, daemon, fmt)
+            logger.info("[AUDIT] export user=%s fmt=%s via=v1", uid, fmt)
+        except Exception:  # noqa: BLE001
+            logger.warning("Экспорт кошельков (v1) упал", exc_info=True)
+            await call.message.answer("[err] Не удалось сформировать файл. Код: EXP-FAIL")
+        return True
+    if screen == "enc" and action == "ask":
+        fmt = arg if arg in {"csv", "json"} else "csv"
+        if state is None:
+            await call.message.answer(_R.render_enc_ask(lang), parse_mode=ParseMode.HTML)
+            return True
+        await state.clear()
+        await state.update_data(enc_fmt=fmt)
+        await state.set_state(EncWiz.password)
+        await call.message.answer(
+            _R.render_enc_ask(lang), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text=_R.tr("btn_cancel", lang),
+                                     callback_data="v1:enc:cancel")]]))
+        return True
+    if screen == "enc" and action == "cancel":
+        if state is not None:
+            try:
+                await state.clear()
+            except Exception:  # noqa: BLE001
+                pass
+        await call.message.edit_text(
+            _R.render_danger(mode, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_danger_kb(mode, lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "master" and action in {"cmd", "cfg"}:
+        if state is None:
+            await call.message.answer(_bot_ops.CMD_USAGE, parse_mode=ParseMode.HTML)
+            return True
+        await state.clear()
+        await state.update_data(m_kind=action, m_started=time.monotonic())
+        await call.message.answer(
+            "<b>HARVEST // МАСТЕР</b>\nШаг 1/3 — сеть:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=await _master_nets_kb(lang),
+        )
+        return True
+    if screen == "master" and action == "net":
+        slug = (arg or "").strip().lower()
+        if slug == "vibe":
+            slug = "vibevibe"
+        from portal.networks import NETWORKS as _NETS
+
+        if slug not in {n["slug"] for n in _NETS}:
+            await call.message.answer("[err] Неизвестная сеть.")
+            return True
+        if state is None:
+            return True
+        if _master_expired(await state.get_data()):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        await state.update_data(m_net=slug)
+        await call.message.answer(
+            "Шаг 2/3 — кошельки (или «своё» числом 1..5000):",
+            reply_markup=_master_num_kb("w", ["10", "50", "200"], lang),
+        )
+        return True
+    if screen == "master" and action == "w":
+        if state is None:
+            return True
+        try:
+            n = int(arg)
+        except (TypeError, ValueError):
+            return True
+        if not 1 <= n <= 5000:
+            await call.message.answer("[err] Нужно число 1..5000.")
+            return True
+        if _master_expired(await state.get_data()):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        await state.update_data(m_wallets=n)
+        await call.message.answer(
+            "Шаг 2/3 — циклов (0 — бесконечно) или кнопкой:",
+            reply_markup=_master_num_kb("c", ["2", "5", "∞"], lang),
+        )
+        return True
+    if screen == "master" and action == "wcustom":
+        if state is None:
+            return True
+        await state.set_state(MasterWiz.wallets)
+        await call.message.answer("Введи число кошельков 1..5000. Или /cancel.")
+        return True
+    if screen == "master" and action == "c":
+        if state is None:
+            return True
+        n = 0 if arg == "∞" else None
+        if n is None:
+            try:
+                n = int(arg)
+            except (TypeError, ValueError):
+                return True
+        if not 0 <= n <= 100000:
+            await call.message.answer("[err] Нужно число 0..100000.")
+            return True
+        if _master_expired(await state.get_data()):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        await state.update_data(m_cycles=n)
+        await call.message.answer(
+            "Шаг 3/3 — профиль:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="[Тихий]", callback_data="v1:master:profile:quiet"),
+                 InlineKeyboardButton(text="[Обычный]", callback_data="v1:master:profile:normal"),
+                 InlineKeyboardButton(text="[Быстрый]", callback_data="v1:master:profile:fast")],
+                [InlineKeyboardButton(text=_R.tr("btn_cancel", lang),
+                                      callback_data="v1:master:cancel")],
+            ]),
+        )
+        return True
+    if screen == "master" and action == "ccustom":
+        if state is None:
+            return True
+        await state.set_state(MasterWiz.cycles)
+        await call.message.answer("Введи число циклов 0..100000 (0 — бесконечно). Или /cancel.")
+        return True
+    if screen == "master" and action == "profile":
+        if state is None or arg not in _PROFILES:
+            return True
+        if _master_expired(await state.get_data()):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        await state.update_data(m_profile=arg)
+        await call.message.answer(
+            f"Профиль: {_PROFILE_LABEL[arg]}. Кран:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="[С краном]", callback_data="v1:master:faucet:1"),
+                 InlineKeyboardButton(text="[Без крана]", callback_data="v1:master:faucet:0")],
+                [InlineKeyboardButton(text=_R.tr("btn_cancel", lang),
+                                      callback_data="v1:master:cancel")],
+            ]),
+        )
+        return True
+    if screen == "master" and action == "faucet":
+        if state is None or arg not in {"0", "1"}:
+            return True
+        if _master_expired(await state.get_data()):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        await state.update_data(m_faucet=(arg == "1"))
+        await _master_finish(call.message, state)
+        return True
+    if screen == "master" and action == "yaml":
+        if state is None:
+            return True
+        data = await state.get_data()
+        if _master_expired(data) or not data.get("m_yaml") or not data.get("m_cmd"):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        try:
+            filename, content = _bot_ops.build_config_yaml(data["m_net"], data["m_wallets"])
+        except ValueError as e:
+            await call.message.answer(f"[err] {_esc(e)}")
+            return True
+        await call.message.bot.send_document(
+            chat_id=call.from_user.id,
+            document=BufferedInputFile(content.encode("utf-8"), filename=filename),
+            caption=f"<code>{_esc(data['m_cmd'])}</code>",
+            parse_mode=ParseMode.HTML,
+        )
+        return True
+    if screen == "master" and action == "verify":
+        if state is None:
+            return True
+        data = await state.get_data()
+        if _master_expired(data) or not data.get("m_yaml"):
+            await state.clear()
+            await call.message.answer(_R.tr("stale", lang))
+            return True
+        _ok, lines = _check_config_text(data["m_yaml"])
+        await call.message.answer(
+            "<b>HARVEST // ПРОВЕРКА</b>\n" + "\n".join(lines), parse_mode=ParseMode.HTML)
+        return True
+    if screen == "master" and action == "restart":
+        if state is not None:
+            await state.clear()
+            await state.update_data(m_started=time.monotonic())
+        await call.message.answer(
+            "<b>HARVEST // МАСТЕР</b>\nШаг 1/3 — сеть:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=await _master_nets_kb(lang),
+        )
+        return True
+    if screen == "master" and action == "cancel":
+        if state is not None:
+            try:
+                await state.clear()
+            except Exception:  # noqa: BLE001
+                pass
+        await call.message.answer("[ОТМЕНА] Мастер закрыт.")
+        return True
+    # Неизвестный v1-экран новой версии — как устаревший: домой без трейсбэка.
+    await _stale_home(call, daemon)
+    return True
 
 
 def _toggle_monitor(
@@ -548,7 +1651,9 @@ async def _answer_cfg(message: Message, text: str) -> None:
 
 
 def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor | None = None) -> Dispatcher:
+    install_token_redaction()
     dp = Dispatcher(storage=MemoryStorage())
+    dp.conflict = _conflict  # трекер 409 для /doctor и тестов (п.7 ТЗ)
     # Монитор можно передать снаружи (для тестов/перезапуска). Если нет — создаём
     # лениво при первом /monitor: без токена бота у него не будет, но dispatcher
     # соберётся всегда.
@@ -567,17 +1672,16 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         return _menu_kb(cfg, monitor_on=monitor.running)
 
     @dp.message(CommandStart())
-    async def on_start(message: Message) -> None:
+    async def on_start(message: Message, state: FSMContext | None = None) -> None:
         if not _allowed(cfg, message.from_user.id if message.from_user else None):
             await message.answer("⛔ Нет доступа.")
             return
-        await message.answer(
-            "Привет! Это <b>HARVEST PORTAL</b> — живое поле фермы.\n"
-            "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
-            "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0",
-            parse_mode=ParseMode.HTML,
-            reply_markup=_menu(),
-        )
+        if state is not None:
+            try:
+                await state.clear()  # сброс мастера по /start (п.4 ТЗ)
+            except Exception:  # noqa: BLE001
+                pass
+        await _show_home_answer(message, daemon)
 
     @dp.message()
     async def on_help(message: Message, state: FSMContext | None = None) -> None:
@@ -589,20 +1693,28 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         # сюда попадаем первыми — пропускаем дальше).
         if getattr(message, "document", None):
             return
-        # Свободный ввод активного мастера (числа) — до разбора команд.
+        text = (message.text or "").strip()
+        # Свободный ввод активных мастеров (числа, пароль) — до разбора команд.
         if state is not None:
             try:
+                if text == "/cancel":
+                    await state.clear()
+                    await message.answer("[ОТМЕНА] Мастер закрыт.")
+                    return
+                if await _enc_handle_text(message, state, daemon):
+                    return
+                if await _master_handle_text(message, state):
+                    return
                 if await _wiz_handle_text(message, state):
                     return
             except Exception:  # noqa: BLE001
                 logger.warning("мастер: сбой обработки ввода", exc_info=True)
                 return
-        text = (message.text or "").strip()
         if text == "/help":
             await message.answer(_HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=_menu())
         elif text == "/doctor":
             await message.answer(
-                _fmt_doctor(await daemon.statistics()),
+                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=_menu(),
             )
@@ -611,6 +1723,10 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         elif text == "/status":
             await message.answer(_fmt_status(await daemon.statistics()), parse_mode=ParseMode.HTML)
         elif text.startswith("/wallets"):
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "wallets")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Тяжёлая операция — антифлуд.")
+                return
             parts = text.split()
             page = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
             wallets = await daemon.all_wallets()
@@ -620,10 +1736,19 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         elif text.startswith("/monitor"):
             _toggle_monitor(message.bot, message.from_user.id, daemon, monitor, message.answer)
         elif text.startswith("/export"):
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "export")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Тяжёлая операция — антифлуд.")
+                return
             parts = text.split()
             fmt = parts[1].lower() if len(parts) > 1 and parts[1].lower() in {"json"} else "csv"
             try:
                 await send_wallets_file(message.bot, message.from_user.id, daemon, fmt)
+                logger.info(
+                    "[AUDIT] export user=%s fmt=%s via=/export",
+                    message.from_user.id if message.from_user else None,
+                    fmt,
+                )
             except Exception:  # noqa: BLE001
                 logger.warning("Экспорт кошельков через /export упал", exc_info=True)
                 await message.answer("[err] Не удалось сформировать файл кошельков.")
@@ -689,6 +1814,8 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             pass
 
         try:
+            if await _handle_v1(call, state, cfg, daemon):
+                return
             if data == "cmd:run":
                 if state is None:
                     await call.message.answer(_bot_ops.CMD_USAGE, parse_mode=ParseMode.HTML)
@@ -786,9 +1913,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data == "stats":
                 answer = _fmt_stats(await daemon.statistics())
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="stats")]]
-                )
+                kb = _refresh_home_kb("stats")
                 await call.message.edit_text(
                     answer,
                     parse_mode=ParseMode.HTML,
@@ -799,9 +1924,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data == "status":
                 answer = _fmt_status(await daemon.statistics())
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="status")]]
-                )
+                kb = _refresh_home_kb("status")
                 await call.message.edit_text(
                     answer,
                     parse_mode=ParseMode.HTML,
@@ -825,6 +1948,10 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 return
 
             if data == "wallets:create":
+                ok, wait = _flood_ok(call.from_user.id if call.from_user else None, "create")
+                if not ok:
+                    await call.message.answer(f"[жди {wait}с] Тяжёлая операция — антифлуд.")
+                    return
                 try:
                     n = int(((daemon.config or {}).get("wallets") or {}).get("count", 3))
                 except (TypeError, ValueError, AttributeError):
@@ -855,15 +1982,16 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 await call.message.edit_text(
                     "\n".join(lines),
                     parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")],
+                    ]),
                     link_preview_options=_NO_PREVIEW,
                 )
                 return
 
             if data == "doctor":
-                answer = _fmt_doctor(await daemon.statistics())
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="doctor")]]
-                )
+                answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}"
+                kb = _refresh_home_kb("doctor")
                 await call.message.edit_text(
                     answer,
                     parse_mode=ParseMode.HTML,
@@ -874,9 +2002,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data == "history":
                 answer = _fmt_history(await daemon.cycle_history())
-                kb = InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="history")]]
-                )
+                kb = _refresh_home_kb("history")
                 await call.message.edit_text(
                     answer,
                     parse_mode=ParseMode.HTML,
@@ -887,9 +2013,36 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data in ("export:csv", "export:json"):
                 fmt = data.split(":")[1]
+                await call.message.edit_text(
+                    "<b>HARVEST // ЭКСПОРТ — подтверждение</b>\n"
+                    f"Файл ({fmt.upper()}) содержит <b>все приватные ключи</b>.\n"
+                    "Пересылка запрещена, сообщение удалится через 60 с.\n"
+                    "Продолжить?",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                        InlineKeyboardButton(text="[ДА, ВЫСЛАТЬ]", callback_data=f"export:yes:{fmt}"),
+                        InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home"),
+                    ]]),
+                    link_preview_options=_NO_PREVIEW,
+                )
+                return
+
+            if data.startswith("export:yes:"):
+                fmt = data.split(":")[2]
+                if fmt not in {"csv", "json"}:
+                    return
+                ok, wait = _flood_ok(call.from_user.id if call.from_user else None, "export")
+                if not ok:
+                    await call.message.answer(f"[жди {wait}с] Тяжёлая операция — антифлуд.")
+                    return
                 try:
                     await call.message.answer("[...] Готовлю файл кошельков…")
                     await send_wallets_file(call.message.bot, call.from_user.id, daemon, fmt)
+                    logger.info(
+                        "[AUDIT] export user=%s fmt=%s via=button",
+                        call.from_user.id if call.from_user else None,
+                        fmt,
+                    )
                 except Exception:  # noqa: BLE001
                     logger.warning("Экспорт кошельков (кнопка) упал", exc_info=True)
                     await call.message.answer("[err] Не удалось сформировать файл кошельков.")
@@ -906,11 +2059,17 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 await call.message.edit_text(
                     _bot_ops.REF_TEXT,
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup(
-                        inline_keyboard=[[InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="ref")]]
-                    ),
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="[ОБНОВИТЬ]", callback_data="ref")],
+                        [InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")],
+                    ]),
                     link_preview_options=_NO_PREVIEW,
                 )
+                return
+
+            if data == "menu:home":
+                # Legacy-кнопки ведут на новое Поле (п.2 ТЗ); текст обновлён.
+                await _show_home_edit(call, daemon)
                 return
 
             if data == "network:list":
@@ -981,12 +2140,17 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
 
 async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
+    install_token_redaction()
+    dlg = logging.getLogger("aiogram.dispatcher")
+    if not any(isinstance(f, _ConflictLogFilter) for f in dlg.filters):
+        dlg.addFilter(_ConflictLogFilter())
     bot = Bot(token=cfg.telegram_token, default=_BOT_DEFAULTS)
     # Первый разрешённый владелец — получатель живого мониторинга по умолчанию.
     default_tg = cfg.telegram_allow_ids[0] if cfg.telegram_allow_ids else 0
     monitor = LiveMonitor(bot, default_tg, daemon)
     dp = build_dispatcher(cfg, daemon, monitor)
     logger.info("Telegram-бот запущен (long-polling)")
+    await setup_bot_commands(bot)
     # При каждом запуске шлём владельцу актуальный адрес портала,
     # чтобы смена адреса туннеля не терялась.
     if cfg.public_base_url:
@@ -997,4 +2161,25 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
             )
         except Exception:  # noqa: BLE001
             logger.warning("Не удалось отправить адрес владельцу", exc_info=True)
-    await dp.start_polling(bot)
+    try:
+        await dp.start_polling(bot)
+    except Exception as e:  # noqa: BLE001
+        # Конфликт 409 (п.7 ТЗ): другой экземпляр опрашивает токен — не падать,
+        # один понятный ряд + одно уведомление владельцу, дальше — наверх
+        # (перезапуск — делом супервизора) с отредактированным текстом.
+        from aiogram.exceptions import TelegramConflictError
+
+        from portal.bot_render import redact_token
+
+        if isinstance(e, TelegramConflictError):
+            delay = _conflict.hit()
+            if _conflict.needs_notify():
+                try:
+                    await notify_owner(cfg, "Другой экземпляр опрашивает этот токен (409).")
+                except Exception:  # noqa: BLE001
+                    pass
+            logger.warning("Telegram 409, backoff %.0fс: %s", delay, redact_token(e))
+            await asyncio.sleep(delay)
+        raise
+    else:
+        _conflict.resolve()

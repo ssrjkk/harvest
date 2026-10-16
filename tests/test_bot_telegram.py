@@ -1,5 +1,6 @@
 """Тесты Telegram-бота: HTML-экранирование динамических значений статистики."""
 
+import asyncio
 import sys
 import unittest
 from pathlib import Path
@@ -83,13 +84,14 @@ class TestFmtNetworks(unittest.TestCase):
         starts = [b.callback_data for row in kb.inline_keyboard[:-1] for b in row]
         self.assertEqual(starts, ["network:start:vibevibe", "network:start:robinhood"])
         last = [b.callback_data for b in kb.inline_keyboard[-1]]
-        self.assertEqual(last, ["network:stop", "network:list"])
+        self.assertEqual(last, ["network:stop", "network:list", "menu:home"])
 
     def test_kb_empty_networks(self):
         kb = _networks_kb([])
         self.assertEqual(len(kb.inline_keyboard), 1)
         self.assertEqual(
-            [b.callback_data for b in kb.inline_keyboard[0]], ["network:stop", "network:list"]
+            [b.callback_data for b in kb.inline_keyboard[0]],
+            ["network:stop", "network:list", "menu:home"],
         )
 
 
@@ -156,6 +158,17 @@ class _NetDaemon:
         made = [{"address": f"0x{i:040x}"} for i in range(count)]
         self._wallets.extend(made)
         return made
+
+    async def export_wallets(self, fmt: str = "csv"):
+        if fmt == "json":
+            return '[{"address": "0x1", "private_key": "abc"}]', "wallets.json"
+        return "address,private_key\n0x1,abc\n", "wallets.csv"
+
+    async def statistics(self):
+        return {"running": self.running, "pool": {}, "db": {}, "wallet_count": len(self._wallets)}
+
+    async def cycle_history(self):
+        return []
 
     async def switch_to(self, slug):
         if slug == "vibevibe":
@@ -427,8 +440,175 @@ class TestOpsWizardFlow(unittest.IsolatedAsyncioTestCase):
         await dp.message.handlers[2].callback(msg)
         self.assertIn("[err]", msg.answers[0][0][0])
 
+    async def test_wizard_command_escapes(self):
+        from portal.bot_telegram import CmdWizard
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        st = _FakeState()
+        await dp.callback_query.handlers[0].callback(self._call(data="cmd:run"), st)
+        await st.set_state(CmdWizard.wallets)
+        msg = _M(uid=123, text="/ref")
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertIsNone(await st.get_state())
+        self.assertIn("СПРАВКА", msg.answers[0][0][0])
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestAntiflood(unittest.IsolatedAsyncioTestCase):
+    def tearDown(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
+    def test_second_call_blocked(self):
+        import portal.bot_telegram as bt
+
+        ok, _ = bt._flood_ok(777001, "export")
+        self.assertTrue(ok)
+        ok, wait = bt._flood_ok(777001, "export")
+        self.assertFalse(ok)
+        self.assertGreater(wait, 0)
+        # Другая операция и другой пользователь — не затронуты.
+        self.assertTrue(bt._flood_ok(777001, "wallets")[0])
+        self.assertTrue(bt._flood_ok(777002, "export")[0])
+
+    async def test_export_command_flooded(self):
+        import time
+
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        bt._flood_last[(123, "export")] = time.monotonic()
+        msg = _M(uid=123, text="/export")
+        await dp.message.handlers[1].callback(msg)
+        self.assertIn("жди", msg.answers[0][0][0])
+
+    async def test_wallets_create_callback_flooded(self):
+        import time
+
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        bt._flood_last[(123, "create")] = time.monotonic()
+        call = _C(uid=123, data="wallets:create")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertTrue(any("жди" in a[0][0] for a in call.message.answers))
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestExportConfirm(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
+    def tearDown(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
+    async def test_export_button_asks_confirm(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        for fmt in ("csv", "json"):
+            call = _C(uid=123, data=f"export:{fmt}")
+            await dp.callback_query.handlers[0].callback(call)
+            self.assertEqual(len(call.message.edits), 1, fmt)
+            text = call.message.edits[0][0][0]
+            self.assertIn("подтверждение", text)
+            self.assertIn("приватные ключи", text)
+            self.assertIn(fmt.upper(), text)
+            kb = call.message.edits[0][1]["reply_markup"]
+            payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+            self.assertIn(f"export:yes:{fmt}", payloads)
+            self.assertIn("menu:home", payloads)
+
+    async def test_export_yes_sends_protected_and_deletes(self):
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        call = _C(uid=123, data="export:yes:json")
+        call.message.bot.send_document = mock.AsyncMock(
+            return_value=mock.Mock(message_id=777)
+        )
+        call.message.bot.delete_message = mock.AsyncMock()
+        old, bt._EXPORT_AUTODELETE_S = bt._EXPORT_AUTODELETE_S, 0
+        try:
+            await dp.callback_query.handlers[0].callback(call)
+            await asyncio.sleep(0.05)
+        finally:
+            bt._EXPORT_AUTODELETE_S = old
+        kw = call.message.bot.send_document.await_args.kwargs
+        self.assertTrue(kw.get("protect_content"))
+        call.message.bot.delete_message.assert_awaited_once_with(
+            chat_id=123, message_id=777
+        )
+
+    async def test_export_yes_bad_fmt_ignored(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        call = _C(uid=123, data="export:yes:xml")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(call.message.answers, [])
+        self.assertEqual(call.message.edits, [])
+
+    async def test_menu_home(self):
+        # Legacy menu:home ведёт на новое Поле (п.2 ТЗ).
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        call = _C(uid=123, data="menu:home")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(len(call.message.edits), 1)
+        self.assertIn("HARVEST // ПОЛЕ", call.message.edits[0][0][0])
+        kb = call.message.edits[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("v1:run:start", payloads)
+        self.assertIn("v1:danger:show", payloads)
+        self.assertIn("v1:home:refresh", payloads)
+        # Запуск и Стоп никогда не рядом (п.2 ТЗ).
+        self.assertFalse("v1:run:start" in payloads and "v1:run:stop" in payloads)
+
+    async def test_home_buttons_everywhere(self):
+        """Каждый экран с edit_text даёт путь назад в menu:home."""
+        from portal.bot_telegram import _menu_kb  # noqa: F401  (импорт — проверка __all__)
+
+        daemon = _NetDaemon()
+        daemon._wallets = [{"address": "0x1", "private_key": "k", "mnemonic": "m", "total_actions": 1}]
+        dp = build_dispatcher(_cfg(), daemon)
+        cb = dp.callback_query.handlers[0].callback
+        for data in ("stats", "status", "doctor", "history", "links", "ref",
+                     "network:list", "wallets:page:1"):
+            call = _C(uid=123, data=data)
+            await cb(call)
+            self.assertEqual(len(call.message.edits), 1, data)
+            kb = call.message.edits[0][1].get("reply_markup")
+            self.assertIsNotNone(kb, data)
+            payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+            self.assertIn("menu:home", payloads, data)
+
+    def test_refresh_home_kb_shape(self):
+        from portal.bot_telegram import _refresh_home_kb
+
+        for cb_name in ("stats", "status", "doctor", "history"):
+            kb = _refresh_home_kb(cb_name)
+            self.assertEqual(len(kb.inline_keyboard), 2)
+            self.assertEqual(kb.inline_keyboard[0][0].callback_data, cb_name)
+            self.assertEqual(kb.inline_keyboard[1][0].callback_data, "menu:home")
+
+    def test_wallets_kb_has_home(self):
+        from portal.bot_telegram import _wallets_empty_kb, _wallets_kb
+
+        for kb in (_wallets_kb(1, 1), _wallets_kb(1, 3), _wallets_kb(2, 3), _wallets_empty_kb()):
+            payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+            self.assertIn("menu:home", payloads)
+
+
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        # Антифлуд — процессный: чистим метки, чтобы тесты одного юзера
+        # не троттлили друг друга (в проде между вызовами проходят секунды).
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
     def test_empty_kb(self):
         from portal.bot_telegram import _wallets_empty_kb
 
@@ -436,6 +616,8 @@ class TestWalletsCreate(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [b.callback_data for b in kb.inline_keyboard[0]], ["wallets:create"]
         )
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("menu:home", payloads)
 
     async def test_wallets_empty_renders_create(self):
         dp = build_dispatcher(_cfg(), _NetDaemon())

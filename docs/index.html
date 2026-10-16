@@ -1,10 +1,16 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru" data-theme="ink">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HARVEST v2.3.0 — EVM testnet farmer</title>
 <meta name="description" content="HARVEST — автоматический фермер EVM-тестнетов: живое поле, кошельки, краны, анти-сибил фарминг, портал и Telegram-бот. Документация, конструктор конфига и рабочее демо в браузере. MIT, © 2026 ssrjkk.">
+<meta name="theme-color" content="#14110A">
+<meta property="og:type" content="website">
+<meta property="og:title" content="HARVEST v2.3.0 — EVM testnet farmer">
+<meta property="og:description" content="Живое поле фермы, конструктор конфигов, симулятор и полный справочник. MIT, © 2026 ssrjkk.">
+<meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
@@ -44,7 +50,7 @@
   </div>
 </header>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">HARVEST v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1199 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">HARVEST v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1317 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- HERO -->
@@ -59,7 +65,7 @@
           <table>
             <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
             <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1199 · 44 файла · зелёный прогон</td></tr>
+            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1317 · 54 файла · зелёный прогон</td></tr>
             <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
             <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
             <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
@@ -179,9 +185,9 @@ python auto.py --doctor</pre>
       <tr><td><b>Robinhood Chain</b></td><td class="mono">config_robinhood.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer · vibevibe_swap/mint</td></tr>
       <tr><td><b>Flop Labs</b></td><td class="mono">config_flop.yaml</td><td class="num">99999 <span class="pill warn">stub</span></td><td>FLOP</td><td class="mono">flop_compute/validate/stake + transfer</td></tr>
       <tr><td><b>Arc (Minara.Fun)</b></td><td class="mono">config_arc.yaml</td><td class="num">5042002</td><td>ARC</td><td class="mono">arc_launch/trade/add_liquidity + transfer</td></tr>
-      <tr><td><b>vibe/vibe</b> <span class="note">— launchpad на Robinhood, 5% сапплая тестнету</span></td><td class="mono">config_vibevibe.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer · claimRewards · stake · buy/sell*</td></tr>
+      <tr><td><b>vibe/vibe</b> <span class="note">— launchpad на Robinhood, 5% сапплая тестнету</span></td><td class="mono">config_vibevibe.yaml</td><td class="num">46630</td><td>ETH</td><td class="mono">transfer (shipped) · claimRewards/stake/buy/sell — по ABI при настройке*</td></tr>
     </table></div>
-    <p class="note" data-i18n="vibe_note">* buy/sell на VibePassMarket требуют EIP-712 подпись TradeIntent ключом tradeSigner (vibevibe.signer_key / env FARMER_VIBE_SIGNER_KEY). Без ключа они пропускаются адаптивными весами; transfer / claimRewards / stake работают всегда. ABI — в abi/vibevibe.json, контракты верифицированы в Blockscout.</p>
+    <p class="note" data-i18n="vibe_note">* В shipped config_vibevibe.yaml только transfer; buy/sell на VibePassMarket требуют EIP-712 подпись TradeIntent ключом tradeSigner (vibevibe.signer_key / env FARMER_VIBE_SIGNER_KEY). Без ключа они пропускаются адаптивными весами; transfer / claimRewards / stake работают всегда. ABI — в abi/vibevibe.json, контракты верифицированы в Blockscout.</p>
 <pre class="code" id="codeVibe">python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
 python auto.py --config config.simple.yaml --wallets 200 --cycles 2<button class="btn small copy-btn" data-copy="codeVibe" type="button">copy</button></pre>
   </div>
@@ -221,7 +227,7 @@ Unblock-File dist\harvest\harvest.exe
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + бот
 
-python -m pytest tests -q       # 1199 tests · 44 files
+python -m pytest tests -q       # 1317 tests · 54 files
 
 python publish_dash.py          # state.json → gh-pages → поле сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
@@ -546,7 +552,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
           <tr><td class="mono">doctor</td><td data-i18n="a6">Конфиг → ключ → БД → RPC → кран → лицензия, exit code</td></tr>
           <tr><td class="mono">web_gui</td><td data-i18n="a7">Локальная веб-панель: кнопки, WebSocket-лог, топ и история (main.py → G, 127.0.0.1:8080)</td></tr>
         </table></div>
-        <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (917 строк: точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
+        <p class="note" data-i18n="a_n">Детали каждого слоя — §3 DOCUMENTATION.md в репозитории (962 строки: точки входа, портал, конфиги, Tier-2 про реальные RPC/контракты).</p>
       </div>
     </div>
   </div>
@@ -594,7 +600,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
     <div class="grid2">
       <div>
-<pre class="code">python -m pytest tests -q   # 1199 tests · 44 files</pre>
+<pre class="code">python -m pytest tests -q   # 1317 tests · 54 files</pre>
         <ul class="tight note">
           <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
           <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>

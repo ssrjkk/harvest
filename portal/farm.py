@@ -28,6 +28,12 @@ from portal.networks import DEFAULT_NETWORK, NETWORKS, network_by_slug
 
 logger = logging.getLogger(__name__)
 
+# Кап создания кошельков за один HTTP-вызов (см. create_wallets).
+# Бот/CLI держат до 5000 общим лимитом конструкторов (bot_ops.parse_count).
+MAX_WALLETS_PER_REQUEST = 50
+# Кап чтения балансов за вызов (витрина топа).
+MAX_BALANCES_PER_REQUEST = 50
+
 
 def _db_master_key(override: str | None, config: dict) -> bytes:
     """Ключ шифрования БД для демона фермы.
@@ -76,6 +82,10 @@ class FarmDaemon:
         self._balance_alerts_task: asyncio.Task | None = None
         self._balance_alerts_enabled: bool = False
         self._balance_threshold: float = 0.001
+        # Монитор балансов проверяет первые N кошельков за тик (RPC-шторм
+        # 100×get_balance/мин — осознанный кап; остаток без алертов, см. warning
+        # в _balance_monitor_loop при усечении).
+        self._balance_check_limit: int = 100
         self._metrics_task: asyncio.Task | None = None
         # Сериализатор управления: одновременные start()/stop() из разных хендлеров
         # (двойной клик, rest-api + бот-команда) иначе перезаписывали бы _task и
@@ -313,6 +323,41 @@ class FarmDaemon:
             return []
         return await self.db.get_all_wallets()
 
+    async def wallet_cells(self, limit: int = 100) -> tuple[str, int]:
+        """Строка iwoer + всего кошельков (общий источник сайта и поля бота).
+
+        Тот же запрос, что publish_dash.collect: последний цикл + первые N.
+        """
+        if self.db is None:
+            return "", 0
+        try:
+            db = await self.db._connect()
+            async with db.execute("SELECT COUNT(*) FROM wallets") as cur:
+                total = (await cur.fetchone())[0]
+            try:
+                async with db.execute(
+                    "SELECT id FROM cycle_history ORDER BY id DESC LIMIT 1"
+                ) as cur:
+                    row = await cur.fetchone()
+                latest = row[0] if row else None
+                async with db.execute(
+                    "SELECT total_actions, total_attempts, last_cycle FROM wallets"
+                    " ORDER BY rowid LIMIT ?",
+                    (limit,),
+                ) as cur:
+                    sample = await cur.fetchall()
+                from portal.wallet_cells import build_cells
+
+                return (
+                    build_cells([(a or 0, t or 0, c) for a, t, c in sample], latest),
+                    total,
+                )
+            except Exception:  # noqa: BLE001 — старая схема: все idle
+                return "i" * min(total, limit), total
+        except Exception:  # noqa: BLE001
+            logger.warning("wallet_cells упало", exc_info=True)
+            return "", 0
+
     async def rpc_health(self) -> dict:
         """Диагностика RPC: задержки, ошибки, circuit breaker (для UI)."""
         if self.pool is None:
@@ -456,8 +501,15 @@ class FarmDaemon:
             try:
                 if self.pool is not None and self.db is not None:
                     wallets = await self.db.get_all_wallets()
+                    if len(wallets) > self._balance_check_limit:
+                        logger.warning(
+                            "Balance monitor: проверяю первые %d из %d кошельков "
+                            "(остаток без алертов)",
+                            self._balance_check_limit,
+                            len(wallets),
+                        )
                     low_balance = []
-                    for w in wallets[:100]:
+                    for w in wallets[:self._balance_check_limit]:
                         addr = w.get("address", "")
                         if not addr:
                             continue
@@ -513,10 +565,14 @@ class FarmDaemon:
         return await self.db.get_metrics_history(limit)
 
     async def create_wallets(self, count: int) -> list[dict]:
-        """Создать N кошельков (UI/бот). Требуется подключённая БД."""
+        """Создать N кошельков (UI/бот). Требуется подключённая БД.
+
+        Кап 50 за вызов — защита HTTP/RPC от тяжёлой генерации. Бот/CLI
+        оперируют до 5000 (батчами по 50): см. portal/bot_ops.py parse_count.
+        """
         if self.db is None or self.config is None:
             raise RuntimeError("БД фермы не подключена")
-        count = max(1, min(int(count), 50))
+        count = max(1, min(int(count), MAX_WALLETS_PER_REQUEST))
         from core.wallet import WalletManager
 
         async with self._mgmt:
@@ -529,7 +585,7 @@ class FarmDaemon:
             raise RuntimeError("Ферма не запущена")
         wallets = await self.db.get_all_wallets()
         out = []
-        for w in wallets[: max(1, min(int(limit), 50))]:
+        for w in wallets[: max(1, min(int(limit), MAX_BALANCES_PER_REQUEST))]:
             addr = w.get("address", "")
             if not addr:
                 continue
