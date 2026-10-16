@@ -158,6 +158,7 @@ def render_home(
         mark, dot = ("Активен", "🟢") if not en else ("Active", "🟢")
     else:
         mark, dot = ("Остановлен", "🔴") if not en else ("Stopped", "🔴")
+    mark_en = "Active" if running and not paused else mark
     net = esc(state.get("network", "—"))
     chain = esc(state.get("chain_id", "—"))
     try:
@@ -193,7 +194,7 @@ def render_home(
 
     up = fmt_uptime(state.get("uptime_s"))
     if en:
-        head = f"🌾 <b>harvest // Active</b> ({dot})" if running and not paused else f"🌾 <b>harvest // {mark}</b> ({dot})"
+        head = f"🌾 <b>harvest // {mark_en}</b> ({dot})"
         lines = [
             head,
             f"Network: {net} ({chain}) · RPC health: {health_pct}% ⚡️",
