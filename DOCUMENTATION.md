@@ -857,7 +857,7 @@ transfer); реальные адреса подставляются операт
 ## 7. Тесты
 
 `tests/` — 54 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
-1331 тест, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
+1335 тест, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
 через `HARVEST_LOAD=1`, в обычном CI пропускается):
 
 - ядро: `test_workpool`, `test_pool`, `test_farmer`, `test_actions`,

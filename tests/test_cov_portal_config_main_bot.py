@@ -638,7 +638,8 @@ if HAS_BOT:
             daemon = mock.Mock()
             daemon.all_wallets = _async_result(
                 [
-                    {"address": "0x%04d" % i, "private_key": "0xk%d" % i, "mnemonic": "w%d" % i, "total_actions": i}
+                    {"address": f"0x{i:04d}", "private_key": f"0xk{i}",
+                     "mnemonic": f"w{i}", "total_actions": i}
                     for i in range(6)
                 ]
             )
@@ -666,9 +667,10 @@ if HAS_BOT:
 
         async def test_wallets_page_formatting(self):
             w = [
-            {"address": "0x%04d" % i, "private_key": "0xk%d" % i, "mnemonic": "w%d" % i, "total_actions": i}
-            for i in range(5)
-        ]
+                {"address": f"0x{i:04d}", "private_key": f"0xk{i}",
+                 "mnemonic": f"w{i}", "total_actions": i}
+                for i in range(5)
+            ]
             text, pages = bot_telegram._fmt_wallets_page(w, 1, 4)
             self.assertEqual(pages, 2)
             self.assertIn("#1", text)

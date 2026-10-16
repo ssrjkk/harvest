@@ -45,15 +45,35 @@ from portal.bot_ops import (
     _FOOT,
     _fmt_wallets_page,
     _progress_bar,
+)
+from portal.bot_ops import (
     check_config_text as _check_config_text,
+)
+from portal.bot_ops import (
     fmt_balances as _fmt_balances,
+)
+from portal.bot_ops import (
     fmt_doctor as _fmt_doctor,
+)
+from portal.bot_ops import (
     fmt_history as _fmt_history,
+)
+from portal.bot_ops import (
     fmt_networks as _fmt_networks,
+)
+from portal.bot_ops import (
     fmt_stats as _fmt_stats,
+)
+from portal.bot_ops import (
     fmt_status as _fmt_status,
+)
+from portal.bot_ops import (
     parse_cmd_args as _bot_ops_parse_cmd,
+)
+from portal.bot_ops import (
     parse_count as _parse_count,
+)
+from portal.bot_ops import (
     parse_cycles as _parse_cycles,
 )
 from portal.config import PortalConfig, load_links
@@ -542,7 +562,7 @@ class LiveMonitor:
                 await self.tick()
                 try:
                     await asyncio.wait_for(self._stop.wait(), timeout=self.interval_s)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
         finally:
             if self._task is not None:
@@ -1319,11 +1339,28 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text=_R.tr("btn_refresh", lang),
                                       callback_data="v1:diag:show")],
+                [InlineKeyboardButton(text="[Карточка]", callback_data="v1:diag:card")],
                 [InlineKeyboardButton(text=_R.tr("btn_back", lang),
                                       callback_data="v1:home:show"),
                  InlineKeyboardButton(text=_R.tr("btn_home", lang),
                                       callback_data="v1:home:show")],
             ]), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "diag" and action == "card":
+        from aiogram.types import BufferedInputFile
+
+        from portal import status_card as _card
+
+        if not _card.available():
+            await call.message.answer("[err] Карточки недоступны: нет Pillow.")
+            return True
+        st = await _home_state(daemon)
+        png = _card.render_card(st, cells=st.pop("_cells"), total=st.pop("_total"))
+        await call.message.answer_photo(
+            BufferedInputFile(png, filename="harvest-field.png"),
+            caption=f"Поле · {st.get('network', '—')}",
+        )
+        logger.info("[AUDIT] card user=%s", uid)
         return True
     if screen == "danger" and action == "show":
         await call.message.edit_text(

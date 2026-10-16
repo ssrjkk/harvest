@@ -1,6 +1,8 @@
 # HARVEST PORTAL — контейнер для Linux VPS.
 # Сборка: docker build -f deploy/Dockerfile -t harvest-portal:latest .
-FROM python:3.14-slim
+# Python зафиксирован на 3.12 (код и ruff-target — py312; Dependabot-обновления
+# мажора только после проверки зависимостей).
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -12,6 +14,9 @@ WORKDIR /app
 # Зависимости отдельным слоем (кэшируется при правках кода).
 COPY requirements.txt requirements-portal.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-portal.txt
+# Шрифты для PNG-карточки статуса (DejaVu: кириллица в карточке).
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 # Код портала + ядро + ABI + шаблоны конфигов.
 COPY core/ core/

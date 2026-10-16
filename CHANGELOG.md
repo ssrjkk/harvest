@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- P4: PNG-карточка статуса (`portal/status_card.py`, палитра tokens.json,
+  кнопка «Карточка» в диагностике бота, Pillow в requirements-portal +
+  fonts-dejavu в Docker), scheduler-view и CSV истории в Mini App
+  (`GET /api/miniapp/scheduler`), ruff-чистота всего репо, Dockerfile
+  зафиксирован на python:3.12-slim
 - Mini App (этап 3 ТЗ): `portal/miniapp.py` (`/app/`, `/api/miniapp/*`,
   initData в заголовке, uniform-401, one-time confirm-токены, ETag/304,
   экспорт тем же кодом бота в чат), клиент без фреймворков

@@ -20,11 +20,11 @@ skip:"Skip to content",nav_live:"Field",nav_overview:"Overview",nav_networks:"Ne
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
-th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1331 · 54 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
+th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_tests:"Tests",f_tests_v:"1335 · 54 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_portal:"Control",f_dist:"Distribution",
 cta_live:"Live field",cta_demo:"Demo zone",
 hero_note:"The field reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
-sl_h:"Field — live farm state",sl_sub:"Metrics are published by publish_dash.py from the farm machine into the gh-pages branch. Updates follow the publisher schedule (every 15–60 min recommended). If nothing was published yet, the site still fully works — data appears on its own.",
+sl_h:"Field — live farm state",sl_sub:"Metrics are published by publish_dash.py from the farm machine into the gh-pages branch. The site re-reads state.json every minute; the publisher runs on its own schedule (every 15–60 min recommended). If nothing was published yet, the site still fully works — data appears on its own.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
 fe_t:"Farm is stopped. Run",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
 ch1:"Actions / errors over history",ch2:"Wallets processed",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
@@ -270,7 +270,7 @@ function setPill(cls,txt){$("#pillDot").className="dot "+cls;$("#pillTxt").textC
 function paintTicker(nets){
   try{
     const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
-    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1331 TESTS · MIT · ").repeat(2);
+    $("#tickerIn").textContent=("HARVEST v2.3.0 · "+list.join(" · ")+" · 1335 TESTS · MIT · ").repeat(2);
   }catch(e){}
 }
 function drawLive(){

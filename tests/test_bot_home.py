@@ -517,6 +517,36 @@ class TestKeysEncExport(unittest.IsolatedAsyncioTestCase):
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestStatusCard(unittest.IsolatedAsyncioTestCase):
+    def test_render_png(self):
+        from portal import status_card as _card
+
+        self.assertTrue(_card.available())
+        png = _card.render_card(
+            {"running": True, "paused": False, "network": "vibe/vibe",
+             "chain_id": 46630, "wallet_count": 3, "cycle": 5,
+             "errors": 0, "health_factor": 1.0, "updated": "10:00 UTC"},
+            cells="oiwe" + "r" * 12, total=20)
+        self.assertTrue(png.startswith(b"\x89PNG"))
+        self.assertGreater(len(png), 2000)
+
+    def test_render_empty(self):
+        from portal import status_card as _card
+
+        png = _card.render_card({})
+        self.assertTrue(png.startswith(b"\x89PNG"))
+
+    async def test_card_button_sends_photo(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        call = _C(data="v1:diag:card")
+        call.message.answer_photo = mock.AsyncMock()
+        await dp.callback_query.handlers[0].callback(call, _State())
+        call.message.answer_photo.assert_awaited_once()
+        self.assertTrue(call.message.answer_photo.await_args.args[0].filename
+                        .endswith(".png"))
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestRenderStrings(unittest.TestCase):
     def test_tr_fallback(self):
         self.assertEqual(R.tr("btn_home", "xx"), "[ Поле ]")

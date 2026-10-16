@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fastapi.testclient import TestClient
 
 import core.web_gui as web_gui
-from core.web_gui import app, _state
+from core.web_gui import _state, app
 
 
 class TestWebGuiStatus(unittest.TestCase):

@@ -86,6 +86,9 @@ class _Daemon:
     async def export_wallets(self, fmt="csv"):
         return "address,private_key\n0x1,SECRETKEY\n", "wallets.csv"
 
+    def scheduler_state(self):
+        return {"running": False, "tasks": []}
+
 
 def _mcfg(**env):
     prev = {k: os.environ.get(k) for k in
@@ -140,7 +143,8 @@ class TestUniform401(MiniBase):
         client = await self._client()
         for method, path in [
             ("GET", "/api/miniapp/state"), ("GET", "/api/miniapp/history"),
-            ("GET", "/api/miniapp/networks"), ("POST", "/api/miniapp/farm"),
+            ("GET", "/api/miniapp/networks"), ("GET", "/api/miniapp/scheduler"),
+            ("POST", "/api/miniapp/farm"),
             ("POST", "/api/miniapp/command"), ("POST", "/api/miniapp/export/token"),
             ("POST", "/api/miniapp/export/request"), ("GET", "/api/miniapp/settings"),
             ("POST", "/api/miniapp/settings"),
@@ -264,6 +268,14 @@ class TestFarmCommand(MiniBase):
         body = await resp.json()
         self.assertTrue(body["networks"])
         self.assertIn("presets", body)
+        self.assertNotIn("0x", await resp.text())
+
+    async def test_scheduler_read(self):
+        client = await self._client()
+        resp = await client.get("/api/miniapp/scheduler", headers=self._h(_init()))
+        self.assertEqual(resp.status, 200)
+        body = await resp.json()
+        self.assertIn("tasks", body)
         self.assertNotIn("0x", await resp.text())
 
     async def test_settings_roundtrip(self):

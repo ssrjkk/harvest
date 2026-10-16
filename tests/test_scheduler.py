@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import AsyncMock
 
-from core.scheduler import ScheduleTask, Scheduler
+from core.scheduler import Scheduler, ScheduleTask
 
 
 def asyncio_run(fn):

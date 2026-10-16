@@ -1,7 +1,9 @@
 # HARVEST PORTAL — доп. зависимости поверх основного requirements.txt
 # aiohttp/pyyaml дублируют requirements.txt намеренно (прямая установка
 # только этого файла): полы совпадают с проверенными.
-aiogram>=3.10
-aiohttp>=3.11.2
-pyyaml>=6.0
+# Pillow — PNG-карточка статуса (портал/bot: кнопка «Карточка», P4).
+aiogram>=3.10,<4
+aiohttp>=3.11.2,<4
+pyyaml>=6.0,<7
 duckdb>=1.0,<2
+Pillow>=11,<13

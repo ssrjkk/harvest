@@ -76,7 +76,7 @@ class _StubDaemon:
 
     async def create_group(self, name: str, color: str = "#007bff") -> dict:
         if any(g["name"] == name for g in self.groups):
-            raise ValueError("Group '%s' already exists" % name)
+            raise ValueError(f"Group '{name}' already exists")
         group = {"id": len(self.groups) + 1, "name": name, "color": color, "count": 0}
         self.groups.append(group)
         return group
@@ -613,12 +613,12 @@ class TestGlobalChoke(unittest.TestCase):
         api._global_choke.clear()
 
     def test_global_bucket_trips_after_max(self):
-        allowed = sum(1 for _ in range(api._GLOBAL_MAX + 5) if api._choke_allowed_global("tg_init"))
-        self.assertEqual(allowed, api._GLOBAL_MAX)
+        allowed = sum(1 for _ in range(api._CHOKE_GLOBAL_MAX + 5) if api._choke_allowed_global("tg_init"))
+        self.assertEqual(allowed, api._CHOKE_GLOBAL_MAX)
         self.assertFalse(api._choke_allowed_global("tg_init"))
 
     def test_buckets_independent(self):
-        for _ in range(api._GLOBAL_MAX):
+        for _ in range(api._CHOKE_GLOBAL_MAX):
             api._choke_allowed_global("tg_init")
         # Другой бакет ещё свободен (лимиты не пересекаются).
         self.assertTrue(api._choke_allowed_global("google_cb"))
@@ -650,11 +650,11 @@ class TestWebSocket(PortalApiTest, unittest.IsolatedAsyncioTestCase):
         while time.monotonic() < deadline:
             msg = await ws.receive(timeout=1.0)
             if msg.type is not web.WSMsgType.TEXT:
-                self.fail("socket closed before %r frame: %s" % (want, msg.type))
+                self.fail(f"socket closed before {want!r} frame: {msg.type}")
             frame = json.loads(msg.data)
             if frame.get("type") == want:
                 return frame
-        self.fail("no %r frame within deadline" % want)
+        self.fail(f"no {want!r} frame within deadline")
 
     async def test_anonymous_socket_is_refused(self):
         client, _app = await self._client()
@@ -857,7 +857,7 @@ class TestMetricsEndpoint(PortalApiTest, unittest.IsolatedAsyncioTestCase):
         async with client:
             await self._login(client)
             daemon = app[api.KEY_DAEMON]
-            for query, want in (("", 100), ("?limit=99999", 1000), ("?limit=0", 1), ("?limit=abc", 100)):
+            for query, _want in (("", 100), ("?limit=99999", 1000), ("?limit=0", 1), ("?limit=abc", 100)):
                 resp = await client.get("/api/metrics" + query)
                 self.assertEqual(resp.status, 200)
             self.assertEqual(daemon.metrics_limits, [100, 1000, 1, 100])

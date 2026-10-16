@@ -6,6 +6,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var screen = $("screen"), tabs = $("tabs"), gate = $("gate"), toastBox = $("toast");
   var state = null, etag = null, pollTimer = 0, tab = "field", nets = [], presets = null;
+  var histRows = [];
   var wiz = { step: 1, net: "vibevibe", wallets: 50, cycles: 5, profile: "normal", faucet: true };
   var GLYPH = { i: "·", w: "■", o: "▣", e: "x", r: "~" };
   var lang = "ru";
@@ -211,28 +212,48 @@
     screen.innerHTML = backRow() + '<div class="tma-card"><div class="skel"></div></div>';
     try {
       var body = await api("/api/miniapp/history?limit=20");
-      var rows = (body.history || []).map(function (c) {
+      histRows = body.history || [];
+      var rows = histRows.map(function (c) {
         return "<tr><td>#" + esc(c.id) + "</td><td>" + esc(c.actions_ok) + "</td><td>" +
           esc(c.errors) + "</td><td>" + esc(c.wallets) + "</td></tr>";
       }).join("") || '<tr><td colspan="4">—</td></tr>';
-      var sp = spark((body.history || []).map(function (c) { return c.actions_ok || 0; }));
+      var sp = spark(histRows.map(function (c) { return c.actions_ok || 0; }));
       screen.innerHTML = backRow() + '<div class="tma-card"><svg width="100%" height="36">' +
         "<text x='0' y='24' font-size='20' fill='currentColor'>" + esc(sp) + "</text></svg>" +
-        '<table><tr><th>#</th><th>OK</th><th>err</th><th>wal</th></tr>' + rows + "</table></div>";
+        '<table><tr><th>#</th><th>OK</th><th>err</th><th>wal</th></tr>' + rows + "</table>" +
+        '<div class="tma-row"><button class="tma-btn" data-act="histcsv">CSV</button></div></div>';
     } catch (e) {
       screen.innerHTML = backRow() + '<div class="tma-card"><p>Ошибка сети</p>' +
         '<button class="tma-btn" data-go="history">' + esc(T.retry[lang]) + "</button></div>";
     }
     setMain(null);
   }
+  function histCsv() {
+    if (!histRows.length) { toast("empty"); return; }
+    var csv = "id,actions_ok,errors,wallets,duration_s,started_at\n" + histRows.map(function (c) {
+      return [c.id, c.actions_ok, c.errors, c.wallets, c.duration_s, c.started_at].join(",");
+    }).join("\n");
+    var b = new Blob([csv], { type: "text/csv" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(b);
+    a.download = "harvest_history.csv";
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  }
 
   /* ---------- опасная зона ---------- */
   async function renderDanger() {
     var s = state || {};
+    var sched = "";
+    try {
+      var sc = await api("/api/miniapp/scheduler");
+      sched = '<div class="tma-kv"><span>расписание</span><b>' +
+        esc((sc.tasks || []).length) + " задач</b></div>";
+    } catch (e) { sched = ""; }
     screen.innerHTML = backRow() +
       '<div class="tma-card"><p>Файл содержит приватные ключи. Только тестнет.</p>' +
       '<div class="tma-row"><button class="tma-btn" data-exp="csv">CSV</button>' +
-      '<button class="tma-btn" data-exp="json">JSON</button></div></div>' +
+      '<button class="tma-btn" data-exp="json">JSON</button></div></div>' + sched +
       '<div class="tma-card"><div class="tma-row"><button class="tma-btn" data-mode="1">Режим: ' +
       esc(s.mode || "novice") + '</button><button class="tma-btn" data-lang="1">Язык: ' +
       esc((s.lang || "ru").toUpperCase()) + "</button></div></div>";
@@ -318,6 +339,7 @@
     if (el.getAttribute("data-go")) { go(el.getAttribute("data-go")); return; }
     var act = el.getAttribute("data-act");
     if (act === "refresh") { loadState(true); return; }
+    if (act === "histcsv") { histCsv(); return; }
     if (act === "copy") {
       var pre = $("cmdPre");
       var txt = pre ? pre.textContent : "";

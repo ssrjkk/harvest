@@ -456,9 +456,24 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         logger.info("[AUDIT] miniapp settings user=%s mode=%s lang=%s", tg_id, mode, lang)
         return web.json_response({"ok": True, "mode": mode, "lang": lang})
 
+    async def api_scheduler(request: web.Request) -> web.Response:
+        """Состояние планировщика (P4: чтение; управление — портал/bot)."""
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, _tg, _f = ctx
+        try:
+            state = daemon.scheduler_state()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+        if not isinstance(state, dict):
+            return web.json_response({"error": "failed"}, status=500)
+        return web.json_response(state)
+
     app.router.add_get("/app/", app_page)
     app.router.add_get("/api/miniapp/state", api_state)
     app.router.add_get("/api/miniapp/history", api_history)
+    app.router.add_get("/api/miniapp/scheduler", api_scheduler)
     app.router.add_get("/api/miniapp/networks", api_networks)
     app.router.add_post("/api/miniapp/farm", api_farm)
     app.router.add_post("/api/miniapp/command", api_command)

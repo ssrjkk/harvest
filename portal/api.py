@@ -944,7 +944,7 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
             await ws.send_json({"type": "status", **stats})
             try:
                 msg = await ws.receive(timeout=WS_PUSH_S)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             if msg.type not in (web.WSMsgType.TEXT, web.WSMsgType.BINARY):
                 break
