@@ -256,7 +256,8 @@ function renderLive(s){
     ||'<tr><td colspan="2" class="note">—</td></tr>';
   $("#tHistory").innerHTML=(s.history||[]).map(c=>{const e=c.errors||0;
     const b=e===0?'<span class="pill ok">ok</span>':`<span class="pill warn">${esc(e)}</span>`;
-    return `<tr><td class="num" style="color:var(--muted)">${esc(c.id)}</td><td>${b}</td><td class="num">${fmt(c.actions_ok)}</td><td class="num">${esc(e)}</td><td class="num">${fmt(c.duration_s)}</td><td class="num">${esc(c.wallets)}</td></tr>`;}).join("")
+    const dur=Number(c.duration_s);const durS=isFinite(dur)?dur.toFixed(1):"—";
+    return `<tr><td class="num" style="color:var(--muted)">${esc(c.id)}</td><td>${b}</td><td class="num">${fmt(c.actions_ok)}</td><td class="num">${esc(e)}</td><td class="num">${durS}</td><td class="num">${esc(c.wallets)}</td></tr>`;}).join("")
     ||'<tr><td colspan="6" class="note">—</td></tr>';
 }
 function netCard(n,cur){
