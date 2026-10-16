@@ -45,6 +45,9 @@ behavior:
   burst_prob: [0.02, 0.12]
   burst_multiplier: [1.3, 2.5]
   start_delay: [0, 8]
+  weekend_strength: [0.0, 0.5]
+  day_start: [6.0, 12.0]
+  day_width: [6.0, 14.0]
 advanced:
   gas_limit: 100000
   min_gas_for_action: 0.003

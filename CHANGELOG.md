@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `cfg_hi` для бюджетов таймаутов пула; `config_vibevibe.yaml`: секция
   `behavior` с широкими диапазонами, workers 20→32, кран 8→16,
   действий за цикл [3,8]→[3,10]
+- Оси ритмов профилей: `weekend_strength` (выходные активнее),
+  `day_start`/`day_width` (личное окно: внутри ×0.85, снаружи ×1.8
+  к вероятности пропуска; `day_of_week_factor`/`hour_window_factor`,
+  учет в `Farmer._skip_probability`); флот добит до 1000 кошельков;
+  паритет behavior-диапазонов и мощности во всех сетях
 - P4: PNG-карточка статуса (`portal/status_card.py`, палитра tokens.json,
   кнопка «Карточка» в диагностике бота, Pillow в requirements-portal +
   fonts-dejavu в Docker), scheduler-view и CSV истории в Mini App
