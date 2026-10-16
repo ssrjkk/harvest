@@ -305,6 +305,28 @@ class TestBotCommands(unittest.TestCase):
             self.assertIn(must, names)
 
 
+class TestRenderProfiles(unittest.TestCase):
+    def test_ru_and_en(self):
+        s = {"n": 1000, "activity_lo": 0.3, "activity_hi": 2.0, "corridors": 18,
+             "rest": 999, "burst": 998, "weekend": 500, "windows": 7}
+        t = R.render_profiles(s, "ru")
+        self.assertIn("ПРОФИЛИ", t)
+        self.assertIn("1000", t)
+        self.assertIn("18", t)
+        t2 = R.render_profiles(s, "en")
+        self.assertIn("PROFILES", t2)
+        self.assertIn("corridors", t2)
+        self.assertLessEqual(len(t2), 4096)
+
+    def test_empty_and_no_addresses(self):
+        t = R.render_profiles({}, "ru")
+        self.assertIn("ПРОФИЛИ", t)
+        self.assertNotIn("0x", t)
+        self.assertIn("btn_profiles", R._STR)
+        self.assertIn("Профили", R.tr("btn_profiles", "ru"))
+        self.assertIn("Profiles", R.tr("btn_profiles", "en"))
+
+
 class TestRenderEdges(unittest.TestCase):
     def test_bad_inputs(self):
         self.assertEqual(R.sparkline(["x"]), "—")

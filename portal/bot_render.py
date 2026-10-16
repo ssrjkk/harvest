@@ -213,6 +213,7 @@ _STR: dict[str, dict[str, str]] = {
     "btn_wallets": {"ru": "[ Кошельки ]", "en": "[ Wallets ]"},
     "btn_history": {"ru": "[ История ]", "en": "[ History ]"},
     "btn_builder": {"ru": "[ Конструктор ]", "en": "[ Builder ]"},
+    "btn_profiles": {"ru": "[ Профили ]", "en": "[ Profiles ]"},
     "btn_ref": {"ru": "[ Справочник ]", "en": "[ Manual ]"},
     "btn_diag": {"ru": "[ Диагностика ]", "en": "[ Diagnostics ]"},
     "btn_danger": {"ru": "[ Опасная зона ]", "en": "[ Danger zone ]"},
@@ -335,6 +336,31 @@ def render_scale(wallet_count: object, lang: str = "ru") -> str:
         if lang == "ru"
         else f"wallets: <b>{esc(wallet_count)}</b>\nCreation — up to 50 per call (HTTP/RPC guard)."
     )
+    return ensure_limit(f"<b>{head}</b>\n{body}")
+
+
+def render_profiles(summary: dict, lang: str = "ru") -> str:
+    """Экран разнообразия профилей флота (бот): только агрегаты, без адресов."""
+    n = summary.get("n", 0)
+    head = "HARVEST // ПРОФИЛИ" if lang == "ru" else "HARVEST // PROFILES"
+    if lang == "ru":
+        body = (
+            f"кошельков: <b>{esc(n)}</b>\n"
+            f"активность {esc(summary.get('activity_lo', 0))}–{esc(summary.get('activity_hi', 0))} "
+            f"· коридоров {esc(summary.get('corridors', 0))}\n"
+            f"отдых {esc(summary.get('rest', 0))} · всплески {esc(summary.get('burst', 0))} "
+            f"· выходные {esc(summary.get('weekend', 0))}\n"
+            f"окон часов: {esc(summary.get('windows', 0))}"
+        )
+    else:
+        body = (
+            f"wallets: <b>{esc(n)}</b>\n"
+            f"activity {esc(summary.get('activity_lo', 0))}–{esc(summary.get('activity_hi', 0))} "
+            f"· corridors {esc(summary.get('corridors', 0))}\n"
+            f"rest {esc(summary.get('rest', 0))} · bursts {esc(summary.get('burst', 0))} "
+            f"· weekends {esc(summary.get('weekend', 0))}\n"
+            f"hour windows: {esc(summary.get('windows', 0))}"
+        )
     return ensure_limit(f"<b>{head}</b>\n{body}")
 
 

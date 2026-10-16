@@ -11,6 +11,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from portal import bot_ops as _ops
 from portal import bot_render as R
 from portal import bot_settings as _bss
 
@@ -208,8 +209,9 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[STOP]", text)
         self.assertIn("vibe/vibe · 46630", text)
         kb = call.message.edits[0][1]["reply_markup"]
-        self.assertEqual(len(kb.inline_keyboard), 6)  # 5 рядов + обновить/Live
+        self.assertEqual(len(kb.inline_keyboard), 7)  # 6 рядов + обновить/Live
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("v1:profiles:show", payloads)
         for p in payloads:
             self.assertLessEqual(len(p.encode("utf-8")), 64, p)
         # Запуск и Стоп не рядом: стоит Запуск.
@@ -404,6 +406,31 @@ class TestMaster(unittest.IsolatedAsyncioTestCase):
         call2 = _C(data="v1:master:cancel")
         await cb(call2, st)
         self.assertIn("ОТМЕНА", call2.message.answers[0][0][0])
+
+
+class TestProfilesSummary(unittest.TestCase):
+    def test_counts_and_bounds(self):
+        addrs = [f"0x{i:040x}" for i in range(30)]
+        beh = {"enabled": True, "rest_probability": [0.0, 1.0],
+               "weekend_strength": [0.0, 1.0], "day_start": [0.0, 24.0]}
+        s = _ops.profiles_summary(addrs, beh)
+        self.assertEqual(s["n"], 30)
+        self.assertLessEqual(s["activity_lo"], s["activity_hi"])
+        self.assertGreaterEqual(s["corridors"], 1)
+        for k in ("rest", "burst", "weekend", "windows"):
+            self.assertGreaterEqual(s[k], 0)
+            self.assertLessEqual(s[k], 30)
+
+    def test_empty_and_deterministic(self):
+        self.assertEqual(_ops.profiles_summary([], {})["n"], 0)
+        addrs = [f"0x{i:040x}" for i in range(10)]
+        self.assertEqual(_ops.profiles_summary(addrs, {}),
+                         _ops.profiles_summary(addrs, {}))
+
+    def test_no_addresses_in_values(self):
+        s = _ops.profiles_summary(["0x" + "ab" * 20], {})
+        blob = " ".join(str(v) for v in s.values())
+        self.assertNotIn("0xab", blob)
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
@@ -882,6 +909,29 @@ class TestV1Gaps(unittest.IsolatedAsyncioTestCase):
         stc.clear = mock.AsyncMock(side_effect=RuntimeError("x"))  # type: ignore[method-assign]
         await cb(callc, stc)
         self.assertIn("ОТМЕНА", callc.message.answers[0][0][0])
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        bt._flood_last.clear()
+        bs._mem.clear()
+
+    def tearDown(self):
+        bt._flood_last.clear()
+        bs._mem.clear()
+
+    async def test_profiles_show_and_home_button(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        call = _C(data="v1:profiles:show")
+        await cb(call, _State())
+        self.assertIn("ПРОФИЛИ", call.message.edits[0][0][0])
+        home = _C(data="v1:home:show")
+        await cb(home, _State())
+        payloads = [b for row in home.message.edits[0][1]["reply_markup"].inline_keyboard
+                    for b in row]
+        self.assertIn("v1:profiles:show", [b.callback_data for b in payloads])
 
 
 if __name__ == "__main__":

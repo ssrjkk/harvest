@@ -380,6 +380,30 @@ def apply_profile_flags(cmd: str, profile: str) -> str:
     return cmd
 
 
+def profiles_summary(addresses: list[str], beh: dict | None = None) -> dict:
+    """Сводка разнообразия профилей флота для экрана [Профили] (бот).
+
+    Чистая функция: адреса + behavior-секция конфига → счётчики.
+    """
+    from core.behavior import profile_for
+
+    cfg = {"behavior": beh or {}}
+    addrs = [str(a) for a in (addresses or []) if a]
+    profs = [profile_for(a, cfg) for a in addrs]
+    acts = [p.activity for p in profs]
+    corridors = {(p.actions_lo, p.actions_width) for p in profs}
+    return {
+        "n": len(addrs),
+        "activity_lo": round(min(acts), 2) if acts else 0.0,
+        "activity_hi": round(max(acts), 2) if acts else 0.0,
+        "corridors": len(corridors),
+        "rest": sum(1 for p in profs if p.rest_prob > 0),
+        "burst": sum(1 for p in profs if p.burst_prob > 0),
+        "weekend": sum(1 for p in profs if p.weekend_strength > 0),
+        "windows": len({round(p.day_start) for p in profs}),
+    }
+
+
 # ---------------- /check ----------------
 
 def check_config_text(text: str) -> tuple[bool, list[str]]:

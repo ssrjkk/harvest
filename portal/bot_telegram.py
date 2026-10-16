@@ -853,7 +853,8 @@ def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = Fals
         [_b("btn_net", "v1:net:show"), _b("btn_scale", "v1:scale:show")],
         [_b("btn_wallets", "v1:wallets:page:1"), _b("btn_history", "v1:history:show")],
         [_b("btn_builder", "v1:builder:show"), _b("btn_ref", "v1:ref:show")],
-        [_b("btn_diag", "v1:diag:show"), _b("btn_danger", "v1:danger:show")],
+        [_b("btn_profiles", "v1:profiles:show"), _b("btn_diag", "v1:diag:show")],
+        [_b("btn_danger", "v1:danger:show")],
         [_b("btn_refresh", "v1:home:refresh"), live],
     ])
 
@@ -1221,6 +1222,19 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await call.message.answer(f"[{'ok' if ok else 'err'}] stop")
         await _home()
         return True
+    if screen == "profiles" and action == "show":
+        try:
+            wallets = await daemon.all_wallets()
+        except Exception:  # noqa: BLE001
+            wallets = []
+        cfg = getattr(daemon, "config", None) or {}
+        beh = (cfg.get("behavior") or {}) if isinstance(cfg, dict) else {}
+        summary = _bot_ops.profiles_summary(
+            [w.get("address", "") for w in wallets if isinstance(w, dict)], beh)
+        await call.message.edit_text(
+            _R.render_profiles(summary, lang), parse_mode=ParseMode.HTML,
+            reply_markup=_nav_kb("v1:home:show", lang), link_preview_options=_NO_PREVIEW)
+        return True
     if screen == "net" and action == "show":
         answer, kb = _networks_view(daemon)
         await call.message.edit_text(answer, parse_mode=ParseMode.HTML,
@@ -1507,7 +1521,8 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             return True
         await state.update_data(m_cycles=n)
         await call.message.answer(
-            "Шаг 3/3 — профиль (быстрый = --fast: меньше задержек, заметнее):",
+            "Шаг 3/3 — профиль (быстрый = --fast: меньше задержек, заметнее).\n"
+            "Ритмы флота: выходные активнее, у каждого своё окно часов — детали в [Профили]:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="[Тихий]", callback_data="v1:master:profile:quiet"),
                  InlineKeyboardButton(text="[Обычный]", callback_data="v1:master:profile:normal"),
