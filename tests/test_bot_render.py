@@ -305,5 +305,41 @@ class TestBotCommands(unittest.TestCase):
             self.assertIn(must, names)
 
 
+class TestRenderEdges(unittest.TestCase):
+    def test_bad_inputs(self):
+        self.assertEqual(R.sparkline(["x"]), "—")
+        self.assertEqual(R.sparkline([5, 5]), "▁▁")
+        self.assertIn("(0/0)", R.progress_cells("x", None))
+        self.assertIn("(0/0)", R.progress_cells(None, "y"))
+        self.assertEqual(R.short_addr(""), "")
+        self.assertEqual(R.short_addr(None), "")
+
+    def test_cb_limits(self):
+        with self.assertRaises(ValueError):
+            R.cb("home", "show", "x" * 100)
+        self.assertIsNone(R.parse_cb("v1:home"))
+        self.assertIsNone(R.parse_cb(""))
+
+    def test_other_screens(self):
+        st = {"running": True, "paused": False, "network": "n", "chain_id": 1}
+        self.assertIn("СТОП", R.render_stop_confirm(st))
+        self.assertIn("60", R.render_danger("pro", "en"))
+        self.assertIn("DANGER", R.render_danger("pro", "en"))
+        self.assertIn(".enc", R.render_export_confirm("csv", enc=True, lang="en"))
+        self.assertIn(" ПАРОЛЬ", R.render_enc_ask("ru"))
+        self.assertIn("SCALE", R.render_scale(7, "en"))
+        self.assertIn("BUILDER", R.render_builder("en"))
+        self.assertIn("DONE", R.render_master_done("python auto.py", "en"))
+        self.assertIn("АЛЕРТ", R.render_alert("bot123:SECRET boom"))
+        self.assertNotIn("SECRET", R.render_alert("bot123:SECRET boom"))
+        text, pages = R.render_wallets_list([], 1, 4, "en")
+        self.assertEqual(pages, 1)
+        self.assertIn("WALLETS", text)
+        text, pages = R.render_wallets_list(
+            [{"address": "0x" + "ab" * 20, "total_actions": 2}] * 5, 9, 4, "ru")
+        self.assertEqual(pages, 2)
+        self.assertIn("…", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

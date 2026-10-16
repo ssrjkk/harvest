@@ -1,5 +1,6 @@
 """Приёмка ТЗ этап 3 (п.9): Mini App — авторизация, API, приватность, публикация."""
 
+import asyncio
 import hashlib
 import hmac
 import json
@@ -116,8 +117,10 @@ def _mcfg(**env):
 
 class MiniBase(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
+        from portal import bot_telegram as _bt
         from portal import miniapp as _m
 
+        _bt._flood_last.clear()
         _m._mut.clear()
         _m._choke.clear()
         _m._gchoke.clear()
@@ -380,6 +383,138 @@ class TestPublicMode(MiniBase):
         csp = resp.headers.get("Content-Security-Policy", "")
         self.assertIn("https://telegram.org", csp)
         self.assertIn("frame-ancestors", csp)
+
+
+class TestMiniErrors(MiniBase):
+    async def test_no_token_configured(self):
+        from portal import miniapp as _m
+
+        client = await self._client(TELEGRAM_BOT_TOKEN="")
+        resp = await client.get("/api/miniapp/state", headers=self._h(_init()))
+        self.assertEqual(resp.status, 401)
+        self.assertEqual(await resp.json(), {"error": "unauthorized"})
+        _m._choke.clear()
+        _m._gchoke.clear()
+
+    async def test_bad_user_id_type(self):
+        client = await self._client()
+        init = _sign({"user": json.dumps({"id": [1]}),
+                      "auth_date": str(int(time.time()))})
+        resp = await client.get("/api/miniapp/state", headers=self._h(init))
+        self.assertEqual(resp.status, 401)
+
+    async def test_choke(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        for _ in range(35):
+            _m._choke_ok("tma", "127.0.0.1")
+        resp = await client.get("/api/miniapp/state", headers=self._h(_init()))
+        self.assertEqual(resp.status, 401)
+
+    async def test_bad_bodies(self):
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.post("/api/miniapp/farm", data=b"{broken",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/command", json={"kind": "cmd",
+                                 "net": "vibevibe", "wallets": "xx"},
+                                 headers=h)
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/command", json={"kind": "nope"},
+                                 headers=h)
+        self.assertEqual(resp.status, 404)
+        resp = await client.post("/api/miniapp/export/token",
+                                 json={"format": "xml"}, headers=h)
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/settings", data=b"{broken",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 400)
+
+    async def test_mut_rate(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        h = self._h(_init())
+        for _ in range(35):
+            _m._mut_ok(123, "settings")
+        resp = await client.post("/api/miniapp/settings", json={"mode": "pro"},
+                                 headers=h)
+        self.assertEqual(resp.status, 429)
+
+    async def test_stop_task_and_history_limit(self):
+        client = await self._client()
+        daemon = client._server.app[api.KEY_DAEMON]
+        daemon.running = True
+        resp = await client.post("/api/miniapp/farm", json={"action": "stop"},
+                                 headers=self._h(_init()))
+        self.assertEqual((await resp.json())["stopping"], True)
+        await asyncio.sleep(0.05)
+        resp = await client.get("/api/miniapp/history?limit=abc",
+                                headers=self._h(_init()))
+        self.assertEqual(resp.status, 200)
+
+    async def test_cfg_send_and_export_failure(self):
+        from portal import bot_telegram as _bt
+
+        _bt._flood_last.clear()
+        client = await self._client()
+        h = self._h(_init())
+
+        class _Boom:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def send_document(self, *a, **k):
+                raise RuntimeError("tg down")
+
+        with mock.patch("aiogram.Bot", return_value=_Boom()):
+            resp = await client.post("/api/miniapp/command",
+                                     json={"kind": "cfg_send", "net": "vibevibe"},
+                                     headers=h)
+            self.assertEqual(resp.status, 500)
+            resp = await client.post("/api/miniapp/export/token",
+                                     json={"format": "csv"}, headers=h)
+            token = (await resp.json())["confirm_token"]
+            resp = await client.post("/api/miniapp/export/request",
+                                     json={"format": "csv",
+                                           "confirm_token": token},
+                                     headers=h)
+            self.assertEqual(resp.status, 500)
+
+    async def test_scheduler_failure(self):
+        client = await self._client()
+        daemon = client._server.app[api.KEY_DAEMON]
+        daemon.scheduler_state = mock.Mock(side_effect=RuntimeError("x"))
+        resp = await client.get("/api/miniapp/scheduler",
+                                headers=self._h(_init()))
+        self.assertEqual(resp.status, 500)
+
+    async def test_cfg_send_ok(self):
+        client = await self._client()
+        h = self._h(_init())
+
+        class _Ok:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def send_document(self, *a, **k):
+                m = mock.Mock()
+                m.message_id = 1
+                return m
+
+        with mock.patch("aiogram.Bot", return_value=_Ok()):
+            resp = await client.post("/api/miniapp/command",
+                                     json={"kind": "cfg_send", "net": "vibevibe"},
+                                     headers=h)
+            self.assertEqual((await resp.json())["sent"], "chat")
 
 
 if __name__ == "__main__":

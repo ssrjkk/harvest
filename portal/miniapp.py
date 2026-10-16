@@ -336,28 +336,38 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         try:
             if kind == "cmd":
                 slug = str(body.get("net", "vibevibe"))
-                wallets = int(body.get("wallets", 50))
-                cycles = int(body.get("cycles", 5))
+                try:
+                    wallets = int(body.get("wallets", 50))
+                    cycles = int(body.get("cycles", 5))
+                except (TypeError, ValueError):
+                    return web.json_response({"error": "bad numbers"}, status=400)
                 cmd = _bot_ops.build_command(
                     slug, wallets, cycles, not bool(body.get("faucet", True)))
                 cmd = _bot_ops.apply_profile_flags(cmd, str(body.get("profile", "normal")))
                 return web.json_response({"ok": True, "cmd": cmd})
             if kind in {"cfg", "cfg_send"}:
                 slug = str(body.get("net", "vibevibe"))
-                wallets = int(body.get("wallets", 50))
+                try:
+                    wallets = int(body.get("wallets", 50))
+                except (TypeError, ValueError):
+                    return web.json_response({"error": "bad numbers"}, status=400)
                 filename, content = _bot_ops.build_config_yaml(slug, wallets)
                 if kind == "cfg_send":
                     from aiogram import Bot
                     from aiogram.types import BufferedInputFile
 
                     bot = Bot(token=cfg.telegram_token)
-                    async with bot:
-                        await bot.send_document(
-                            chat_id=tg_id,
-                            document=BufferedInputFile(
-                                content.encode("utf-8"), filename=filename),
-                            caption="Mini App: готовый YAML.",
-                        )
+                    try:
+                        async with bot:
+                            await bot.send_document(
+                                chat_id=tg_id,
+                                document=BufferedInputFile(
+                                    content.encode("utf-8"), filename=filename),
+                                caption="Mini App: готовый YAML.",
+                            )
+                    except Exception:  # noqa: BLE001
+                        logger.warning("miniapp cfg_send упал", exc_info=True)
+                        return web.json_response({"error": "failed"}, status=500)
                     logger.info("[AUDIT] miniapp cfg_send user=%s net=%s", tg_id, slug)
                     return web.json_response({"ok": True, "sent": "chat"})
                 return web.json_response({"ok": True, "filename": filename, "yaml": content})

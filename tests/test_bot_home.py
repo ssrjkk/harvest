@@ -12,6 +12,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from portal import bot_render as R
+from portal import bot_settings as _bss
 
 try:
     import portal.bot_settings as bs
@@ -21,6 +22,7 @@ try:
 
     HAS_BOT = True
 except Exception:  # noqa: BLE001
+    bs = _bss
     HAS_BOT = False
 
 
@@ -556,6 +558,51 @@ class TestRenderStrings(unittest.TestCase):
         t = R.render_danger("novice", "ru")
         self.assertIn("60", t)
         self.assertIn("рестарт", t.lower())
+
+
+class TestBotSettingsDb(unittest.IsolatedAsyncioTestCase):
+    async def test_sqlite_roundtrip(self):
+        import sqlite3
+        import tempfile
+
+        import portal.bot_settings as _bs
+
+        with tempfile.TemporaryDirectory() as td:
+            db = td + "/s.db"
+            self.assertEqual(await _bs.get_settings(db, 7), ("novice", "ru"))
+            self.assertEqual(await _bs.set_mode(db, 7, "pro"), "pro")
+            self.assertEqual(await _bs.set_lang(db, 7, "en"), "en")
+            self.assertEqual(await _bs.get_settings(db, 7), ("pro", "en"))
+            con = sqlite3.connect(db)
+            self.assertEqual(
+                con.execute("SELECT mode, lang FROM bot_settings WHERE user_id=7"
+                            ).fetchone(), ("pro", "en"))
+            con.close()
+
+    async def test_broken_rows_normalized(self):
+        import sqlite3
+        import tempfile
+
+        import portal.bot_settings as _bs
+
+        with tempfile.TemporaryDirectory() as td:
+            db = td + "/s.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE bot_settings (user_id INTEGER PRIMARY KEY,"
+                        " mode TEXT, lang TEXT, updated_at REAL)")
+            con.execute("INSERT INTO bot_settings VALUES (9, 'xx', 'yy', 0)")
+            con.commit()
+            con.close()
+            self.assertEqual(await _bs.get_settings(db, 9), ("novice", "ru"))
+            self.assertEqual(await _bs.set_mode(db, 9, "xx"), "novice")
+
+    async def test_unwritable_path_falls_back_to_memory(self):
+        import portal.bot_settings as _bs
+
+        bs._mem.clear()
+        self.assertEqual(await _bs.set_mode("/no/such/dir/x.db", 3, "pro"), "pro")
+        self.assertEqual(await _bs.get_settings("/no/such/dir/x.db", 3), ("pro", "ru"))
+        bs._mem.clear()
 
 
 if __name__ == "__main__":
