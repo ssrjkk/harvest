@@ -17,7 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import aiosqlite
@@ -112,7 +112,7 @@ async def collect() -> dict:
         "wallet_cells": {"v": 1, "n": wallet_count, "cells": cells},
         "history": history,
         "chart": {"actions": [], "errors": [], "processed": []},
-        "updated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "updated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
 

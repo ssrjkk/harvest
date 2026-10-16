@@ -7,6 +7,14 @@ master*.key
 *.license_cache
 
 # Экспорт кошельков (крипто-секреты)
+# --export NAME пишет {NAME}.csv/.json/.enc с произвольным NAME,
+# поэтому игнорируем расширения целиком, а нужные файлы — исключениями.
+*.csv
+*.enc
+*.json
+!abi/*.json
+!design/tokens.json
+!portal/links.json
 wallets_export*
 */wallets_export*
 wallets_*.json

@@ -10,4 +10,7 @@ import mimetypes
 mimetypes.add_type("font/woff2", ".woff2")
 mimetypes.add_type("font/woff", ".woff")
 
-__version__ = "0.1.0"
+try:
+    from core.version import VERSION as __version__
+except Exception:  # noqa: BLE001 — core недоступен в урезанном окружении
+    __version__ = "2.3.0"

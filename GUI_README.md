@@ -1,5 +1,11 @@
 # HARVEST GUI - Веб-интерфейс
 
+> LEGACY: этот файл описывает старый FastAPI-GUI (`core/web_gui.py`, `core/static/index.html`).
+> Актуальный портал — aiohttp (`portal/api.py`, `portal/static/index.html`):
+> `GET /api/stats`, `POST /api/wallets {"count": N}`, `GET /api/metrics`,
+> `GET /ws`, `POST /api/farm/{start,stop,pause,resume}`. Оба по умолчанию
+> `127.0.0.1:8080` — запускайте только один.
+
 **Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk
 
 Современный веб-интерфейс для управления фармером через браузер.

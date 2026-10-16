@@ -155,7 +155,7 @@ $$(".play-tabs button").forEach(b=>b.addEventListener("click",()=>{
 document.addEventListener("click",e=>{
   const b=e.target.closest("[data-copy]");if(!b)return;
   const pre=$("#"+b.dataset.copy);const txt=pre.textContent.replace(/\n?copy\s*$/,"");
-  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("copied")).catch(()=>{const r=document.createRange();r.selectNode(pre);getSelection().removeAllRanges();getSelection().addRange(r);try{document.execCommand("copy");toast("copied");}catch(_){toast("select + Ctrl+C");}});
+  (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>toast("copied")).catch(()=>{var ta=document.createElement("textarea");ta.value=txt;document.body.appendChild(ta);ta.select();try{document.execCommand("copy");toast("copied");}catch(_){toast("select + Ctrl+C");}ta.remove();});
 });
 $("#cfgCopy")?.addEventListener("click",()=>{const t=$("#cfgOut").textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("copied")).catch(()=>toast("select + Ctrl+C"));});
 $("#cmdCopy")?.addEventListener("click",()=>{const t=$("#cmdOut").textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast("copied")).catch(()=>toast("select + Ctrl+C"));});

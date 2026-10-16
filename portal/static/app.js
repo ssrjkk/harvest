@@ -4,7 +4,10 @@ const $ = (id) => document.getElementById(id);
 let actionsSeries = [], errorsSeries = [], procSeries = [];
 let networks = [];
 let stoppingRequested = false;
+// HTTP-опрос при обрыве /ws (live-кадры идут каждые WS_PUSH_S=3с с бэка).
+// Таблицы (история, кошельки) тяжёлые — опрашиваем в 3 раза реже.
 const refreshMs = 4000;
+const tablesRefreshMs = refreshMs * 3;
 
 function esc(v) {
   return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
@@ -681,7 +684,7 @@ async function init() {
   await loadMetrics();
   await tick();
   connectLive();
-  setInterval(refreshTables, refreshMs * 3);
+  setInterval(refreshTables, tablesRefreshMs);
 }
 
 init().catch(e => console.error(e));
