@@ -193,8 +193,9 @@ def render_home(
 
     up = fmt_uptime(state.get("uptime_s"))
     if en:
+        head = f"🌾 <b>harvest // Active</b> ({dot})" if running and not paused else f"🌾 <b>harvest // {mark}</b> ({dot})"
         lines = [
-            f"🌾 <b>harvest // Active</b> ({dot})" if running and not paused else f"🌾 <b>harvest // {mark}</b> ({dot})",
+            head,
             f"Network: {net} ({chain}) · RPC health: {health_pct}% ⚡️",
             "",
             f"📊 Fleet status ({f(total_n)} wallets):",
