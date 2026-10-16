@@ -14,7 +14,7 @@ faucet:
   min_balance: 0.005
   target_balance: 0.05
   retries: 2
-  max_concurrent: 8
+  max_concurrent: 16
   strategies:
     - type: direct
       url: https://faucet.testnet.chain.robinhood.com/claim
@@ -25,15 +25,31 @@ actions:
     min_amount: 0.0001
     max_amount: 0.001
 farming:
-  actions_per_cycle: [3, 8]
+  actions_per_cycle: [3, 10]
   delay_between_actions: [5, 20]
   delay_between_cycles: [3600, 7200]
   skip_cycle_probability: 0.05
+behavior:
+  enabled: true
+  activity: [0.3, 2.0]
+  rest_probability: [0.02, 0.12]
+  rest_cycles: [1, 4]
+  action_delay_scale: [0.5, 2.0]
+  cycle_delay_scale: [0.6, 2.2]
+  action_mix: [0.3, 0.8]
+  amount_jitter: [0.15, 0.4]
+  gas_deviation: [0.02, 0.12]
+  odd_amount_prob: [0.05, 0.35]
+  faucet_skip_prob: [0.05, 0.25]
+  daily_window: [0.1, 0.6]
+  burst_prob: [0.02, 0.12]
+  burst_multiplier: [1.3, 2.5]
+  start_delay: [0, 8]
 advanced:
   gas_limit: 100000
   min_gas_for_action: 0.003
 threading:
-  max_workers: 20
+  max_workers: 32
   timeout_per_wallet: 0
 database:
   path: farming_vibevibe.db

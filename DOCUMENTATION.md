@@ -816,6 +816,12 @@ transfer); реальные адреса подставляются операт
 `action_mix 0.4`, `amount_jitter 0.25`, `gas_deviation 0.06`,
 `odd_amount_prob 0.15`, `faucet_skip_prob 0.1`, `daily_window 0.3`,
 `burst_prob 0.05`, `burst_multiplier 1.6`, `start_delay [0,3]` секунд.
+Любой knob вероятности/силы (`rest_probability`, `odd_amount_prob`,
+`faucet_skip_prob`, `daily_window`, `burst_prob`, `burst_multiplier`,
+`gas_deviation`, `amount_jitter`, `action_mix`) принимает пару `[lo, hi]` —
+тогда значение разыгрывается на кошелёк детерминированно от адреса;
+скаляр — как раньше (одно на всех). Верхняя граница пары используется
+в бюджетах таймаутов пула (`cfg_hi`).
 
 ---
 

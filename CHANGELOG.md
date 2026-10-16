@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Поведенческие knob'ы диапазоном: любой knob вероятности/силы в `behavior:`
+  (`rest_probability`, `odd_amount_prob`, `faucet_skip_prob`, `daily_window`,
+  `burst_prob`, `burst_multiplier`, `gas_deviation`, `amount_jitter`,
+  `action_mix`) принимает `[lo, hi]` — розыгрыш на кошелёк детерминированно
+  от адреса (`core/behavior.py::_draw_bounded`, скаляр — как раньше);
+  `cfg_hi` для бюджетов таймаутов пула; `config_vibevibe.yaml`: секция
+  `behavior` с широкими диапазонами, workers 20→32, кран 8→16,
+  действий за цикл [3,8]→[3,10]
 - P4: PNG-карточка статуса (`portal/status_card.py`, палитра tokens.json,
   кнопка «Карточка» в диагностике бота, Pillow в requirements-portal +
   fonts-dejavu в Docker), scheduler-view и CSV истории в Mini App
