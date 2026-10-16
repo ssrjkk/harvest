@@ -105,7 +105,7 @@ python auto.py --doctor</pre>
 <section class="block" id="field">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
-    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Сайт перечитывает state.json раз в минуту; издатель работает по своему расписанию (рекомендовано каждые 15–60 минут). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
+    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Сайт перечитывает state.json раз в минуту (60 с); издатель работает по своему расписанию — по умолчанию каждые 30 минут (планировщик HarvestDashPublish, допустимо 15–60). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
     <div id="liveAlert"></div>
     <div class="termline" id="term">
       <span class="tstat"><i class="dot mut" id="dot"></i><b id="status">—</b></span>
@@ -610,7 +610,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
         <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебный фарминг активности. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
         <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вашей вкладки. Сайт статический, отправки на сервер нет — закройте вкладку или нажмите «Очистить», и они исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
         <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime делает фоллбэк на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
-        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — каждые 15–60 минут, история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — по умолчанию каждые 30 минут, допустимо 15–60; история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
       </div>
     </div>
   </div>
