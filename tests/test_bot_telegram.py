@@ -557,11 +557,11 @@ class TestExportConfirm(unittest.IsolatedAsyncioTestCase):
         call = _C(uid=123, data="menu:home")
         await dp.callback_query.handlers[0].callback(call)
         self.assertEqual(len(call.message.edits), 1)
-        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest //", call.message.edits[0][0][0])
         kb = call.message.edits[0][1]["reply_markup"]
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
         self.assertIn("v1:run:start", payloads)
-        self.assertIn("v1:danger:show", payloads)
+        self.assertIn("v1:menu:show", payloads)
         self.assertIn("v1:home:refresh", payloads)
         # Запуск и Стоп никогда не рядом (п.2 ТЗ).
         self.assertFalse("v1:run:start" in payloads and "v1:run:stop" in payloads)

@@ -37,35 +37,34 @@ def _state(**kw):
 class TestRenderHome(unittest.TestCase):
     def test_snapshot_novice(self):
         t = R.render_home(_state(), mode="novice", cells="o" * 20, cells_total=20)
-        self.assertIn("harvest // ПОЛЕ", t)
-        self.assertIn("[RUN]", t)
-        self.assertIn("vibe/vibe · 46630", t)
-        self.assertIn("кошельки  50", t)
-        self.assertIn("цикл 5 / ∞", t)
-        self.assertIn("обновлено", t)
+        self.assertIn("harvest //", t)
+        self.assertIn("Активен", t)
+        self.assertIn("vibe/vibe (46630)", t)
+        self.assertIn("цикл 5 из ∞", t)
+        self.assertIn("RPC health", t)
         self.assertLessEqual(len(t), 4096)
 
     def test_snapshot_pro(self):
         t = R.render_home(
-            _state(workers=8, rpc_ok="3/3", gas_limit=100000, cmd="python auto.py --wallets 50"),
+            _state(),
             mode="pro", cells="e" * 5, cells_total=5,
         )
-        self.assertIn("harvest // ПОЛЕ", t)
-        self.assertIn("workers 8", t)
-        self.assertIn("python auto.py", t)
+        self.assertIn("harvest //", t)
+        self.assertIn("Ошибки", t)
+        self.assertIn("Аптайм", t)
         self.assertLessEqual(len(t), 4096)
 
-    def test_modes_differ(self):
-        self.assertNotEqual(
-            R.render_home(_state(), mode="novice"),
-            R.render_home(_state(), mode="pro"),
-        )
+    def test_langs_differ(self):
+        ru = R.render_home(_state(), cells="o" * 5, cells_total=5)
+        en = R.render_home(_state(), cells="o" * 5, cells_total=5, lang="en")
+        self.assertNotEqual(ru, en)
+        self.assertIn("Fleet status", en)
 
     def test_pause_mark(self):
         t = R.render_home(_state(paused=True))
-        self.assertIn("[PAUSE]", t)
+        self.assertIn("Пауза", t)
         t2 = R.render_home(_state(running=False))
-        self.assertIn("[STOP]", t2)
+        self.assertIn("Остановлен", t2)
 
     def test_limit(self):
         self.assertTrue(R.ensure_limit("x" * 5000).endswith("…"))
@@ -307,18 +306,33 @@ class TestBotCommands(unittest.TestCase):
 
 class TestRenderProfiles(unittest.TestCase):
     def test_home_distribution_bar(self):
-        t = R.render_home(_state(), mode="novice", cells="o" * 10 + "e" * 5 + "i" * 5, cells_total=20)
-        self.assertIn("harvest // ПОЛЕ", t)
-        self.assertIn("▓", t)
-        self.assertIn("в работе", t)
-        self.assertIn("i 5 · w 0 · o 10 · e 5 · r 0", t)
-        self.assertIn("(10/20)", t)
-        self.assertIn("btn_terminal", R._STR)
-        self.assertIn("терминал", R.tr("btn_terminal", "ru").lower())
+        st = _state()
+        st.update({"pool": {"actions": 3410, "errors": 12}, "uptime_s": 15120})
+        t = R.render_home(st, mode="novice", cells="o" * 10 + "e" * 5 + "i" * 5, cells_total=20)
+        self.assertIn("harvest //", t)
+        self.assertIn("▰", t)
+        self.assertIn("▱", t)
+        self.assertIn("(10 в работе / 10 ожидают)", t)
+        self.assertIn("цикл 5 из ∞", t)
+        self.assertIn("3 410 tx", t)
+        self.assertIn("Аптайм: 4ч 12м", t)
+
+    def test_home_en_and_stopped(self):
+        t = R.render_home(_state(running=False), mode="novice", cells="", cells_total=0, lang="en")
+        self.assertIn("Stopped", t)
+        self.assertIn("Fleet status", t)
+        self.assertIn("Uptime", t)
 
     def test_home_empty_cells(self):
         t = R.render_home(_state(), mode="novice", cells="", cells_total=0)
-        self.assertIn("(0/50)", t)
+        self.assertIn("0% (0 в работе", t)
+
+    def test_fmt_uptime(self):
+        self.assertEqual(R.fmt_uptime(None), "—")
+        self.assertEqual(R.fmt_uptime(0), "—")
+        self.assertEqual(R.fmt_uptime(720), "12м")
+        self.assertEqual(R.fmt_uptime(15120), "4ч 12м")
+        self.assertEqual(R.fmt_uptime(90000), "1д 1ч")
 
     def test_ru_and_en(self):
         s = {"n": 1000, "activity_lo": 0.3, "activity_hi": 2.0, "corridors": 18,

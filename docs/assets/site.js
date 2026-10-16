@@ -68,7 +68,7 @@ a7:"Local FastAPI pulpit: buttons, WebSocket log, top and history (main.py → G
 a_n:"Per-layer detail: §3 of DOCUMENTATION.md in the repo (entry points, portal, configs, Tier-2 for real RPCs/contracts).",
 s6_h:"Portal & Telegram",s6_sub:"python -m portal starts aiohttp (web + API) and, with a token, the bot. Secrets via env only. Fail-closed: non-loopback bind with no login method refuses to start.",
 po_d:"Purpose",po1:"Session signing, min 16 chars",po2:"BotFather token",po3:"Default-deny user_id list",po4:"DB master key / web-login PIN",po6:"Farmer DB path / farmer config",
-tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, /doctor, /history, /export — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, no emoji. Values escaped, generic error replies.",
+tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, /doctor, /history, /export — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, status emoji on the home screen. Values escaped, generic error replies.",
 dp_p:"Ready kit: Dockerfile + compose, long-polling with no public URL, Caddy for HTTPS later, .env template, healthcheck, data volume.",
 s7_h:"Security — closed by default",
 b1_h:"Encryption",b1_p:"Seeds: AES-256-GCM (12B nonce, AAD wallet-seed). Export files: AES-256-CBC v2 — PBKDF2-SHA256 100k, separated encrypt/MAC keys, HMAC verified before writing.",

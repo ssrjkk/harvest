@@ -3,7 +3,7 @@
 Все экраны строятся здесь; хендлеры только вызывают render_* и отправляют.
 parse_mode HTML, динамика экранирована, лимит 4096 с усечением «…».
 
-Метки: [RUN]/[PAUSE]/[ERR]/[STOP]/[ok]/[warn] — без emoji.
+Метки: [RUN]/[PAUSE]/[ERR]/[STOP]/[ok]/[warn]; эмодзи — только home-статус.
 Спарклайны ▁▂▃▄▅▆▇█, прогресс ▓/░, адреса 0xb3E4…B029E.
 Сетка поля: · idle, ■ working, ▣ ok, x err, ~ rest (10 в ряд, макс. 100 + «+N»).
 
@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import UTC, datetime
 
 MAX_TEXT_LEN = 4096
 
@@ -140,29 +139,31 @@ def render_home(
     cells: str = "",
     cells_total: int = 0,
     updated: str = "",
+    lang: str = "ru",
 ) -> str:
     """Домашний экран «ПОЛЕ» (п.2 ТЗ). Одно сообщение, правка на месте.
 
     state: running/paused/network/chain_id/wallet_count/cycle/cycles_total/
-      errors/health_factor. cells: строка формата iwoer (см. wallet_cells).
-    Вместо сырой ASCII-сетки — полоса распределения по состояниям и счётчики:
-    сетка из сотен значков не читается и прячет 90% флота за «+N».
+      errors/health_factor/uptime_s. cells: строка формата iwoer.
+    Формат — чистый статус по видению v3.0: заголовок, сеть+health,
+    полоса флота ▰▱, прогресс цикла, успех/ошибки, аптайм. Только реальные
+    цифры из state/cells — никаких нарисованных балансов и стримов.
     """
     running = bool(state.get("running"))
     paused = bool(state.get("paused"))
-    mark = LABELS["pause"] if running and paused else (LABELS["run"] if running else LABELS["stop"])
+    en = lang == "en"
+    if running and paused:
+        mark, dot = ("Пауза", "⏸") if not en else ("Paused", "⏸")
+    elif running:
+        mark, dot = ("Активен", "🟢") if not en else ("Active", "🟢")
+    else:
+        mark, dot = ("Остановлен", "🔴") if not en else ("Stopped", "🔴")
     net = esc(state.get("network", "—"))
     chain = esc(state.get("chain_id", "—"))
-    wallets = esc(state.get("wallet_count", "—"))
-    cycle = esc(state.get("cycle", "—"))
-    total = state.get("cycles_total", "∞")
-    total_s = "∞" if total in (0, "0", None, "∞") else esc(total)
-    errors = esc(state.get("errors", 0))
     try:
-        health = float(state.get("health_factor", 0.0) or 0.0)
+        health_pct = round(float(state.get("health_factor", 0.0) or 0.0) * 100)
     except (TypeError, ValueError):
-        health = 0.0
-    stamp = esc(updated or datetime.now(UTC).strftime("%H:%M UTC"))
+        health_pct = 0
     try:
         total_n = int(cells_total or state.get("wallet_count") or 0)
     except (TypeError, ValueError):
@@ -171,34 +172,69 @@ def render_home(
     for ch in str(cells or ""):
         if ch in dist:
             dist[ch] += 1
-    bar = progress_cells(dist["w"] + dist["o"], total_n or sum(dist.values())) + " в работе"
-    cells_line = (
-        f"i {dist['i']} · w {dist['w']} · o {dist['o']} · e {dist['e']} · r {dist['r']}"
-    )
-    lines = [
-        "<b>harvest // ПОЛЕ</b>",
-        f"{mark}  {net} · {chain}",
-        LABELS["sep"],
-        f"кошельки  {wallets}      цикл {cycle} / {total_s}",
-        f"ошибки    {errors}       health {health:.2f}",
-        bar,
-        cells_line,
-        f"обновлено {stamp}",
-    ]
-    if mode == "pro":
-        try:
-            workers = int(state.get("workers", 0) or 0)
-        except (TypeError, ValueError):
-            workers = 0
-        lines.append(
-            f"workers {esc(workers)} · rpc {esc(state.get('rpc_ok', '—'))} · "
-            f"gas {esc(state.get('gas_limit', '—'))}"
-        )
-        if state.get("cmd"):
-            lines.append(f"<pre>{esc(state['cmd'])}</pre>")
+    active = dist["w"] + dist["o"]
+    pct = round(active / total_n * 100) if total_n else 0
+    filled = max(0, min(10, round(pct / 10)))
+    bar = "▰" * filled + "▱" * (10 - filled)
+    try:
+        cycle_n = int(state.get("cycle") or 0)
+    except (TypeError, ValueError):
+        cycle_n = 0
+    try:
+        ok_n = int((state.get("pool") or {}).get("actions", state.get("actions", 0)) or 0)
+    except (TypeError, ValueError):
+        ok_n = 0
+    try:
+        err_n = int((state.get("pool") or {}).get("errors", state.get("errors", 0)) or 0)
+    except (TypeError, ValueError):
+        err_n = 0
+    def f(n: object) -> str:
+        return f"{int(n):,}".replace(",", " " if not en else ",")
+
+    up = fmt_uptime(state.get("uptime_s"))
+    if en:
+        lines = [
+            f"🌾 <b>harvest // Active</b> ({dot})" if running and not paused else f"🌾 <b>harvest // {mark}</b> ({dot})",
+            f"Network: {net} ({chain}) · RPC health: {health_pct}% ⚡️",
+            "",
+            f"📊 Fleet status ({f(total_n)} wallets):",
+            f"{bar} {pct}% ({f(active)} working / {f(total_n - active)} waiting)",
+            "",
+            f"🔄 Progress: cycle {cycle_n or '—'} of ∞",
+            f"✨ Success: {f(ok_n)} tx  |  ⚠️ Errors: {f(err_n)}",
+            f"⏱ Uptime: {up}",
+        ]
     else:
-        lines.append("кошельки — ваши адреса · цикл — текущий проход · health — живость сети")
+        lines = [
+            f"🌾 <b>harvest // {mark}</b> ({dot})",
+            f"Сеть: {net} ({chain}) · RPC health: {health_pct}% ⚡️",
+            "",
+            f"📊 Статус флота ({f(total_n)} кошельков):",
+            f"{bar} {pct}% ({f(active)} в работе / {f(total_n - active)} ожидают)",
+            "",
+            f"🔄 Прогресс: цикл {cycle_n or '—'} из ∞",
+            f"✨ Успешно: {f(ok_n)} tx  |  ⚠️ Ошибки: {f(err_n)}",
+            f"⏱ Аптайм: {up}",
+        ]
     return ensure_limit("\n".join(lines))
+
+
+def fmt_uptime(seconds: object) -> str:
+    """Аптайм демона человеческим языком: 4ч 12м / 12м / 3д 2ч. Нет данных — «—»."""
+    try:
+        s = int(float(seconds or 0))
+    except (TypeError, ValueError):
+        return "—"
+    if s <= 0:
+        return "—"
+    d, s = divmod(s, 86400)
+    h, s = divmod(s, 3600)
+    m = s // 60
+    if d:
+        return f"{d}д {h}ч"
+    if h:
+        return f"{h}ч {m:02d}м"
+    return f"{m}м"
 
 
 def render_alert(text: str) -> str:
@@ -225,6 +261,7 @@ _STR: dict[str, dict[str, str]] = {
     "btn_wallets": {"ru": "[ Кошельки ]", "en": "[ Wallets ]"},
     "btn_history": {"ru": "[ История ]", "en": "[ History ]"},
     "btn_builder": {"ru": "[ Конструктор ]", "en": "[ Builder ]"},
+    "btn_menu": {"ru": "[ Меню ]", "en": "[ Menu ]"},
     "btn_terminal": {"ru": "[ Открыть терминал ]", "en": "[ Open terminal ]"},
     "btn_profiles": {"ru": "[ Профили ]", "en": "[ Profiles ]"},
     "btn_ref": {"ru": "[ Справочник ]", "en": "[ Manual ]"},

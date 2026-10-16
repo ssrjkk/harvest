@@ -205,13 +205,13 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         call = _C(data="v1:home:show")
         await dp.callback_query.handlers[0].callback(call, _State())
         text = call.message.edits[0][0][0]
-        self.assertIn("harvest // ПОЛЕ", text)
-        self.assertIn("[STOP]", text)
-        self.assertIn("vibe/vibe · 46630", text)
+        self.assertIn("harvest //", text)
+        self.assertIn("Остановлен", text)
+        self.assertIn("vibe/vibe (46630)", text)
         kb = call.message.edits[0][1]["reply_markup"]
-        self.assertEqual(len(kb.inline_keyboard), 6)  # run + терминал + 3 + 3 + 3 + refresh/live
+        self.assertEqual(len(kb.inline_keyboard), 3)  # run + терминал + обновить/меню
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
-        self.assertIn("v1:profiles:show", payloads)
+        self.assertIn("v1:menu:show", payloads)
         urls = [b.url for row in kb.inline_keyboard for b in row]
         self.assertIn("https://ssrjkk.github.io/harvest/", urls)
         for p in payloads:
@@ -250,13 +250,13 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         await dp.callback_query.handlers[0].callback(call, _State())
         self.assertTrue(
             any(a[0] and "устарел" in str(a[0][0]).lower() for a in call.answered))
-        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest //", call.message.edits[0][0][0])
 
     async def test_unknown_v1_redraws_home(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())
         call = _C(data="v1:nope:nope")
         await dp.callback_query.handlers[0].callback(call, _State())
-        self.assertIn("harvest // ПОЛЕ", call.message.edits[0][0][0])
+        self.assertIn("harvest //", call.message.edits[0][0][0])
 
     async def test_stop_confirm_flow(self):
         daemon = HomeDaemon()
@@ -269,7 +269,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         call2 = _C(data="v1:run:stop_yes")
         await cb(call2, _State())
         self.assertEqual(daemon.stopped, 1)
-        self.assertIn("harvest // ПОЛЕ", call2.message.edits[0][0][0])
+        self.assertIn("harvest //", call2.message.edits[0][0][0])
 
     async def test_start_redraws(self):
         daemon = HomeDaemon()
@@ -277,7 +277,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         call = _C(data="v1:run:start")
         await dp.callback_query.handlers[0].callback(call, _State())
         self.assertTrue(daemon.running)
-        self.assertIn("[RUN]", call.message.edits[0][0][0])
+        self.assertIn("Активен", call.message.edits[0][0][0])
 
     async def test_live_toggle(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())
@@ -303,7 +303,7 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         msg = _M(uid=123, text="/start")
         await dp.message.handlers[0].callback(msg, st)
         self.assertEqual(await st.get_data(), {})
-        self.assertIn("harvest // ПОЛЕ", msg.answers[0][0][0])
+        self.assertIn("harvest //", msg.answers[0][0][0])
 
     async def test_cancel_clears(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())
@@ -935,7 +935,21 @@ class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
         await cb(home, _State())
         payloads = [b for row in home.message.edits[0][1]["reply_markup"].inline_keyboard
                     for b in row]
-        self.assertIn("v1:profiles:show", [b.callback_data for b in payloads])
+        self.assertIn("v1:menu:show", [b.callback_data for b in payloads])
+
+    async def test_menu_screen_lists_all(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        call = _C(data="v1:menu:show")
+        await cb(call, _State())
+        text = call.message.edits[0][0][0]
+        self.assertIn("МЕНЮ", text)
+        payloads = [b.callback_data for row in call.message.edits[0][1]["reply_markup"].inline_keyboard
+                    for b in row]
+        for p in ("v1:wallets:page:1", "v1:profiles:show", "v1:history:show",
+                  "v1:builder:show", "v1:net:show", "v1:diag:show",
+                  "v1:scale:show", "v1:ref:show", "v1:danger:show", "v1:home:live"):
+            self.assertIn(p, payloads)
 
     async def test_profiles_text_command(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())

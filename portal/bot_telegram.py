@@ -3,7 +3,7 @@
 портов — дружит с любым хостингом).
 
 Стиль сообщений — ops-board сайта (раздел 05): секции `harvest // X`,
-маркеры `[RUN]`/`[STOP]`, `[ok]`/`[warn]`, таблицы в <pre>, без эмодзи.
+маркеры `[RUN]`/`[STOP]`, `[ok]`/`[warn]`, таблицы в <pre>, эмодзи — только статус home.
 Форматирование живёт в portal/bot_ops.py (там же чистые функции
 команд /cmd, /cfg, /check, /ref).
 
@@ -833,11 +833,15 @@ async def _home_state(daemon: FarmDaemon) -> dict:
         count = int(stats.get("wallet_count") or total or 0)
     except (TypeError, ValueError):
         count = total
+    started = getattr(daemon, "_started_at", None)
+    uptime_s = (time.monotonic() - started) if isinstance(started, (int, float)) else 0
     return {
         "running": bool(stats.get("running")), "paused": bool(pool.get("paused")),
         "network": name or "—", "chain_id": chain if chain != "" else "—",
         "wallet_count": count, "cycle": pool.get("cycles", "—"), "cycles_total": "∞",
-        "errors": pool.get("errors", 0), "health_factor": stats.get("health_factor", 0.0),
+        "errors": pool.get("errors", 0), "actions": pool.get("actions", 0),
+        "uptime_s": uptime_s,
+        "health_factor": stats.get("health_factor", 0.0),
         "workers": pool.get("dyn_workers", 0), "rpc_ok": "—", "gas_limit": "—",
         "_cells": cells, "_total": total or count,
     }
@@ -849,18 +853,11 @@ def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = Fals
 
     run_btn = _b("btn_stop", "v1:run:stop") if running else _b("btn_start", "v1:run:start")
     pau_btn = _b("btn_resume", "v1:run:resume") if (running and paused) else _b("btn_pause", "v1:run:pause")
-    live = _b("btn_live_off", "v1:home:live") if live_on else _b("btn_live_on", "v1:home:live")
     return InlineKeyboardMarkup(inline_keyboard=[
         [run_btn, pau_btn],
         [InlineKeyboardButton(text=_R.tr("btn_terminal", lang),
                               url="https://ssrjkk.github.io/harvest/")],
-        [_b("btn_wallets", "v1:wallets:page:1"), _b("btn_profiles", "v1:profiles:show"),
-         _b("btn_history", "v1:history:show")],
-        [_b("btn_builder", "v1:builder:show"), _b("btn_net", "v1:net:show"),
-         _b("btn_diag", "v1:diag:show")],
-        [_b("btn_scale", "v1:scale:show"), _b("btn_ref", "v1:ref:show"),
-         _b("btn_danger", "v1:danger:show")],
-        [_b("btn_refresh", "v1:home:refresh"), live],
+        [_b("btn_refresh", "v1:home:refresh"), _b("btn_menu", "v1:menu:show")],
     ])
 
 
@@ -870,7 +867,7 @@ async def _render_home_tuple(
     """(текст, клавиатура, lang) домашнего экрана."""
     mode, lang = await _mode_lang(daemon, tg_id)
     st = await _home_state(daemon)
-    text = _R.render_home(st, mode=mode, cells=st.pop("_cells"), cells_total=st.pop("_total"))
+    text = _R.render_home(st, mode=mode, cells=st.pop("_cells"), cells_total=st.pop("_total"), lang=lang)
     kb = _home_kb(bool(st.get("running")), bool(st.get("paused")), lang,
                   live_on=bool(tg_id and _live.get(tg_id) is not None
                                and not _live[tg_id].done()))
@@ -1239,6 +1236,27 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await call.message.edit_text(
             _R.render_profiles(summary, lang), parse_mode=ParseMode.HTML,
             reply_markup=_nav_kb("v1:home:show", lang), link_preview_options=_NO_PREVIEW)
+        return True
+    if screen == "menu" and action == "show":
+        live_on = bool(uid and _live.get(uid) is not None and not _live[uid].done())
+        await call.message.edit_text(
+            "<b>harvest // МЕНЮ</b>" if lang == "ru" else "<b>harvest // MENU</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text=_R.tr("btn_wallets", lang), callback_data="v1:wallets:page:1"),
+                 InlineKeyboardButton(text=_R.tr("btn_profiles", lang), callback_data="v1:profiles:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_history", lang), callback_data="v1:history:show")],
+                [InlineKeyboardButton(text=_R.tr("btn_builder", lang), callback_data="v1:builder:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_net", lang), callback_data="v1:net:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_diag", lang), callback_data="v1:diag:show")],
+                [InlineKeyboardButton(text=_R.tr("btn_scale", lang), callback_data="v1:scale:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_ref", lang), callback_data="v1:ref:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_danger", lang), callback_data="v1:danger:show")],
+                [InlineKeyboardButton(text=_R.tr("btn_live_off" if live_on else "btn_live_on", lang),
+                                       callback_data="v1:home:live")],
+                [InlineKeyboardButton(text=_R.tr("btn_back", lang), callback_data="v1:home:show"),
+                 InlineKeyboardButton(text=_R.tr("btn_home", lang), callback_data="v1:home:show")],
+            ]), link_preview_options=_NO_PREVIEW)
         return True
     if screen == "net" and action == "show":
         answer, kb = _networks_view(daemon)

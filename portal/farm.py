@@ -16,6 +16,7 @@ import csv
 import io
 import json
 import logging
+import time
 from collections.abc import Awaitable, Callable
 
 from core.config import load_config
@@ -79,6 +80,7 @@ class FarmDaemon:
         self.scheduler: Scheduler | None = None
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._started_at = time.monotonic()
         self._balance_alerts_task: asyncio.Task | None = None
         self._balance_alerts_enabled: bool = False
         self._balance_threshold: float = 0.001

@@ -550,7 +550,7 @@ if HAS_BOT:
             self.assertTrue(msg.answers)
             args, kwargs = msg.answers[0]
             # /start ведёт на новое Поле (п.2 ТЗ).
-            self.assertIn("harvest // ПОЛЕ", args[0])
+            self.assertIn("harvest //", args[0])
             self.assertIn("reply_markup", kwargs)
 
         async def test_help_handler_paths(self):

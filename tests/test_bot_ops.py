@@ -164,7 +164,7 @@ class TestOpsFormat(unittest.TestCase):
         s = ops.fmt_status(self._data())
         self.assertIn("[RUN]", s)
         self.assertIn("80.0%", s)
-        self.assertIn("harvest // ПОЛЕ", s)
+        self.assertIn("harvest //", s)
         evil = self._data(wallet_count="<b>x</b>")
         self.assertIn("&lt;b&gt;x&lt;/b&gt;", ops.fmt_status(evil))
 
