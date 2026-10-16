@@ -281,6 +281,172 @@ class TestFarmCommand(MiniBase):
         self.assertIn("tasks", body)
         self.assertNotIn("0x", await resp.text())
 
+
+class TestMiniGaps(MiniBase):
+    async def test_mut_prune_and_global_choke(self):
+        from portal import miniapp as _m
+
+        old = [(i, [0.0] * 1) for i in range(20005)]
+        for i, v in old:
+            _m._mut[(i, "x")] = v
+        self.assertTrue(_m._mut_ok(123, "y"))
+        for _ in range(25):
+            _m._gchoke_ok("tma")
+        client = await self._client()
+        resp = await client.get("/api/miniapp/state", headers=self._h(_init()))
+        self.assertEqual(resp.status, 401)
+
+    async def test_daemon_failures_fall_back(self):
+        from portal import bot_settings as _bs
+
+        class _Bad(_Daemon):
+            async def statistics(self):
+                raise RuntimeError("x")
+
+        client = await self._client(daemon=_Bad())
+        resp = await client.get("/api/miniapp/state", headers=self._h(_init()))
+        self.assertEqual(resp.status, 200)
+
+        class _BadNet(_Daemon):
+            def networks_info(self):
+                raise RuntimeError("x")
+
+            async def wallet_cells(self):
+                raise RuntimeError("x")
+
+        client2 = await self._client(daemon=_BadNet())
+        resp2 = await client2.get("/api/miniapp/state", headers=self._h(_init()))
+        body = await resp2.json()
+        self.assertEqual(body["cells"], "")
+
+        with mock.patch.object(_bs, "get_settings", side_effect=RuntimeError("x")):
+            client3 = await self._client()
+            resp3 = await client3.get("/api/miniapp/state", headers=self._h(_init()))
+            body3 = await resp3.json()
+            self.assertEqual((body3["mode"], body3["lang"]), ("novice", "ru"))
+
+        class _BadHealth(_Daemon):
+            async def statistics(self):
+                s = await super().statistics()
+                s["health_factor"] = object()
+                return s
+
+        client4 = await self._client(daemon=_BadHealth())
+        resp4 = await client4.get("/api/miniapp/state", headers=self._h(_init()))
+        self.assertEqual((await resp4.json())["health_factor"], 0.0)
+
+    async def test_zero_user_id_denied(self):
+        client = await self._client()
+        init = _sign({"user": json.dumps({"id": 0}),
+                      "auth_date": str(int(time.time()))})
+        resp = await client.get("/api/miniapp/state", headers=self._h(init))
+        self.assertEqual(resp.status, 401)
+
+    async def test_history_ok_and_farm_variants(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.get("/api/miniapp/history", headers=h)
+        self.assertEqual(resp.status, 200)
+        resp = await client.post("/api/miniapp/farm", data=b"{x",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 400)
+        for action in ("pause", "resume", "stop"):
+            resp = await client.post("/api/miniapp/farm", json={"action": action},
+                                     headers=h)
+            self.assertEqual(resp.status, 200)
+        _m._mut.clear()
+        for _ in range(35):
+            _m._mut_ok(123, "farm")
+        resp = await client.post("/api/miniapp/farm", json={"action": "start"},
+                                 headers=h)
+        self.assertEqual(resp.status, 429)
+
+    async def test_stop_task_failure_logged(self):
+        client = await self._client()
+        daemon = client._server.app[api.KEY_DAEMON]
+        daemon.running = True
+        daemon.stop = mock.AsyncMock(side_effect=RuntimeError("boom"))
+        with self.assertLogs("portal.miniapp", level="ERROR"):
+            resp = await client.post("/api/miniapp/farm", json={"action": "stop"},
+                                     headers=self._h(_init()))
+            self.assertEqual(resp.status, 200)
+            await asyncio.sleep(0.05)
+
+    async def test_command_variants(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.post("/api/miniapp/command", data=b"{x",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/command",
+                                 json={"kind": "cfg", "net": "vibevibe"},
+                                 headers=h)
+        body = await resp.json()
+        self.assertTrue(body["filename"].endswith(".yaml"))
+        self.assertIn("wallets", body["yaml"])
+        resp = await client.post("/api/miniapp/command",
+                                 json={"kind": "cfg", "wallets": "xx"},
+                                 headers=h)
+        self.assertEqual(resp.status, 400)
+        _m._mut.clear()
+        for _ in range(35):
+            _m._mut_ok(123, "command")
+        resp = await client.post("/api/miniapp/command", json={"kind": "cmd"},
+                                 headers=h)
+        self.assertEqual(resp.status, 429)
+
+    async def test_export_token_request_variants(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.post("/api/miniapp/export/token", data=b"{x",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 200)
+        resp = await client.post("/api/miniapp/export/token",
+                                 json={"format": "csv"}, headers=self._h(_init("x")),
+                                 )
+        self.assertEqual(resp.status, 401)
+        _m._mut.clear()
+        for _ in range(35):
+            _m._mut_ok(123, "export_token")
+        resp = await client.post("/api/miniapp/export/token",
+                                 json={"format": "csv"}, headers=h)
+        self.assertEqual(resp.status, 429)
+        resp = await client.post("/api/miniapp/export/request", data=b"{x",
+                                 headers={**h, "Content-Type": "application/json"})
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/export/request",
+                                 json={"format": "xml", "confirm_token": "x"},
+                                 headers=h)
+        self.assertEqual(resp.status, 400)
+
+    async def test_settings_failure(self):
+        from portal import bot_settings as _bs
+
+        client = await self._client()
+        h = self._h(_init())
+        with mock.patch.object(_bs, "set_mode", side_effect=RuntimeError("x")):
+            resp = await client.post("/api/miniapp/settings", json={"mode": "pro"},
+                                     headers=h)
+            self.assertEqual(resp.status, 500)
+        with mock.patch.object(_bs, "get_settings", side_effect=RuntimeError("x")):
+            resp = await client.get("/api/miniapp/settings", headers=h)
+            body = await resp.json()
+            self.assertEqual((body["mode"], body["lang"]), ("novice", "ru"))
+
+    async def test_scheduler_bad_shape(self):
+        client = await self._client()
+        daemon = client._server.app[api.KEY_DAEMON]
+        daemon.scheduler_state = mock.Mock(return_value=["not", "a", "dict"])
+        resp = await client.get("/api/miniapp/scheduler",
+                                headers=self._h(_init()))
+        self.assertEqual(resp.status, 500)
+
     async def test_settings_roundtrip(self):
         client = await self._client()
         h = self._h(_init())

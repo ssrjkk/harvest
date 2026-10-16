@@ -538,6 +538,27 @@ class TestStatusCard(unittest.IsolatedAsyncioTestCase):
         png = _card.render_card({})
         self.assertTrue(png.startswith(b"\x89PNG"))
 
+    def test_palette_and_font_fallback(self):
+        from portal import status_card as _card
+
+        with mock.patch("builtins.open", side_effect=OSError("x")):
+            pal = _card._palette()
+        self.assertEqual(pal["bg"], "#14110A")
+        real_truetype = _card.ImageFont.truetype
+
+        def _boom(path, *a, **k):
+            if "DejaVu" in str(path) or "Windows" in str(path):
+                raise OSError("x")
+            return real_truetype(path, *a, **k)
+
+        with mock.patch("PIL.ImageFont.truetype", side_effect=_boom):
+            fnt = _card._font(20)
+        self.assertIsNotNone(fnt)
+        png = _card.render_card(
+            {"running": False, "network": "n", "health_factor": "xx",
+             "updated": "t"}, cells="o", total=10)
+        self.assertTrue(png.startswith(b"\x89PNG"))
+
     async def test_card_button_sends_photo(self):
         dp = build_dispatcher(_cfg(), HomeDaemon())
         call = _C(data="v1:diag:card")
@@ -603,6 +624,265 @@ class TestBotSettingsDb(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await _bs.set_mode("/no/such/dir/x.db", 3, "pro"), "pro")
         self.assertEqual(await _bs.get_settings("/no/such/dir/x.db", 3), ("pro", "ru"))
         bs._mem.clear()
+
+
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestV1Gaps(unittest.IsolatedAsyncioTestCase):
+    """Добор покрытия v1-веток (гейт CI 95%)."""
+
+    def setUp(self):
+        bt._flood_last.clear()
+        bs._mem.clear()
+
+    def tearDown(self):
+        bt._flood_last.clear()
+        bs._mem.clear()
+        for t in list(bt._live.values()):
+            t.cancel()
+        bt._live.clear()
+
+    async def test_net_pause_resume(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        call = _C(data="v1:net:show")
+        await cb(call, _State())
+        self.assertIn("СЕТИ", call.message.edits[0][0][0])
+        for data, needle in (("v1:run:pause", "pause"), ("v1:run:resume", "resume")):
+            call = _C(data=data)
+            await cb(call, _State())
+            self.assertTrue(any(needle in a[0][0] for a in call.message.answers))
+
+    async def test_scale_add_paths(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        call = _C(data="v1:scale:add:xx")
+        await cb(call, _State())
+        self.assertTrue(any("+10" in a[0][0] for a in call.message.answers))
+        call2 = _C(data="v1:scale:add:10")
+        await cb(call2, _State())
+        self.assertTrue(any("жди" in a[0][0] for a in call2.message.answers))
+
+        class _Dead(HomeDaemon):
+            async def create_wallets(self, count):
+                raise RuntimeError("БД фермы не подключена")
+
+        dp2 = build_dispatcher(_cfg(), _Dead())
+        bt._flood_last.clear()
+        call3 = _C(data="v1:scale:add:10")
+        await dp2.callback_query.handlers[0].callback(call3, _State())
+        self.assertTrue(any("не подключена" in a[0][0]
+                            for a in call3.message.answers))
+
+    async def test_master_stateless_and_bad(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        for data in ("v1:master:cmd", "v1:master:net:x", "v1:master:w:10",
+                     "v1:master:w:xx", "v1:master:wcustom", "v1:master:c:2",
+                     "v1:master:ccustom", "v1:master:profile:x",
+                     "v1:master:faucet:x", "v1:master:yaml", "v1:master:verify",
+                     "v1:master:restart", "v1:master:cancel",
+                     "v1:enc:ask:csv", "v1:enc:cancel"):
+            call = _C(data=data)
+            await cb(call, None)
+        call = _C(data="v1:master:net:nope")
+        await cb(call, _State())
+        self.assertIn("[err]", call.message.answers[0][0][0])
+        for data in ("v1:master:w:99999", "v1:master:c:999999"):
+            call = _C(data=data)
+            st = _State()
+            await st.update_data(m_started=__import__("time").monotonic())
+            await cb(call, st)
+            self.assertIn("[err]", call.message.answers[0][0][0])
+
+    async def test_master_ccustom_text(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _State()
+        await cb(_C(data="v1:master:cmd"), st)
+        await cb(_C(data="v1:master:net:vibevibe"), st)
+        await cb(_C(data="v1:master:w:10"), st)
+        await cb(_C(data="v1:master:ccustom"), st)
+        msg = _M(uid=123, text="7")
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertIn("3/3", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="много")
+        st2 = _State()
+        await st2.set_state(bt.MasterWiz.cycles)
+        await dp.message.handlers[1].callback(msg2, st2)
+        self.assertIn("[err]", msg2.answers[0][0][0])
+        msg3 = _M(uid=123, text="∞")
+        st3 = _State()
+        await st3.set_state(bt.MasterWiz.cycles)
+        await dp.message.handlers[1].callback(msg3, st3)
+        self.assertIn("3/3", msg3.answers[0][0][0])
+
+    async def test_master_finish_and_yaml_fail(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _State()
+        await st.update_data(m_net="nope", m_wallets=10, m_cycles=1,
+                             m_profile="normal", m_faucet=True,
+                             m_started=__import__("time").monotonic())
+        call = _C(data="v1:master:faucet:1")
+        await cb(call, st)
+        self.assertIn("[err]", call.message.answers[0][0][0])
+
+        st2 = _State()
+        await st2.update_data(m_net="vibevibe", m_wallets=10, m_cycles=1,
+                              m_profile="normal", m_faucet=True,
+                              m_started=__import__("time").monotonic(),
+                              m_cmd="python auto.py --x", m_yaml="network: {}")
+        with mock.patch.object(bt._bot_ops, "build_config_yaml",
+                               side_effect=ValueError("bad")):
+            call2 = _C(data="v1:master:yaml")
+            await cb(call2, st2)
+            self.assertIn("[err]", call2.message.answers[0][0][0])
+
+    async def test_enc_text_paths(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        st = _State()
+        await st.set_state(bt.EncWiz.password)
+        msg = _M(uid=123, text="")
+        await dp.message.handlers[1].callback(msg, st)
+        self.assertIn("[err]", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="/start")
+        st2 = _State()
+        await st2.set_state(bt.EncWiz.password)
+        await dp.message.handlers[1].callback(msg2, st2)
+        self.assertEqual(await st2.get_data(), {})
+
+    async def test_wallets_pages(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        for data in ("v1:wallets:page:xx", "v1:wallets:page:99",
+                     "v1:wallets:keysask:xx", "v1:wallets:keysyes:xx"):
+            call = _C(data=data)
+            await cb(call, _State())
+            self.assertTrue(call.message.edits or call.message.answers, data)
+
+    async def test_exp_ask_and_card_unavailable(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        for fmt in ("csv", "json"):
+            call = _C(data=f"v1:exp:ask:{fmt}")
+            await cb(call, _State())
+            text = call.message.edits[0][0][0]
+            self.assertIn("подтверждение", text)
+            self.assertIn(fmt.upper(), text)
+        with mock.patch("portal.status_card.available", return_value=False):
+            call2 = _C(data="v1:diag:card")
+            await cb(call2, _State())
+            self.assertIn("[err]", call2.message.answers[0][0][0])
+
+    async def test_exp_yes_failure(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        call = _C(data="v1:exp:yes:csv")
+        with mock.patch("portal.bot_telegram.send_wallets_file",
+                        new=mock.AsyncMock(side_effect=RuntimeError("x"))):
+            await dp.callback_query.handlers[0].callback(call, _State())
+        self.assertTrue(any("EXP-FAIL" in a[0][0] for a in call.message.answers))
+
+    async def test_wallets_empty_and_paged(self):
+        class _Empty(HomeDaemon):
+            def __init__(self):
+                self._wallets = []
+
+            async def wallet_cells(self):
+                return "", 0
+
+        dp = build_dispatcher(_cfg(), _Empty())
+        call = _C(data="v1:wallets:page:1")
+        await dp.callback_query.handlers[0].callback(call, _State())
+        kb = call.message.edits[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("wallets:create", payloads)
+
+        class _Many(HomeDaemon):
+            def __init__(self):
+                self._wallets = [
+                    {"address": f"0x{i:040x}", "total_actions": i} for i in range(5)]
+
+            async def wallet_cells(self):
+                return "o" * 5, 5
+
+        dp2 = build_dispatcher(_cfg(), _Many())
+        call2 = _C(data="v1:wallets:page:1")
+        await dp2.callback_query.handlers[0].callback(call2, _State())
+        kb = call2.message.edits[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("v1:wallets:page:2", payloads)
+
+    async def test_scale_count_failure(self):
+        class _NoCount(HomeDaemon):
+            async def wallet_count(self):
+                raise RuntimeError("x")
+
+        dp = build_dispatcher(_cfg(), _NoCount())
+        call = _C(data="v1:scale:show")
+        await dp.callback_query.handlers[0].callback(call, _State())
+        self.assertIn("—", call.message.edits[0][0][0])
+
+    async def test_keys_no_chat(self):
+        import portal.bot_telegram as _bt2
+
+        old, _bt2._EXPORT_AUTODELETE_S = _bt2._EXPORT_AUTODELETE_S, 0
+        try:
+            msg = mock.Mock(spec=["answer", "bot"])
+            msg.answer = mock.AsyncMock(return_value=mock.Mock(message_id=1))
+            await _bt2._send_keys_temp(msg, "keys here")
+        finally:
+            _bt2._EXPORT_AUTODELETE_S = old
+
+    async def test_enc_failures(self):
+        import portal.bot_telegram as _bt2
+
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _State()
+        await st.set_state(_bt2.EncWiz.password)
+        await st.update_data(enc_fmt="xml")
+        msg = _M(uid=123, text="pw")
+        with mock.patch.object(_bt2, "_send_encrypted",
+                               new=mock.AsyncMock(side_effect=RuntimeError("x"))):
+            await dp.message.handlers[1].callback(msg, st)
+        self.assertTrue(any("ENC-FAIL" in a[0][0] for a in msg.answers))
+
+        st2 = _State()
+        await st2.set_state(_bt2.EncWiz.password)
+        await st2.update_data(enc_fmt="csv")
+        msg2 = _M(uid=123, text="")
+        await dp.message.handlers[1].callback(msg2, st2)
+        self.assertTrue(any("[err]" in a[0][0] for a in msg2.answers))
+
+        with mock.patch("core.exporter.encrypt_file", return_value="/tmp/plain.csv"):
+            with self.assertRaises(RuntimeError):
+                await _bt2._send_encrypted(mock.Mock(), 123, HomeDaemon(),
+                                           "csv", "pw")
+
+    async def test_master_expired_and_alias(self):
+        import time as _t
+
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _State()
+        await cb(_C(data="v1:master:cmd"), st)
+        call = _C(data="v1:master:net:vibe")
+        await cb(call, st)
+        self.assertIn("2/3", call.message.answers[0][0][0])
+
+        old = {"m_started": _t.monotonic() - 9999}
+        for data in ("v1:master:profile:quiet", "v1:master:yaml", "v1:master:verify"):
+            stx = _State()
+            await stx.update_data(**old, m_cmd="c", m_yaml="y")
+            callx = _C(data=data)
+            await cb(callx, stx)
+            self.assertEqual(await stx.get_data(), {})
+
+        stc = _State()
+        callc = _C(data="v1:master:cancel")
+        stc.clear = mock.AsyncMock(side_effect=RuntimeError("x"))  # type: ignore[method-assign]
+        await cb(callc, stc)
+        self.assertIn("ОТМЕНА", callc.message.answers[0][0][0])
 
 
 if __name__ == "__main__":

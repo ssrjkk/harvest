@@ -486,6 +486,72 @@ class TestBalanceAlerts(FarmProxyTestBase):
         await self.daemon.set_balance_alerts(False, 0.001)
         self.assertIsNone(self.daemon._balance_alerts_task)
 
+    async def test_monitor_truncates_over_limit(self):
+        addrs = ["0x%040d" % i for i in range(101)]
+        self.daemon.db = _FakeBalanceDb([{"address": a} for a in addrs])
+        net = _FakeNetwork(balances={a: 9.0 for a in addrs})
+        self.daemon.pool = _ProxyPool(net)
+        with self.assertLogs("portal.farm", level="WARNING") as cm:
+            await self.daemon.set_balance_alerts(True, 0.001)
+            self.assertTrue(await _wait_for(lambda: len(net.balance_calls) >= 100))
+            await self.daemon.set_balance_alerts(False, 0.001)
+        self.assertTrue(any("первые 100 из 101" in line for line in cm.output))
+        self.assertEqual(len(net.balance_calls), 100)
+
+
+class TestWalletCells(FarmProxyTestBase):
+    async def test_no_db(self):
+        self.daemon.db = None
+        self.assertEqual(await self.daemon.wallet_cells(), ("", 0))
+
+    async def test_query_failure(self):
+        class _BadConn:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+        class _BadDb:
+            async def _connect(self):
+                raise RuntimeError("locked")
+
+        self.daemon.db = _BadDb()
+        self.assertEqual(await self.daemon.wallet_cells(), ("", 0))
+
+    async def test_old_schema_falls_back_idle(self):
+        class _Cur:
+            def __init__(self, row):
+                self._row = row
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def fetchone(self):
+                return self._row
+
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise StopAsyncIteration
+
+        class _OldDb:
+            async def _connect(self):
+                return self
+
+            def execute(self, sql, *a, **k):
+                if "COUNT" in sql:
+                    return _Cur((4,))
+                raise RuntimeError("no such column")
+
+        self.daemon.db = _OldDb()
+        cells, total = await self.daemon.wallet_cells()
+        self.assertEqual((cells, total), ("iiii", 4))
+
 
 class TestMetricsRecorder(FarmProxyTestBase):
     async def test_snapshot_written_and_read_back(self):

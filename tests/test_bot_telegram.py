@@ -705,5 +705,398 @@ class TestBalanceCommand(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(any("не запущена" in a[0][0] for a in msg.answers))
 
 
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
+    """Добор покрытия legacy-веток (гейт CI 95%)."""
+
+    def setUp(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+        self._conflict = (bt._conflict.consecutive, bt._conflict.notified,
+                          bt._conflict.total)
+        bt._conflict.resolve()
+        bt._conflict.total = 0
+
+    def tearDown(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+        (c, n, t) = self._conflict
+        bt._conflict.consecutive, bt._conflict.notified, bt._conflict.total = c, n, t
+
+    def _state(self, **data):
+        st = _FakeState()
+        st._data.update(data)
+        return st
+
+    async def test_wiz_finish_errors(self):
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        call = _C(uid=123, data="wiz:cmd:f:1")
+        await cb(call, self._state(net="nope", wallets=1, cycles=1))
+        self.assertIn("[err]", call.message.answers[0][0][0])
+        call2 = _C(uid=123, data="wiz:cfg:w:5")
+        msg = _M(uid=123, text="")
+        msg.bot.send_document = mock.AsyncMock()
+        # finish_cfg через кнопку невозможен без net; err через build напрямую:
+        with self.assertRaises(ValueError):
+            import portal.bot_ops as _ops
+
+            _ops.build_config_yaml("nope", 5)
+
+    async def test_wiz_handle_direct(self):
+        import portal.bot_telegram as bt
+
+        msg = _M(uid=123, text="/cancel")
+        self.assertTrue(await bt._wiz_handle_text(msg, _FakeState()))
+        self.assertIn("ОТМЕНА", msg.answers[0][0][0])
+
+        class _Boom:
+            async def get_state(self):
+                raise RuntimeError("x")
+
+            async def clear(self):
+                pass
+
+        self.assertFalse(await bt._wiz_handle_text(_M(uid=123, text="5"), _Boom()))
+
+        st = _FakeState()
+        await st.set_state(__import__("portal.bot_telegram", fromlist=["CfgWizard"]).CfgWizard.wallets)
+        msg2 = _M(uid=123, text="много")
+        self.assertTrue(await bt._wiz_handle_text(msg2, st))
+        self.assertIn("[err]", msg2.answers[0][0][0])
+        self.assertFalse(await bt._wiz_handle_text(_M(uid=123, text="x"), _FakeState()))
+
+    async def test_safe_edit_and_autodelete(self):
+        import portal.bot_telegram as bt
+
+        msg = _M(uid=123, text="x")
+
+        async def _boom(*a, **k):
+            raise RuntimeError("message is not modified by bot")
+
+        async def _other(*a, **k):
+            raise RuntimeError("gone")
+
+        msg.edit_text = _boom  # type: ignore[attr-defined]
+        self.assertFalse(await bt._safe_edit(msg, "t"))
+        msg.edit_text = _other  # type: ignore[attr-defined]
+        with self.assertRaises(RuntimeError):
+            await bt._safe_edit(msg, "t")
+
+        bot = mock.Mock()
+        bot.delete_message = mock.AsyncMock(side_effect=RuntimeError("gone"))
+        await bt._auto_delete_file(bot, 1, 2, 0)
+        bot.delete_message.assert_awaited_once()
+
+    def test_conflict_filter(self):
+        import logging
+
+        import portal.bot_telegram as bt
+
+        rec = logging.LogRecord("aiogram.dispatcher", logging.ERROR, __file__, 1,
+                                "Failed to fetch updates - TelegramConflictError: "
+                                "Telegram server says - Conflict: terminated by "
+                                "other getUpdates request", (), None)
+        f = bt._ConflictLogFilter()
+        self.assertTrue(f.filter(rec))
+        rec2 = logging.LogRecord("n", logging.ERROR, __file__, 1, "plain", (), None)
+        self.assertTrue(f.filter(rec2))
+
+        class _Bad:
+            def getMessage(self):
+                raise RuntimeError("x")
+
+        rec3 = logging.LogRecord("n", logging.ERROR, __file__, 1, "x", (), None)
+        rec3.getMessage = _Bad().getMessage  # type: ignore[method-assign]
+        self.assertTrue(f.filter(rec3))
+
+    async def test_setup_outer_fail(self):
+        import portal.bot_telegram as bt
+
+        bot = mock.Mock()
+        with mock.patch("aiogram.types.BotCommand", side_effect=RuntimeError("x")):
+            await bt.setup_bot_commands(bot)  # не падает
+
+    async def test_mode_lang_fallback(self):
+        import portal.bot_settings as _bs
+        import portal.bot_telegram as bt
+
+        with mock.patch.object(_bs, "get_settings", side_effect=RuntimeError("db")):
+            self.assertEqual(await bt._mode_lang(mock.Mock(), 123), ("novice", "ru"))
+
+    async def test_home_state_fallbacks(self):
+        import portal.bot_telegram as bt
+
+        class _Dead:
+            async def statistics(self):
+                raise RuntimeError("down")
+
+        st = await bt._home_state(_Dead())
+        self.assertFalse(st["running"])
+        self.assertEqual(st["network"], "—")
+
+        class _BadNets:
+            async def statistics(self):
+                return {"running": True, "pool": {}, "db": {}, "wallet_count": "xx"}
+
+            def networks_info(self):
+                raise RuntimeError("x")
+
+            async def wallet_cells(self):
+                raise RuntimeError("x")
+
+        st2 = await bt._home_state(_BadNets())
+        self.assertTrue(st2["running"])
+
+    async def test_live_loop_error(self):
+        import portal.bot_telegram as bt
+
+        msg = _M(uid=123, text="x")
+
+        async def _boom(*a, **k):
+            raise RuntimeError("gone")
+
+        msg.edit_text = _boom  # type: ignore[attr-defined]
+        await bt._live_loop(123, msg, _NetDaemon(), every=0.01, ttl=5)
+        self.assertNotIn(123, bt._live)
+        for t in list(bt._live.values()):
+            t.cancel()
+        bt._live.clear()
+
+    async def test_stale_answer_fails_quietly(self):
+        import portal.bot_telegram as bt
+
+        call = _C(uid=123, data="v0:x")
+        call.answer = mock.AsyncMock(side_effect=RuntimeError("gone"))
+        await bt._stale_home(call, _NetDaemon())
+        self.assertTrue(call.message.edits)
+
+    async def test_on_help_document_and_cancel_fail(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="x")
+        msg.document = mock.Mock()
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(msg.answers, [])
+
+        st = _FakeState()
+
+        async def _boom():
+            raise RuntimeError("x")
+
+        st.clear = _boom  # type: ignore[method-assign]
+        msg2 = _M(uid=123, text="/cancel")
+        with self.assertLogs("portal.bot_telegram", level="WARNING"):
+            await dp.message.handlers[1].callback(msg2, st)
+
+    async def test_on_start_clear_fails(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        st = _FakeState()
+
+        async def _boom():
+            raise RuntimeError("x")
+
+        st.clear = _boom  # type: ignore[method-assign]
+        msg = _M(uid=123, text="/start")
+        await dp.message.handlers[0].callback(msg, st)
+        self.assertTrue(msg.answers)
+
+    async def test_legacy_callbacks_misc(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        for data in ("cmd:run", "cfg:run", "wiz:cancel", "cmd:usage",
+                     "cfg:usage", "farm:start", "farm:pause", "farm:resume",
+                     "network:stop", "zzz-unknown"):
+            call = _C(uid=123, data=data)
+            await cb(call)
+            self.assertTrue(call.message.answers or call.message.edits, data)
+        call = _C(uid=123, data="wiz:cmd:net:nope")
+        await cb(call, _FakeState())
+        self.assertIn("[err]", call.message.answers[0][0][0])
+        for data in ("wiz:cmd:w:xx", "wiz:cmd:w:99999", "wiz:cmd:c:xx"):
+            call = _C(uid=123, data=data)
+            st = _FakeState()
+            await cb(call, st)
+
+    async def test_legacy_document_oversize_and_dl_fail(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="")
+        msg.document = mock.Mock()
+        msg.document.file_name = "farm.yaml"
+        msg.document.file_size = 999999
+        await dp.message.handlers[2].callback(msg)
+        self.assertIn("16 КБ", msg.answers[0][0][0])
+        msg2 = _M(uid=123, text="")
+        msg2.document = mock.Mock()
+        msg2.document.file_name = "farm.yaml"
+        msg2.document.file_size = 10
+        msg2.bot.download = mock.AsyncMock(side_effect=RuntimeError("io"))
+        await dp.message.handlers[2].callback(msg2)
+        self.assertIn("[err]", msg2.answers[0][0][0])
+
+    async def test_callback_exception_generic(self):
+        class _Dead:
+            async def statistics(self):
+                raise RuntimeError("db down")
+
+        dp = build_dispatcher(_cfg(), _Dead())
+        call = _C(uid=123, data="stats")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertTrue(any("Попробуйте позже" in a[0][0]
+                            for a in call.message.answers))
+
+    async def test_run_bot_conflict(self):
+        import asyncio as _aio
+
+        import portal.bot_telegram as bt
+        from aiogram.exceptions import TelegramConflictError
+
+        cfg = _cfg()
+        cfg.telegram_token = "123:ABC"
+        daemon = _NetDaemon()
+        dp = build_dispatcher(cfg, daemon)
+        with mock.patch.object(bt, "Dispatcher", return_value=dp), \
+                mock.patch.object(bt, "Bot") as m_bot, \
+                mock.patch.object(bt, "notify_owner",
+                                  new=mock.AsyncMock()) as _no, \
+                mock.patch.object(_aio, "sleep", new=mock.AsyncMock()) as _sl:
+            async def _boom(_bot):
+                raise TelegramConflictError(method="getUpdates",
+                                            message="Conflict")
+
+            dp.start_polling = mock.AsyncMock(side_effect=_boom)  # type: ignore[method-assign]
+            m_bot.return_value.set_my_commands = mock.AsyncMock()
+            m_bot.return_value.set_my_description = mock.AsyncMock()
+            m_bot.return_value.set_my_short_description = mock.AsyncMock()
+            bt._conflict.resolve()
+            bt._conflict.consecutive = 4
+            with self.assertRaises(TelegramConflictError):
+                await bt.run_bot(cfg, daemon)
+            _sl.assert_awaited()
+            _no.assert_awaited_once()
+            bt._conflict.resolve()
+
+    async def test_wiz_valid_buttons_and_states(self):
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        cb = dp.callback_query.handlers[0].callback
+        st = _FakeState()
+        call = _C(uid=123, data="wiz:cmd:w:50")
+        call.message.bot.send_document = mock.AsyncMock()
+        await cb(call, st)
+        self.assertIn("3/4", call.message.answers[0][0][0])
+        st2 = _FakeState()
+        await st2.update_data(net="vibevibe")
+        call2 = _C(uid=123, data="wiz:cfg:w:50")
+        call2.message.from_user = _U(123)
+        call2.message.bot.send_document = mock.AsyncMock()
+        await cb(call2, st2)
+        call2.message.bot.send_document.assert_awaited_once()
+        st3 = _FakeState()
+        call3 = _C(uid=123, data="wiz:cmd:c:5")
+        await cb(call3, st3)
+        self.assertIn("4/4", call3.message.answers[0][0][0])
+        for data in ("wiz:cmd:w:1", "wiz:cmd:c:1", "wiz:cmd:f:1"):
+            calln = _C(uid=123, data=data)
+            await cb(calln, None)
+
+    async def test_wiz_finish_cfg_error_and_cycles_bad(self):
+        import portal.bot_telegram as bt
+        from portal.bot_telegram import CmdWizard
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        st = _FakeState()
+        await st.update_data(net="nope")
+        call = _C(uid=123, data="wiz:cfg:w:5")
+        await dp.callback_query.handlers[0].callback(call, st)
+        self.assertIn("[err]", call.message.answers[0][0][0])
+
+        st2 = _FakeState()
+        await st2.set_state(CmdWizard.cycles)
+        msg = _M(uid=123, text="много")
+        self.assertTrue(await bt._wiz_handle_text(msg, st2))
+        self.assertIn("[err]", msg.answers[0][0][0])
+
+    async def test_redact_notify_and_document_deny(self):
+        import logging
+        import sys
+
+        import portal.bot_telegram as bt
+
+        rec = logging.LogRecord("x", logging.WARNING, __file__, 1, "m", ("a",), None)
+        rec.args = mock.Mock()
+        rec.args.__iter__ = mock.Mock(side_effect=RuntimeError("x"))
+        self.assertTrue(bt._RedactingFilter().filter(rec))
+        rec2 = logging.LogRecord("x", logging.WARNING, __file__, 1, "m", (), None)
+
+        class _BadStr:
+            def __str__(self):
+                raise RuntimeError("x")
+
+        rec2.msg = _BadStr()
+        self.assertTrue(bt._RedactingFilter().filter(rec2))
+
+        cfg = _cfg()
+        cfg.telegram_token = "123:ABC"
+        with mock.patch.dict(sys.modules, {"portal.bot_render": None}):
+            with mock.patch.object(bt, "Bot") as m_bot:
+                bot = mock.Mock()
+                m_bot.return_value = bot
+                bot.__aenter__ = mock.AsyncMock(return_value=bot)
+                bot.__aexit__ = mock.AsyncMock(return_value=False)
+                bot.send_message = mock.AsyncMock()
+                await bt.notify_owner(cfg, "hi")
+                bot.send_message.assert_awaited()
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        msg = _M(uid=999, text="")
+        msg.document = mock.Mock()
+        await dp.message.handlers[2].callback(msg)
+        self.assertEqual(msg.answers, [])
+
+    async def test_legacy_export_yes_flood(self):
+        import time
+
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(_cfg(), _NetDaemon())
+        bt._flood_last[(123, "export")] = time.monotonic()
+        call = _C(uid=123, data="export:yes:csv")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertTrue(any("жди" in a[0][0] for a in call.message.answers))
+
+    async def test_run_bot_notify_409_failure_quiet(self):
+        import asyncio as _aio
+
+        import portal.bot_telegram as bt
+        from aiogram.exceptions import TelegramConflictError
+
+        cfg = _cfg()
+        cfg.telegram_token = "123:ABC"
+        dp = build_dispatcher(cfg, _NetDaemon())
+        with mock.patch.object(bt, "Dispatcher",
+                               return_value=dp), \
+                mock.patch.object(bt, "Bot") as m_bot, \
+                mock.patch.object(bt, "notify_owner",
+                                  new=mock.AsyncMock(
+                                      side_effect=RuntimeError("down"))), \
+                mock.patch.object(_aio, "sleep", new=mock.AsyncMock()):
+            async def _boom(_bot):
+                raise TelegramConflictError(method="getUpdates",
+                                            message="Conflict")
+
+            dp.start_polling = mock.AsyncMock(side_effect=_boom)  # type: ignore[method-assign]
+            m_bot.return_value.set_my_commands = mock.AsyncMock()
+            m_bot.return_value.set_my_description = mock.AsyncMock()
+            m_bot.return_value.set_my_short_description = mock.AsyncMock()
+            bt._conflict.resolve()
+            bt._conflict.consecutive = 4
+            with self.assertRaises(TelegramConflictError):
+                await bt.run_bot(cfg, daemon := _NetDaemon())
+            bt._conflict.resolve()
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
