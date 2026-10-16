@@ -1,7 +1,7 @@
 # HARVEST PORTAL — универсальный контейнер (HF Spaces / VPS).
 # HF Spaces: Dockerfile в корне, app_port из README (8080).
 # Сборка вручную: docker build -t harvest-portal .
-FROM python:3.14-slim
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \

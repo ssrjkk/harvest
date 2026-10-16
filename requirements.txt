@@ -6,7 +6,7 @@ colorama>=0.4.6,<1
 fake-useragent>=2.2.0,<3
 aiosqlite>=0.20.0,<1
 cryptography>=42.0.4,<46
-rich>=15.0.0,<15
+rich>=15.0.0,<16
 # PostgreSQL backend (опционально): используйте при database.path = postgres://... 
 asyncpg>=0.30.0,<1
 # Веб-GUI фермы (core/web_gui.py: FastAPI + uvicorn)
