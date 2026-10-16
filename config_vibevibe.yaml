@@ -16,6 +16,12 @@ faucet:
   retries: 2
   max_concurrent: 16
   strategies:
+    # chainstack — MCP-кран: нужен CHAINSTACK_API_KEY в переменных окружения
+    # (https://console.chainstack.com/user/settings/api-keys). Без ключа стратегия
+    # исключается на pre-flight, пополнение идёт только через direct/другие стратегии.
+    - type: "chainstack"
+      url: "https://mcp.chainstack.com/mcp"
+      network_param: "robinhood"
     - type: direct
       url: https://faucet.testnet.chain.robinhood.com/claim
 actions:
