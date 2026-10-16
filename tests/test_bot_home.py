@@ -209,10 +209,14 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         self.assertIn("[STOP]", text)
         self.assertIn("vibe/vibe · 46630", text)
         kb = call.message.edits[0][1]["reply_markup"]
-        self.assertEqual(len(kb.inline_keyboard), 7)  # 6 рядов + обновить/Live
+        self.assertEqual(len(kb.inline_keyboard), 6)  # run + терминал + 3 + 3 + 3 + refresh/live
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
         self.assertIn("v1:profiles:show", payloads)
+        urls = [b.url for row in kb.inline_keyboard for b in row]
+        self.assertIn("https://ssrjkk.github.io/harvest/", urls)
         for p in payloads:
+            if p is None:
+                continue  # URL-кнопка (терминал) — без callback_data
             self.assertLessEqual(len(p.encode("utf-8")), 64, p)
         # Запуск и Стоп не рядом: стоит Запуск.
         self.assertIn("v1:run:start", payloads)
@@ -938,6 +942,12 @@ class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
         msg = _M(uid=123, text="/profiles")
         await dp.message.handlers[1].callback(msg, _State())
         self.assertIn("ПРОФИЛИ", msg.answers[0][0][0])
+
+    async def test_diag_text_command(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        msg = _M(uid=123, text="/diag")
+        await dp.message.handlers[1].callback(msg, _State())
+        self.assertTrue(any("bot:" in a[0][0] for a in msg.answers))
 
 
 if __name__ == "__main__":

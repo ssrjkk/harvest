@@ -145,9 +145,9 @@ def render_home(
 
     state: running/paused/network/chain_id/wallet_count/cycle/cycles_total/
       errors/health_factor. cells: строка формата iwoer (см. wallet_cells).
+    Вместо сырой ASCII-сетки — полоса распределения по состояниям и счётчики:
+    сетка из сотен значков не читается и прячет 90% флота за «+N».
     """
-    from portal.wallet_cells import render_grid
-
     running = bool(state.get("running"))
     paused = bool(state.get("paused"))
     mark = LABELS["pause"] if running and paused else (LABELS["run"] if running else LABELS["stop"])
@@ -163,14 +163,26 @@ def render_home(
     except (TypeError, ValueError):
         health = 0.0
     stamp = esc(updated or datetime.now(UTC).strftime("%H:%M UTC"))
-    grid = render_grid(cells, cells_total)
+    try:
+        total_n = int(cells_total or state.get("wallet_count") or 0)
+    except (TypeError, ValueError):
+        total_n = 0
+    dist = {c: 0 for c in "iwoer"}
+    for ch in str(cells or ""):
+        if ch in dist:
+            dist[ch] += 1
+    bar = progress_cells(dist["w"] + dist["o"], total_n or sum(dist.values())) + " в работе"
+    cells_line = (
+        f"i {dist['i']} · w {dist['w']} · o {dist['o']} · e {dist['e']} · r {dist['r']}"
+    )
     lines = [
         "<b>harvest // ПОЛЕ</b>",
         f"{mark}  {net} · {chain}",
         LABELS["sep"],
         f"кошельки  {wallets}      цикл {cycle} / {total_s}",
         f"ошибки    {errors}       health {health:.2f}",
-        grid,
+        bar,
+        cells_line,
         f"обновлено {stamp}",
     ]
     if mode == "pro":
@@ -213,6 +225,7 @@ _STR: dict[str, dict[str, str]] = {
     "btn_wallets": {"ru": "[ Кошельки ]", "en": "[ Wallets ]"},
     "btn_history": {"ru": "[ История ]", "en": "[ History ]"},
     "btn_builder": {"ru": "[ Конструктор ]", "en": "[ Builder ]"},
+    "btn_terminal": {"ru": "[ Открыть терминал ]", "en": "[ Open terminal ]"},
     "btn_profiles": {"ru": "[ Профили ]", "en": "[ Profiles ]"},
     "btn_ref": {"ru": "[ Справочник ]", "en": "[ Manual ]"},
     "btn_diag": {"ru": "[ Диагностика ]", "en": "[ Diagnostics ]"},

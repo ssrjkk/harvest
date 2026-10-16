@@ -852,11 +852,14 @@ def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = Fals
     live = _b("btn_live_off", "v1:home:live") if live_on else _b("btn_live_on", "v1:home:live")
     return InlineKeyboardMarkup(inline_keyboard=[
         [run_btn, pau_btn],
-        [_b("btn_net", "v1:net:show"), _b("btn_scale", "v1:scale:show")],
-        [_b("btn_wallets", "v1:wallets:page:1"), _b("btn_history", "v1:history:show")],
-        [_b("btn_builder", "v1:builder:show"), _b("btn_ref", "v1:ref:show")],
-        [_b("btn_profiles", "v1:profiles:show"), _b("btn_diag", "v1:diag:show")],
-        [_b("btn_danger", "v1:danger:show")],
+        [InlineKeyboardButton(text=_R.tr("btn_terminal", lang),
+                              url="https://ssrjkk.github.io/harvest/")],
+        [_b("btn_wallets", "v1:wallets:page:1"), _b("btn_profiles", "v1:profiles:show"),
+         _b("btn_history", "v1:history:show")],
+        [_b("btn_builder", "v1:builder:show"), _b("btn_net", "v1:net:show"),
+         _b("btn_diag", "v1:diag:show")],
+        [_b("btn_scale", "v1:scale:show"), _b("btn_ref", "v1:ref:show"),
+         _b("btn_danger", "v1:danger:show")],
         [_b("btn_refresh", "v1:home:refresh"), live],
     ])
 
@@ -1768,6 +1771,11 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=_menu(),
+            )
+        elif text == "/diag":
+            await message.answer(
+                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
+                parse_mode=ParseMode.HTML,
             )
         elif text == "/history":
             await message.answer(_fmt_history(await daemon.cycle_history()), parse_mode=ParseMode.HTML)

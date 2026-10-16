@@ -1,7 +1,17 @@
-/* harvest Mini App — mobile-first поверх vars из /static/app.css.
-   Цели ≥44px, без hover-зависимости, без горизонтального скролла.
-   Цвета статусов — те же смыслы, что на сайте и в боте. */
+/* harvest Mini App — Y2K command center. Mobile-first, цели ≥44px,
+   без hover-зависимости, без горизонтального скролла. Классы те же,
+   что использует app.js. Цвета статусов — те же смыслы, что на сайте. */
 .tma {
+  --y2k-bg: #05060a;
+  --y2k-panel: #0a0d16;
+  --y2k-inset: #020306;
+  --y2k-ink: #f1f5f9;
+  --y2k-dim: #94a3b8;
+  --y2k-edge: #94a3b8;
+  --y2k-acid: #ccff00;
+  --y2k-cyan: #00f0ff;
+  --y2k-red: #ff0055;
+  --y2k-amber: #f59e0b;
   max-width: 430px;
   margin: 0 auto;
   min-height: 100vh;
@@ -11,14 +21,27 @@
     calc(env(safe-area-inset-right, 0px) + 12px)
     calc(env(safe-area-inset-bottom, 0px) + 16px)
     calc(env(safe-area-inset-left, 0px) + 12px);
+  background: var(--y2k-bg);
+  color: var(--y2k-ink);
+  font-family: "Courier New", ui-monospace, Menlo, Consolas, monospace;
 }
-.tma-head { margin-bottom: 10px; }
+.tma-head {
+  margin-bottom: 10px;
+  background: linear-gradient(90deg, #002b80 0%, #006699 55%, #00b8a9 100%);
+  border-top: 2px solid var(--y2k-edge);
+  border-left: 2px solid var(--y2k-edge);
+  border-right: 2px solid #000;
+  border-bottom: 2px solid #000;
+  padding: 8px 12px;
+}
 .tma-title {
-  font-family: var(--font-data);
-  font-weight: 800;
+  font-weight: 900;
   letter-spacing: 0.04em;
+  color: #fff;
+  text-shadow: 1px 1px 0 #000;
+  font-size: 14px;
 }
-.tma-sub { color: var(--text-2); font-size: 12px; }
+.tma-sub { color: var(--y2k-cyan); font-size: 12px; font-weight: 700; }
 .tma-tabs {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
@@ -28,18 +51,27 @@
 .tma-tabs button, .tma-btn {
   min-height: 44px;
   padding: 10px 8px;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-0);
+  background: #1e2538;
+  border-top: 2px solid var(--y2k-edge);
+  border-left: 2px solid var(--y2k-edge);
+  border-right: 2px solid #000;
+  border-bottom: 2px solid #000;
+  box-shadow: 2px 2px 0 #000;
+  border-radius: 0;
+  color: var(--y2k-ink);
   font-size: 13px;
+  font-weight: 700;
 }
-.tma-tabs button.on { border-color: var(--border-active); }
+.tma-tabs button.on { border-color: var(--y2k-acid); color: var(--y2k-acid); }
 .tma-screen { display: flex; flex-direction: column; gap: 10px; }
 .tma-card {
-  background: var(--bg-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--y2k-panel);
+  border-top: 2px solid var(--y2k-edge);
+  border-left: 2px solid var(--y2k-edge);
+  border-right: 2px solid #000;
+  border-bottom: 2px solid #000;
+  box-shadow: inset 1px 1px 0 #cbd5e1, 3px 3px 0 #000;
+  border-radius: 0;
   padding: 12px;
 }
 .tma-row { display: flex; gap: 8px; }
@@ -56,60 +88,71 @@
   aspect-ratio: 1;
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
-  border-radius: 2px;
+  border: 1px solid #000;
+  border-radius: 0;
   user-select: none;
 }
-.c-i { color: var(--text-3); }
-.c-w { color: var(--purple-bright); border-color: var(--border-active); }
-.c-o { color: var(--green); }
-.c-e { color: var(--red); }
-.c-r { color: var(--amber); }
+.c-i { color: #3a4356; background: #10141f; }
+.c-w { color: var(--y2k-cyan); border-color: var(--y2k-cyan); background: #062a30; }
+.c-o { color: var(--y2k-acid); border-color: var(--y2k-acid); background: #16280a; }
+.c-e { color: var(--y2k-red); border-color: var(--y2k-red); background: #2b0a16; }
+.c-r { color: var(--y2k-amber); border-color: var(--y2k-amber); background: #2b1d06; }
 .c.flash { animation: tmaflash 400ms; }
 @keyframes tmaflash {
-  0% { background: var(--purple-glow); }
+  0% { background: var(--y2k-acid); }
   100% { background: transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
   .c.flash { animation: none; }
   * { transition: none !important; }
 }
-.tma-gate { padding: 24px 0; text-align: center; color: var(--text-2); }
+.tma-gate { padding: 24px 0; text-align: center; color: var(--y2k-dim); }
 .tma-toast {
   position: fixed;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--bg-3);
-  border: 1px solid var(--border-active);
-  border-radius: var(--radius-sm);
+  background: var(--y2k-panel);
+  border: 2px solid var(--y2k-acid);
+  box-shadow: 3px 3px 0 #000;
+  border-radius: 0;
   padding: 10px 14px;
   z-index: 50;
+  color: var(--y2k-ink);
+  font-weight: 700;
 }
 .tma table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tma th, .tma td { padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+.tma th, .tma td { padding: 6px 4px; border-bottom: 1px solid var(--y2k-edge); text-align: left; }
+.tma th { background: #efead8; color: #090a0f; font-size: 11px; text-transform: uppercase; }
 .tma pre {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  background: var(--y2k-inset);
+  border-top: 2px solid #000;
+  border-left: 2px solid #000;
+  border-right: 2px solid var(--y2k-edge);
+  border-bottom: 2px solid var(--y2k-edge);
+  border-radius: 0;
   padding: 10px;
   overflow-x: auto;
-  font-family: var(--font-data);
+  font-family: "Courier New", ui-monospace, monospace;
   font-size: 12px;
+  color: var(--y2k-acid);
 }
 .tma select, .tma input {
   min-height: 44px;
   width: 100%;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  color: var(--text-0);
+  background: var(--y2k-inset);
+  border-top: 2px solid #000;
+  border-left: 2px solid #000;
+  border-right: 2px solid var(--y2k-edge);
+  border-bottom: 2px solid var(--y2k-edge);
+  border-radius: 0;
+  color: var(--y2k-ink);
   padding: 8px 10px;
   font-size: 14px;
 }
 .tma-backrow { display: flex; gap: 8px; }
 .skel {
-  border-radius: var(--radius-sm);
-  background: linear-gradient(90deg, var(--bg-1), var(--bg-2), var(--bg-1));
+  border-radius: 0;
+  background: linear-gradient(90deg, var(--y2k-panel), #1e2538, var(--y2k-panel));
   min-height: 44px;
 }

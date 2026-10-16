@@ -306,6 +306,20 @@ class TestBotCommands(unittest.TestCase):
 
 
 class TestRenderProfiles(unittest.TestCase):
+    def test_home_distribution_bar(self):
+        t = R.render_home(_state(), mode="novice", cells="o" * 10 + "e" * 5 + "i" * 5, cells_total=20)
+        self.assertIn("harvest // ПОЛЕ", t)
+        self.assertIn("▓", t)
+        self.assertIn("в работе", t)
+        self.assertIn("i 5 · w 0 · o 10 · e 5 · r 0", t)
+        self.assertIn("(10/20)", t)
+        self.assertIn("btn_terminal", R._STR)
+        self.assertIn("терминал", R.tr("btn_terminal", "ru").lower())
+
+    def test_home_empty_cells(self):
+        t = R.render_home(_state(), mode="novice", cells="", cells_total=0)
+        self.assertIn("(0/50)", t)
+
     def test_ru_and_en(self):
         s = {"n": 1000, "activity_lo": 0.3, "activity_hi": 2.0, "corridors": 18,
              "rest": 999, "burst": 998, "weekend": 500, "windows": 7}
