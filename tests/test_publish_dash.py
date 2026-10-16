@@ -100,6 +100,10 @@ class TestPublishDash(unittest.TestCase):
                 "1335 TESTS · 1335 · 54 файла", encoding="utf-8")
             (root / "assets" / "site.js").write_text(
                 "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
+            (root / "terminal.html").write_text(
+                "1335 · 54 файла", encoding="utf-8")
+            (root / "assets" / "terminal.js").write_text(
+                "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
             n = publish_dash.inject_test_counts(root, 1400, 55)
             self.assertGreater(n, 0)
             html = (root / "index.html").read_text(encoding="utf-8")
@@ -108,12 +112,28 @@ class TestPublishDash(unittest.TestCase):
             self.assertNotIn("1335", html)
             js = (root / "assets" / "site.js").read_text(encoding="utf-8")
             self.assertIn("1400 tests · 55 files", js)
+            term = (root / "terminal.html").read_text(encoding="utf-8")
+            self.assertIn("1400 · 55 файлов", term)
+            tjs = (root / "assets" / "terminal.js").read_text(encoding="utf-8")
+            self.assertIn("1400 TESTS", tjs)
+            self.assertIn("1400 tests · 55 files", tjs)
 
     def test_collect_counts_matches_suite(self):
         n, m = publish_dash.collect_test_counts()
         self.assertIsNotNone(n)
         self.assertGreater(n, 1300)
         self.assertGreaterEqual(m, 54)
+
+    def test_collect_networks_have_links(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=5)
+            state = self._collect(db)
+        for net in state["networks"]:
+            self.assertIn("faucet", net)
+            self.assertIn("explorer", net)
+            self.assertNotIn("config", net)
+            self.assertNotIn("db", net)
 
 
 if __name__ == "__main__":

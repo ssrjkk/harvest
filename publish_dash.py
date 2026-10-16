@@ -30,7 +30,7 @@ DOCS = ROOT / "docs"
 DASH_BRANCH = "gh-pages"
 SITE_DIR = ROOT / ".dash-site"
 # Файлы сайта в ветке gh-pages (корень): лендинг + ассеты. state.json дописывается рядом.
-SITE_FILES = ("index.html", ".nojekyll", "robots.txt")
+SITE_FILES = ("index.html", "terminal.html", ".nojekyll", "robots.txt")
 SITE_DIRS = ("assets",)
 DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 
@@ -73,14 +73,15 @@ def collect_test_counts() -> tuple[int | None, int | None]:
 
 
 def inject_test_counts(site_dir: Path, tests: int, files: int) -> int:
-    """Подставляет свежие счётчики в gh-pages копии (index.html, site.js).
+    """Подставляет свежие счётчики в gh-pages копии (index/terminal, site/terminal.js).
 
-    Возвращает число замен. Только эти два файла; DOCUMENTATION/README
+    Возвращает число замен. DOCUMENTATION/README
     в gh-pages не едут и остаются снапшотом.
     """
     import re
 
-    targets = [site_dir / "index.html", site_dir / "assets" / "site.js"]
+    targets = [site_dir / "index.html", site_dir / "terminal.html",
+               site_dir / "assets" / "site.js", site_dir / "assets" / "terminal.js"]
     patterns = [
         (re.compile(r"\d[\d\s]*\s+TESTS"), f"{tests} TESTS"),
         (re.compile(r"\d+\s*·\s*\d+\s+файл[а-я]*"), f"{tests} · {files} {_plural_files(files)}"),
@@ -158,7 +159,7 @@ async def collect() -> dict:
                 k: n[k]
                 for k in (
                     "slug", "name", "chain_id", "currency", "tagline",
-                    "description", "rewards", "activities",
+                    "description", "rewards", "activities", "faucet", "explorer",
                 )
             }
             for n in NETWORKS

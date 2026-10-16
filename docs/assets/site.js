@@ -16,7 +16,7 @@ applyTheme();
 
 /* ---------- i18n ---------- */
 const EN={
-skip:"Skip to content",nav_live:"Field",nav_overview:"Overview",nav_networks:"Networks",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
+skip:"Skip to content",nav_live:"Field",nav_terminal:"Terminal",nav_overview:"Overview",nav_networks:"Networks",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
 kick:"EVM testnet farmer · Python 3.12 · MIT · © 2026 ssrjkk",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. Below: the live farm field, full docs, and a working in-browser zone — config, commands, wallets, simulator.",
