@@ -212,8 +212,9 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(kb.inline_keyboard), 3)  # run + терминал + обновить/меню
         payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
         self.assertIn("v1:menu:show", payloads)
-        urls = [b.url for row in kb.inline_keyboard for b in row]
-        self.assertIn("https://ssrjkk.github.io/harvest/", urls)
+        was = [b.web_app.url for row in kb.inline_keyboard for b in row
+               if getattr(b, "web_app", None)]
+        self.assertIn("https://ssrjkk.github.io/harvest/", was)
         for p in payloads:
             if p is None:
                 continue  # URL-кнопка (терминал) — без callback_data

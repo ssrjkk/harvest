@@ -157,6 +157,67 @@ class TestFarmDaemonAlerts(unittest.TestCase):
         self.assertTrue(any("другой экземпляр" in s for s in seen))
 
 
+class TestCycleWatchAlerts(unittest.IsolatedAsyncioTestCase):
+    """Сторож циклов и pre-flight крана: пуши из реальных строк БД."""
+
+    async def test_new_cycle_alerts_once_with_real_totals(self):
+        seen = []
+
+        async def alert(text: str) -> None:
+            seen.append(text)
+
+        daemon = FarmDaemon("config.yaml", ":memory:", alert=alert)
+
+        class _Db:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def get_cycle_history(self, limit: int = 20):  # noqa: ARG002
+                self.calls += 1
+                if self.calls == 1:
+                    return [{"id": 6, "wallets": 200, "wallets_ok": 200,
+                             "actions_ok": 1000, "errors": 1}]
+                return [{"id": 7, "wallets": 200, "wallets_ok": 200,
+                         "actions_ok": 1420, "errors": 12}]
+
+        daemon.db = _Db()  # type: ignore[assignment]
+        task = asyncio.create_task(daemon._cycle_watch_loop(interval_s=0.01))
+        await asyncio.sleep(0.08)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        hits = [s for s in seen if "Цикл #7" in s]
+        self.assertEqual(len(hits), 1)
+        self.assertIn("1 420", hits[0])
+        self.assertIn("12", hits[0])
+
+    async def test_faucet_dead_alerts_owner(self):
+        seen = []
+
+        async def alert(text: str) -> None:
+            seen.append(text)
+
+        daemon = FarmDaemon("config.yaml", ":memory:", alert=alert)
+        daemon.config = {"faucet": {"enabled": True, "strategies": []}}
+        live = await daemon._check_faucet_once()
+        self.assertEqual(live, 0)
+        self.assertTrue(any("Кран недоступен" in s for s in seen))
+
+    async def test_no_db_no_crash(self):
+        daemon = FarmDaemon("config.yaml", ":memory:", alert=None)
+        daemon.db = None  # type: ignore[assignment]
+        task = asyncio.create_task(daemon._cycle_watch_loop(interval_s=0.01))
+        await asyncio.sleep(0.04)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        self.assertEqual(await daemon._check_faucet_once(), 0)
+
+
 class TestDbMasterKey(unittest.TestCase):
     """Ключ БД демона фермы: PIN-пароль портала не должен ломать расшифровку.
 

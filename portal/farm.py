@@ -80,6 +80,7 @@ class FarmDaemon:
         self.scheduler: Scheduler | None = None
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._cycle_watch_task: asyncio.Task | None = None
         self._started_at = time.monotonic()
         self._balance_alerts_task: asyncio.Task | None = None
         self._balance_alerts_enabled: bool = False
@@ -203,6 +204,8 @@ class FarmDaemon:
             self._guard = guard
             self._stop = asyncio.Event()
             self._task = asyncio.create_task(self._run())
+            self._start_cycle_watch()
+            asyncio.get_running_loop().create_task(self._check_faucet_once())
             return True
 
     async def _run(self) -> None:
@@ -232,10 +235,12 @@ class FarmDaemon:
             assert self._task is not None
             await self._task
             self._task = None
+            await self._stop_cycle_watch()
             return True
 
     async def _shutdown_pool(self) -> None:
         """Полное закрытие ресурсов пула (необратимо). БД остаётся для статистики."""
+        await self._stop_cycle_watch()
         if self.pool is not None:
             try:
                 await self.pool.close()
@@ -252,6 +257,96 @@ class FarmDaemon:
                 guard.release()
             except Exception:  # noqa: BLE001
                 logger.warning("Ошибка при снятии фарм-лока", exc_info=True)
+
+    def _start_cycle_watch(self) -> None:
+        """Сторож завершённых циклов для пушей владельцу (роль уведомлялки)."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._cycle_watch_task is not None and not self._cycle_watch_task.done():
+            return
+        self._cycle_watch_task = loop.create_task(self._cycle_watch_loop())
+
+    async def _stop_cycle_watch(self) -> None:
+        task, self._cycle_watch_task = self._cycle_watch_task, None
+        if task is not None and not task.done():
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _cycle_watch_loop(self, interval_s: float = 120.0) -> None:
+        """Раз в interval_s смотрит новые строки cycle_history и пушит итог.
+
+        Только факты из БД: номер цикла, кошельки, действия, ошибки.
+        """
+        last_seen: int | None = None
+        try:
+            while True:
+                await asyncio.sleep(interval_s)
+                if self.db is None:
+                    continue
+                try:
+                    rows = await self.db.get_cycle_history(1)
+                except Exception:  # noqa: BLE001
+                    continue
+                if not rows:
+                    continue
+                cur = rows[0]
+                try:
+                    cid = int(cur.get("id", 0) or 0)
+                except (TypeError, ValueError):
+                    continue
+                if last_seen is None:
+                    last_seen = cid
+                    continue
+                if cid <= last_seen:
+                    continue
+                last_seen = cid
+                acts = int(cur.get("actions_ok") or 0)
+                errs = int(cur.get("errors") or 0)
+                wals = int(cur.get("wallets") or 0)
+
+                def _f(n: object) -> str:
+                    return f"{int(n):,}".replace(",", " ")
+
+                await self._alert(
+                    f"✅ Цикл #{cid} завершён: {_f(acts)} действий "
+                    f"({_f(wals)} кошельков), ошибок: {_f(errs)}."
+                )
+        except asyncio.CancelledError:
+            pass
+
+    async def _check_faucet_once(self) -> int:
+        """Quota-free pre-flight крана при старте фарма (роль уведомлялки).
+
+        Возвращает число живых стратегий; 0 — пуш владельцу, что пополнения
+        не будет и фарм идёт без топлива.
+        """
+        try:
+            from core.faucet import Faucet
+
+            if not isinstance(self.config, dict):
+                return 0
+            faucet = Faucet(self.config)
+            try:
+                live = await faucet.validate()
+            finally:
+                try:
+                    await faucet.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Pre-flight крана не удался: %s", e)
+            return 0
+        if live <= 0:
+            await self._alert(
+                "🚨 Кран недоступен (0 живых стратегий): пополнения не будет, "
+                "фарм идёт без топлива."
+            )
+        return live
 
     async def pause(self) -> bool:
         async with self._mgmt:

@@ -855,8 +855,8 @@ def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = Fals
     pau_btn = _b("btn_resume", "v1:run:resume") if (running and paused) else _b("btn_pause", "v1:run:pause")
     return InlineKeyboardMarkup(inline_keyboard=[
         [run_btn, pau_btn],
-        [InlineKeyboardButton(text=_R.tr("btn_terminal", lang),
-                              url="https://ssrjkk.github.io/harvest/")],
+        [InlineKeyboardButton(text="🚀 Открыть терминал",
+                              web_app=WebAppInfo(url="https://ssrjkk.github.io/harvest/"))],
         [_b("btn_refresh", "v1:home:refresh"), _b("btn_menu", "v1:menu:show")],
     ])
 
