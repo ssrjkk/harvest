@@ -837,7 +837,6 @@ class TestV1Gaps(unittest.IsolatedAsyncioTestCase):
         import portal.bot_telegram as _bt2
 
         dp = build_dispatcher(_cfg(), HomeDaemon())
-        cb = dp.callback_query.handlers[0].callback
         st = _State()
         await st.set_state(_bt2.EncWiz.password)
         await st.update_data(enc_fmt="xml")

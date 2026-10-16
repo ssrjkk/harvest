@@ -452,6 +452,7 @@ class TestOpsWizardFlow(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await st.get_state())
         self.assertIn("СПРАВКА", msg.answers[0][0][0])
 
+
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestAntiflood(unittest.IsolatedAsyncioTestCase):
@@ -731,21 +732,15 @@ class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
         return st
 
     async def test_wiz_finish_errors(self):
-        import portal.bot_telegram as bt
-
         dp = build_dispatcher(_cfg(), _NetDaemon())
         cb = dp.callback_query.handlers[0].callback
         call = _C(uid=123, data="wiz:cmd:f:1")
         await cb(call, self._state(net="nope", wallets=1, cycles=1))
         self.assertIn("[err]", call.message.answers[0][0][0])
         call2 = _C(uid=123, data="wiz:cfg:w:5")
-        msg = _M(uid=123, text="")
-        msg.bot.send_document = mock.AsyncMock()
-        # finish_cfg через кнопку невозможен без net; err через build напрямую:
-        with self.assertRaises(ValueError):
-            import portal.bot_ops as _ops
-
-            _ops.build_config_yaml("nope", 5)
+        call2.message.from_user = _U(123)
+        await cb(call2, self._state(net="nope"))
+        self.assertIn("[err]", call2.message.answers[0][0][0])
 
     async def test_wiz_handle_direct(self):
         import portal.bot_telegram as bt
@@ -1094,7 +1089,7 @@ class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
             bt._conflict.resolve()
             bt._conflict.consecutive = 4
             with self.assertRaises(TelegramConflictError):
-                await bt.run_bot(cfg, daemon := _NetDaemon())
+                await bt.run_bot(cfg, _NetDaemon())
             bt._conflict.resolve()
 
 
