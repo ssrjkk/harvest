@@ -7,10 +7,19 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from core.behavior import cfg_hi, gas_multiplier, profile_for, time_of_day_factor
+from core.behavior import (
+    WalletProfile,
+    cfg_hi,
+    day_of_week_factor,
+    gas_multiplier,
+    hour_window_factor,
+    profile_for,
+    time_of_day_factor,
+)
 
 
 def _cfg(**kw):
@@ -200,6 +209,60 @@ class TestRangeDraws(unittest.TestCase):
         self.assertEqual(cfg_hi({"behavior": {"burst_multiplier": 1.6}}, "burst_multiplier", 1.6), 1.6)
         self.assertEqual(cfg_hi({"behavior": {"burst_multiplier": [1.3, 2.5]}}, "burst_multiplier", 1.6), 2.5)
         self.assertEqual(cfg_hi({}, "burst_multiplier", 1.6), 1.6)
+
+
+class TestRhythmAxes(unittest.TestCase):
+    """Новые оси: день недели и личное окно активности."""
+
+    @staticmethod
+    def _lt(hour: int, wday: int, minute: int = 0):
+        import time as _t
+
+        return _t.struct_time((2026, 10, 16, hour, minute, 0, wday, 289, -1))
+
+    def test_weekend_zero_always_one(self):
+        self.assertEqual(day_of_week_factor(0.0), 1.0)
+
+    def test_weekend_saturday_reduces_skip(self):
+        with mock.patch("time.localtime", return_value=self._lt(12, 5)):
+            self.assertAlmostEqual(day_of_week_factor(1.0), 0.7)
+
+    def test_weekend_monday_neutral(self):
+        with mock.patch("time.localtime", return_value=self._lt(12, 0)):
+            self.assertEqual(day_of_week_factor(1.0), 1.0)
+
+    def test_hour_window_inside_outside(self):
+        p = WalletProfile(day_start=9.0, day_width=8.0)
+        with mock.patch("time.localtime", return_value=self._lt(12, 2)):
+            self.assertEqual(hour_window_factor(p), 0.85)
+        with mock.patch("time.localtime", return_value=self._lt(2, 2)):
+            self.assertEqual(hour_window_factor(p), 1.8)
+
+    def test_hour_window_wraps_midnight(self):
+        p = WalletProfile(day_start=22.0, day_width=4.0)
+        with mock.patch("time.localtime", return_value=self._lt(23, 2, 30)):
+            self.assertEqual(hour_window_factor(p), 0.85)
+        with mock.patch("time.localtime", return_value=self._lt(12, 2)):
+            self.assertEqual(hour_window_factor(p), 1.8)
+
+    def test_hour_window_neutral(self):
+        self.assertEqual(hour_window_factor(WalletProfile(neutral=True)), 1.0)
+
+    def test_rhythm_draws_bounded_deterministic_vary(self):
+        kw = dict(weekend_strength=[0.0, 1.0], day_start=[0.0, 24.0], day_width=[1.0, 16.0])
+        p1 = profile_for(ADDR_A, _cfg(**kw))
+        p2 = profile_for(ADDR_A, _cfg(**kw))
+        self.assertEqual((p1.weekend_strength, p1.day_start, p1.day_width),
+                         (p2.weekend_strength, p2.day_start, p2.day_width))
+        self.assertGreaterEqual(p1.weekend_strength, 0.0)
+        self.assertLessEqual(p1.weekend_strength, 1.0)
+        starts = {profile_for(f"0x{i:040x}", _cfg(**kw)).day_start for i in range(20)}
+        self.assertGreater(len(starts), 1)
+
+    def test_rhythm_defaults_off(self):
+        p = profile_for(ADDR_A, _cfg())
+        self.assertEqual(p.weekend_strength, 0.0)
+        self.assertEqual(day_of_week_factor(p.weekend_strength), 1.0)
 
 
 if __name__ == "__main__":

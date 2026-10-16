@@ -9,7 +9,7 @@ import random
 
 from core import utils
 from core.actions import ActionExecutor
-from core.behavior import WalletProfile, time_of_day_factor
+from core.behavior import WalletProfile, day_of_week_factor, hour_window_factor, time_of_day_factor
 from core.faucet import Faucet
 from core.network import NetworkManager
 
@@ -42,9 +42,15 @@ class Farmer:
         base = self.farming.get("skip_cycle_probability", 0.05)
         if self.profile.neutral:
             return max(0.0, base)
-        # Активность: выше activity — реже пропускает. Время суток добавляет
-        # естественную неровность: часть кошельков «спит» ночью.
-        p = base * (2.0 - self.profile.activity) * time_of_day_factor(self.profile.daily_window_strength)
+        # Активность: выше activity — реже пропускает. Время суток, день недели
+        # и личное окно активности добавляют естественную неровность.
+        p = (
+            base
+            * (2.0 - self.profile.activity)
+            * time_of_day_factor(self.profile.daily_window_strength)
+            * day_of_week_factor(self.profile.weekend_strength)
+            * hour_window_factor(self.profile)
+        )
         return max(0.0, min(1.0, p))
 
     def _actions_count(self) -> int:

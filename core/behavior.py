@@ -51,6 +51,9 @@ class WalletProfile:
     burst_prob: float = 0.0
     burst_mult: float = 1.5
     start_delay: float = 0.0
+    weekend_strength: float = 0.0
+    day_start: float = 9.0
+    day_width: float = 8.0
     neutral: bool = False
 
 
@@ -176,6 +179,10 @@ def profile_for(address: str, config: dict) -> WalletProfile:
         sd_range = (0.0, 0.0)
     start_delay = max(0.0, min(30.0, rng.uniform(*sd_range)))
 
+    weekend_strength = _draw_bounded(rng, config, "weekend_strength", 0.0, 0.0, 1.0)
+    day_start = _draw_bounded(rng, config, "day_start", 9.0, 0.0, 24.0)
+    day_width = _draw_bounded(rng, config, "day_width", 8.0, 1.0, 16.0)
+
     return WalletProfile(
         activity=activity,
         rest_prob=rest_prob,
@@ -194,6 +201,9 @@ def profile_for(address: str, config: dict) -> WalletProfile:
         burst_prob=burst_prob,
         burst_mult=burst_mult,
         start_delay=start_delay,
+        weekend_strength=weekend_strength,
+        day_start=day_start,
+        day_width=day_width,
     )
 
 
@@ -209,6 +219,41 @@ def time_of_day_factor(strength: float) -> float:
     if 7 <= hour <= 22:
         return 1.0 - 0.25 * strength
     return 1.0 + 1.5 * strength
+
+
+def day_of_week_factor(strength: float) -> float:
+    """Множитель пропуска по дню недели: в выходные люди активнее.
+
+    strength=0 → всегда 1.0. Суббота/воскресенье снижают вероятность
+    пропуска, будни — нейтральны.
+    """
+    if strength <= 0:
+        return 1.0
+    if time.localtime().tm_wday >= 5:
+        return max(0.5, 1.0 - 0.3 * strength)
+    return 1.0
+
+
+def hour_window_factor(profile: WalletProfile) -> float:
+    """Окно привычной активности кошелька [day_start, +day_width).
+
+    Внутри окна пропуск чуть реже (0.85), снаружи — заметно чаще (1.8):
+    «сова» и «жаворонок» не пересекаются. Нейтральный профиль — 1.0.
+    """
+    if profile.neutral:
+        return 1.0
+    now = time.localtime()
+    hour = now.tm_hour + now.tm_min / 60.0
+    start = profile.day_start % 24.0
+    width = max(1.0, min(16.0, profile.day_width))
+    if width >= 24.0:
+        return 1.0
+    end = start + width
+    if end <= 24.0:
+        inside = start <= hour < end
+    else:
+        inside = hour >= start or hour < (end - 24.0)
+    return 0.85 if inside else 1.8
 
 
 def gas_multiplier(profile: WalletProfile) -> float:
