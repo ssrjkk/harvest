@@ -1,0 +1,115 @@
+/* HARVEST Mini App — mobile-first поверх vars из /static/app.css.
+   Цели ≥44px, без hover-зависимости, без горизонтального скролла.
+   Цвета статусов — те же смыслы, что на сайте и в боте. */
+.tma {
+  max-width: 430px;
+  margin: 0 auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 12px)
+    calc(env(safe-area-inset-right, 0px) + 12px)
+    calc(env(safe-area-inset-bottom, 0px) + 16px)
+    calc(env(safe-area-inset-left, 0px) + 12px);
+}
+.tma-head { margin-bottom: 10px; }
+.tma-title {
+  font-family: var(--font-data);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.tma-sub { color: var(--text-2); font-size: 12px; }
+.tma-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.tma-tabs button, .tma-btn {
+  min-height: 44px;
+  padding: 10px 8px;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-0);
+  font-size: 13px;
+}
+.tma-tabs button.on { border-color: var(--border-active); }
+.tma-screen { display: flex; flex-direction: column; gap: 10px; }
+.tma-card {
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+.tma-row { display: flex; gap: 8px; }
+.tma-row > * { flex: 1; }
+.tma-kv { display: flex; justify-content: space-between; padding: 3px 0; }
+.tma-grid {
+  display: grid;
+  grid-template-columns: repeat(10, 1fr);
+  gap: 5px;
+  font-size: 15px;
+  line-height: 1;
+}
+.tma-grid .c {
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  user-select: none;
+}
+.c-i { color: var(--text-3); }
+.c-w { color: var(--purple-bright); border-color: var(--border-active); }
+.c-o { color: var(--green); }
+.c-e { color: var(--red); }
+.c-r { color: var(--amber); }
+.c.flash { animation: tmaflash 400ms; }
+@keyframes tmaflash {
+  0% { background: var(--purple-glow); }
+  100% { background: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .c.flash { animation: none; }
+  * { transition: none !important; }
+}
+.tma-gate { padding: 24px 0; text-align: center; color: var(--text-2); }
+.tma-toast {
+  position: fixed;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--bg-3);
+  border: 1px solid var(--border-active);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  z-index: 50;
+}
+.tma table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.tma th, .tma td { padding: 6px 4px; border-bottom: 1px solid var(--border); text-align: left; }
+.tma pre {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px;
+  overflow-x: auto;
+  font-family: var(--font-data);
+  font-size: 12px;
+}
+.tma select, .tma input {
+  min-height: 44px;
+  width: 100%;
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-0);
+  padding: 8px 10px;
+  font-size: 14px;
+}
+.tma-backrow { display: flex; gap: 8px; }
+.skel {
+  border-radius: var(--radius-sm);
+  background: linear-gradient(90deg, var(--bg-1), var(--bg-2), var(--bg-1));
+  min-height: 44px;
+}

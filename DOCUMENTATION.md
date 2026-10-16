@@ -680,7 +680,35 @@ Rate-limit:
 (stop не блокирует HTTP — задача в фоне), `/api/cycle-history`,
 `/api/top-wallets`, `/api/wallets/export?format=csv|json` (скачивание всех
 кошельков с ключами; auth + HTTPS), `/api/tg/init` (только POST, лимит 16 КБ),
-`/static`.
+`/app/` (Mini App), `/api/miniapp/*` (см. 4.6), `/static`.
+
+### 4.6. `miniapp.py` + `/app/` — Mini App (этап 3)
+
+- Авторизация на каждом запросе: `Authorization: tma <initData>`, подпись
+  тем же `auth.validate_telegram_init_data` (HMAC WebAppData, compare_digest,
+  окно 10 мин, будущее и >16 КБ — отказ). Отказ везде одинаковый:
+  401 `{"error": "unauthorized"}` — подпись/давность/allowlist неразличимы.
+  initData и токен в логи не пишутся.
+- Эндпоинты: `GET /api/miniapp/state` (ETag/304, без адресов — только клетки),
+  `GET /api/miniapp/history` (limit ≤ 50), `GET /api/miniapp/networks`
+  (сети + пресеты мастера), `POST /api/miniapp/farm` (идемпотентный,
+  rate 30/мин на user_id), `POST /api/miniapp/command` (тот же
+  `bot_ops.build_command/build_config_yaml/check_config_text`, включая
+  `cfg_send` — YAML файлом в чат), `POST /api/miniapp/export/token` →
+  `POST /api/miniapp/export/request` (одноразовый confirm-токен, кулдаун
+  1/мин общий с ботом, аудит без ключей, файл — тем же
+  `bot_telegram.send_wallets_file` в чат с protect + удаление 60с;
+  шифрованный вариант — только через бота: пароль в WebView не вводим),
+  `GET/POST /api/miniapp/settings` (общие с ботом `bot_settings`).
+- Клиент (`portal/static/miniapp/`): без фреймворков, те же vars из
+  `/static/app.css`, сетка iwoer теми же глифами, опрос state 5с + ETag,
+  пауза при hidden, MainButton/BackButton/haptic/safe-area с проверкой
+  версий и молчаливой деградацией, скелетон/empty/retry/session-expired,
+  вне Telegram — «Открой из бота», ноль запросов.
+- Публикация (п.8 ТЗ): портал на 127.0.0.1; `PORTAL_MINIAPP_PUBLIC=1` —
+  снаружи только `/app/*`, `/api/miniapp/*`, `/static/*`, `/healthz`
+  (остальное 404, тест); Caddy — только эти пути (`deploy/caddy/`);
+  кнопка Mini App — `PORTAL_MINIAPP_URL` (дефолт base + `/app/`).
 
 ### 4.4. `farm.py` — FarmDaemon
 
@@ -829,7 +857,7 @@ transfer); реальные адреса подставляются операт
 ## 7. Тесты
 
 `tests/` — 54 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
-1317 тестов, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
+1331 тест, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
 через `HARVEST_LOAD=1`, в обычном CI пропускается):
 
 - ядро: `test_workpool`, `test_pool`, `test_farmer`, `test_actions`,
@@ -850,7 +878,7 @@ transfer); реальные адреса подставляются операт
   chain_id-99999);
 - портал: `test_portal_main`, `test_portal_farm`, `test_portal_auth`,
   `test_portal_api`, `test_portal_guard`, `test_bot_telegram`, `test_bot_render`,
-  `test_bot_home`,
+  `test_bot_home`, `test_miniapp`,
   `test_portal_wallets_export`, `test_wallets_create`, `test_groups`,
   `test_scheduler`, `test_publish_dash`, `test_bot_monitor`, `test_botforge_bot`,
   `test_netdiscovery`, `test_networks_switch`, `test_network_infra`;

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Mini App (этап 3 ТЗ): `portal/miniapp.py` (`/app/`, `/api/miniapp/*`,
+  initData в заголовке, uniform-401, one-time confirm-токены, ETag/304,
+  экспорт тем же кодом бота в чат), клиент без фреймворков
+  (`portal/static/miniapp/`), `PORTAL_MINIAPP_URL`/`PORTAL_MINIAPP_PUBLIC`,
+  Caddy только на Mini App-пути, auth отклоняет будущие auth_date
 - Бот v1 (этап 2 ТЗ): `portal/bot_render.py` (единый рендер, RU/EN),
   `portal/wallet_cells.py` (общие клетки iwoer), `portal/bot_settings.py`
   (режим/язык), домашнее Поле на editMessageText, навигация `v1:*` ≤ 64 байт,

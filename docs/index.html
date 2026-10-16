@@ -50,7 +50,7 @@
   </div>
 </header>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">HARVEST v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1317 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">HARVEST v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1331 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- HERO -->
@@ -65,7 +65,7 @@
           <table>
             <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
             <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1317 · 54 файла · зелёный прогон</td></tr>
+            <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1331 · 54 файла · зелёный прогон</td></tr>
             <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
             <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
             <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
@@ -227,7 +227,7 @@ Unblock-File dist\harvest\harvest.exe
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + бот
 
-python -m pytest tests -q       # 1317 tests · 54 files
+python -m pytest tests -q       # 1331 tests · 54 files
 
 python publish_dash.py          # state.json → gh-pages → поле сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
@@ -600,7 +600,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
     <div class="grid2">
       <div>
-<pre class="code">python -m pytest tests -q   # 1317 tests · 54 files</pre>
+<pre class="code">python -m pytest tests -q   # 1331 tests · 54 files</pre>
         <ul class="tight note">
           <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
           <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>

@@ -3,12 +3,34 @@
 # Установка:  скопируйте в deploy/caddy/Caddyfile и подставьте домен,
 #             затем:  docker compose -f docker-compose.yml -f docker-compose.caddy.yml up -d --build
 #             В deploy/.env:  PORTAL_ALLOW_PASSWORD_HTTP= (пусто)  и  PORTAL_TRUST_PROXY=1
+#             Для режима Mini App: PORTAL_MINIAPP_PUBLIC=1 (портал снаружи отдаёт
+#             только /app/*, /api/miniapp/*, /static/* и /healthz — остальное 404).
 #
 # !!! ЗАМЕНИТЕ your-domain.com на ваш реальный домен (A-запись на сервер) !!!
 # Caddy автоматически выпустит LetsEncrypt-сертификат (порты 80/443 открыты).
+#
+# Проверка:   BotFather → /newapp → URL https://your-domain.com/app/
+#             в боте кнопка берёт URL из env PORTAL_MINIAPP_URL (не из кода).
+#             Временный туннель — только для проверки, не постоянное решение.
 
 your-domain.com {
-    reverse_proxy portal:8080
+    # Mini App и его API — единственное публичное (п.8 ТЗ этапа 3).
+    handle /app/* {
+        reverse_proxy portal:8080
+    }
+    handle /api/miniapp/* {
+        reverse_proxy portal:8080
+    }
+    handle /static/* {
+        reverse_proxy portal:8080
+    }
+    handle /healthz {
+        reverse_proxy portal:8080
+    }
+    # Всё остальное (дашборд /, /login, /export, админ-пути) снаружи — 404.
+    handle {
+        respond "Not Found" 404
+    }
 
     # Mini App в Telegram живёт в iframe — Caddy не должен мешать.
     header {

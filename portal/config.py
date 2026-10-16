@@ -105,6 +105,13 @@ class PortalConfig:
         self.farm_config: str = os.environ.get("PORTAL_FARM_CONFIG", "config.yaml")
         self.links_path: str = os.environ.get("PORTAL_LINKS", "portal/links.json")
         self.public_base_url: str = os.environ.get("PORTAL_BASE_URL", "").rstrip("/")
+        # Mini App (этап 3): URL задаётся env, не кодом. Дефолт — /app/ на base_url.
+        self.miniapp_url: str = os.environ.get("PORTAL_MINIAPP_URL", "").rstrip("/") or (
+            f"{self.public_base_url}/app/" if self.public_base_url else ""
+        )
+        # Публичный режим Mini App (п.8 ТЗ): снаружи видны только /app/*,
+        # /api/miniapp/*, /static/* и /healthz; остальное — 404.
+        self.miniapp_public_only: bool = _env_flag("PORTAL_MINIAPP_PUBLIC", default=False)
 
         self.google_client_id: str = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
         self.google_client_secret: str = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()

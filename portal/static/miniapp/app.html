@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HARVEST — Поле</title>
+  <link rel="stylesheet" href="/static/app.css?v=2.3.0">
+  <link rel="stylesheet" href="/static/miniapp/miniapp.css?v=1">
+</head>
+<body>
+  <div class="tma" id="tma">
+    <div id="gate" class="tma-gate"></div>
+    <header class="tma-head">
+      <div class="tma-title">HARVEST // ПОЛЕ</div>
+      <div class="tma-sub" id="tmaSub">—</div>
+    </header>
+    <nav class="tma-tabs" id="tabs" hidden>
+      <button data-tab="field" class="on">Поле</button>
+      <button data-tab="nets">Сеть</button>
+      <button data-tab="history">История</button>
+      <button data-tab="danger">Зона</button>
+    </nav>
+    <main id="screen" class="tma-screen"></main>
+    <div id="toast" class="tma-toast" hidden></div>
+  </div>
+  <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
+  <script src="/static/miniapp/app.js?v=1" defer></script>
+</body>
+</html>

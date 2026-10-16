@@ -362,6 +362,22 @@ def build_config_yaml(slug: str, wallets: int = 50) -> tuple[str, str]:
     return filename, head + yaml.safe_dump(cfg, sort_keys=False, allow_unicode=True)
 
 
+# ---------------- профили конструктора (этап 2–3: бот-мастер и Mini App) ----------------
+
+# Флагов тихий/обычный/быстрый в auto.py нет; отображение интерпретирующее:
+# тихий = холостой прогон (--dry-run), быстрый = минимальные задержки (--fast).
+# Единый источник для бота и Mini App (никакой второй копии логики).
+PROFILE_FLAGS: dict[str, list[str]] = {"quiet": ["--dry-run"], "normal": [], "fast": ["--fast"]}
+PROFILE_LABEL = {"quiet": "тихий", "normal": "обычный", "fast": "быстрый"}
+
+
+def apply_profile_flags(cmd: str, profile: str) -> str:
+    """Добавляет флаги профиля к готовой команде."""
+    for flag in PROFILE_FLAGS.get(profile or "normal", []):
+        cmd += f" {flag}"
+    return cmd
+
+
 # ---------------- /check ----------------
 
 def check_config_text(text: str) -> tuple[bool, list[str]]:

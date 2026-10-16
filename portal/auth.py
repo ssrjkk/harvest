@@ -24,6 +24,9 @@ _SESSION_TTL = 7 * 24 * 3600
 _GOOGLE_ISS = {"https://accounts.google.com", "accounts.google.com"}
 _ID_TOKEN_LEEWAY = 60
 
+# Допуск часового скоса для auth_date из будущего (Mini App, п.1 ТЗ этапа 3).
+_TMA_FUTURE_LEEWAY = 60
+
 # 64 hex-символа — формат мастер-ключа БД. Hex нечувствителен к регистру:
 # именно для него сравниваем в нижнем регистре. Для всего остального (PIN) —
 # строго case-sensitive, чтобы не урезать энтропию алфавитных паролей вдвое.
@@ -161,7 +164,11 @@ def validate_telegram_init_data(bot_token: str, init_data: str, max_age: int = 1
         auth_date = int(items.get("auth_date", "0"))
     except ValueError:
         return None
-    if auth_date <= 0 or time.time() - auth_date > max_age:
+    now = time.time()
+    if auth_date <= 0 or auth_date > now + _TMA_FUTURE_LEEWAY:
+        # Подпись из будущего — тоже отказ (п.1 ТЗ этапа 3).
+        return None
+    if now - auth_date > max_age:
         return None
     user = items.get("user")
     try:
@@ -171,12 +178,17 @@ def validate_telegram_init_data(bot_token: str, init_data: str, max_age: int = 1
 
 
 async def google_exchange(
-    code: str, client_id: str, client_secret: str, redirect_uri: str, code_verifier: str = "", nonce: str = ""
+    code: str, client_id: str, client_secret: str, redirect_uri: str, code_verifier: str = "", nonce: str = "",
+    breaker=None, timeout_s: float = 20.0,
 ) -> dict | None:
     """Обмен кода авторизации Google на данные профиля (email, name).
 
     Возвращает {"email": ..., "name": ..., "sub": ...} при успехе.
+    Сетевой вызов идёт через CircuitBreaker (если передан) с ретраями
+    и жёстким таймаутом: висящий Google не должен вешать хендлер.
     """
+    from portal.shield.breaker import run_with_retry
+
     token_url = "https://oauth2.googleapis.com/token"
     data = {
         "code": code,
@@ -187,11 +199,21 @@ async def google_exchange(
     }
     if code_verifier:
         data["code_verifier"] = code_verifier
-    async with aiohttp.ClientSession() as session:
-        async with session.post(token_url, data=data) as resp:
-            if resp.status != 200:
-                return None
-            tokens = await resp.json()
+
+    async def _post():
+        timeout = aiohttp.ClientTimeout(total=max(1.0, timeout_s))
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(token_url, data=data) as resp:
+                if resp.status != 200:
+                    return None
+                return await resp.json()
+
+    try:
+        tokens = await run_with_retry(_post, attempts=3, breaker=breaker)
+    except Exception:  # noqa: BLE001 — брейкер открыт / сеть легла: тихий отказ
+        return None
+    if not tokens:
+        return None
     id_token = tokens.get("id_token")
     if not id_token:
         return None

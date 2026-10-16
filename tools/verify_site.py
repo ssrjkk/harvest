@@ -34,13 +34,32 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 
 def main() -> int:
-    for p in (HTML, JS, CSS, os.path.join(DOCS, ".nojekyll")):
+    for p in (HTML, JS, CSS, os.path.join(DOCS, ".nojekyll"), os.path.join(DOCS, "robots.txt"),
+              os.path.join(DOCS, "assets", "og.png")):
         check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
     html = open(HTML, encoding="utf-8").read()
     js = open(JS, encoding="utf-8").read()
 
     r = subprocess.run(["node", "--check", JS], capture_output=True, text=True)
     check("node --check site.js", r.returncode == 0, (r.stderr or "")[-200:])
+
+    # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
+    # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).
+    mhtml = os.path.join(ROOT, "portal", "static", "miniapp", "app.html")
+    mjs = os.path.join(ROOT, "portal", "static", "miniapp", "app.js")
+    mcss = os.path.join(ROOT, "portal", "static", "miniapp", "miniapp.css")
+    for p in (mhtml, mjs, mcss):
+        check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
+    if os.path.exists(mjs):
+        r = subprocess.run(["node", "--check", mjs], capture_output=True, text=True)
+        check("node --check miniapp app.js", r.returncode == 0, (r.stderr or "")[-200:])
+    if os.path.exists(mhtml):
+        mh = open(mhtml, encoding="utf-8").read()
+        check("miniapp: only telegram.org external",
+              "https://telegram.org/js/telegram-web-app.js" in mh
+              and mh.count("http") <= 4, "")
+        check("miniapp: no inline scripts",
+              not re.search(r"<script(?![^>]*src=)", mh), "")
 
     ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
     check("no duplicate ids", len(ids) == len(set(ids)))
@@ -86,6 +105,10 @@ def main() -> int:
     # contract-адреса обязаны быть в кавычках (голый 0x0…0 = int 0 в YAML 1.1).
     bare = re.findall(r"contract: 0x[0-9a-fA-F]+", js)
     check("no unquoted contract addresses", not bare, str(bare[:3]))
+
+    # OG/robots для шаринга.
+    check("og meta present", 'property="og:image"' in html and "og.png" in html)
+    check("theme-color present", 'name="theme-color"' in html)
 
     # Токены: сгенерированный CSS свеж (пересборка не должна ничего менять).
     before = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()

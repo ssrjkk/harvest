@@ -23,6 +23,7 @@ from aiohttp import web
 from portal import auth
 from portal.config import PortalConfig, load_links
 from portal.farm import FarmDaemon
+from portal.shield import Shield, idempotent, shield_middleware
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ WS_PUSH_S = 3.0
 KEY_CFG = web.AppKey("cfg", PortalConfig)
 KEY_DAEMON = web.AppKey("daemon", FarmDaemon)
 KEY_WS_CLIENTS = web.AppKey("ws_clients", set)
+KEY_SHIELD = web.AppKey("shield", Shield)
 
 _SESSION_TG = "tg"
 
@@ -51,6 +53,8 @@ _CSP_BASE = (
 )
 _CSP_FRAME_APP = "frame-ancestors 'self' https://t.me https://telegram.me"
 _CSP_FRAME_LOGIN = "frame-ancestors 'none'"
+# Mini App: единственный внешний скрипт — telegram-web-app.js (п.7 ТЗ этапа 3).
+_CSP_SCRIPT_APP = "script-src 'self' https://telegram.org"
 
 # Противовес потере session-сторов: при logout помечаем jti выданной сессии
 # как отозванную. Список отозванных ПЕРСИСТИТСЯ на диск (revoked_sessions.json):
@@ -162,6 +166,11 @@ _LOGIN_MAX = 5
 # блокируется целиком на окно (не помогает даже смена IP).
 _GLOBAL_WINDOW = 600.0
 _GLOBAL_MAX = 20
+# Отдельный глобальный предохранитель для choke-эндпоинтов (tg/init, google):
+# раньше переиспользовал _GLOBAL_* от логина — смена одного меняла другое.
+# Значения те же (600с/20), но константы независимы для раздельной настройки.
+_CHOKE_GLOBAL_WINDOW = 600.0
+_CHOKE_GLOBAL_MAX = 20
 _MAX_PASSWORD_LEN = 512
 
 
@@ -231,8 +240,8 @@ _global_choke: dict[str, list[float]] = {}
 def _choke_allowed_global(bucket: str) -> bool:
     now = time.time()
     rec = _global_choke.setdefault(bucket, [])
-    rec[:] = [t for t in rec if now - t < _GLOBAL_WINDOW]
-    if len(rec) >= _GLOBAL_MAX:
+    rec[:] = [t for t in rec if now - t < _CHOKE_GLOBAL_WINDOW]
+    if len(rec) >= _CHOKE_GLOBAL_MAX:
         return False
     rec.append(now)
     return True
@@ -461,8 +470,11 @@ async def api_google_callback(request: web.Request) -> web.Response:
         resp.del_cookie(OAUTH_COOKIE, path="/")
         raise resp
     redirect = cfg.google_redirect_uri or f"{cfg.public_base_url}/auth/google/callback"
+    _shield = request.app.get(KEY_SHIELD)
+    _breaker = _shield.breaker("google") if _shield is not None else None
     profile = await auth.google_exchange(
-        code, cfg.google_client_id, cfg.google_client_secret, redirect, code_verifier=verifier, nonce=nonce
+        code, cfg.google_client_id, cfg.google_client_secret, redirect,
+        code_verifier=verifier, nonce=nonce, breaker=_breaker,
     )
     if profile is None:
         resp = web.HTTPFound(location="/login?error=google")
@@ -494,6 +506,7 @@ async def api_stats(request: web.Request) -> web.Response:
     return _json(await daemon.statistics())
 
 
+@idempotent("farm:action")
 async def api_farm_action(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
@@ -533,6 +546,7 @@ async def api_networks(request: web.Request) -> web.Response:
     return _json({"networks": daemon.networks_info()})
 
 
+@idempotent("network:farm")
 async def api_network_farm(request: web.Request) -> web.Response:
     """Переключить сеть и запустить/остановить фарм по ней (одна кнопка)."""
     _require_user(request)
@@ -557,6 +571,13 @@ async def api_cycle_history(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     return _json({"history": await daemon.cycle_history()})
+
+
+async def api_guard(request: web.Request) -> web.Response:
+    """Состояние защитного контура: счётчики, латентности, брейкеры."""
+    _require_user(request)
+    shield: Shield = request.app[KEY_SHIELD]
+    return _json(await shield.snapshot())
 
 
 async def api_metrics(request: web.Request) -> web.Response:
@@ -657,8 +678,9 @@ async def api_groups_list(request: web.Request) -> web.Response:
     return _json({"groups": await daemon.list_groups()})
 
 
+@idempotent("wallets:create")
 async def api_wallets_create(request: web.Request) -> web.Response:
-    """Создать N кошельков (1..50)."""
+    """Создать N кошельков (1..50 за вызов; бот/CLI — до 5000 батчами)."""
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     try:
@@ -755,6 +777,7 @@ async def api_scheduler_state(request: web.Request) -> web.Response:
     return _json(daemon.scheduler_state())
 
 
+@idempotent("scheduler:add")
 async def api_scheduler_add_task(request: web.Request) -> web.Response:
     """Добавить задачу в планировщик."""
     _require_user(request)
@@ -904,6 +927,12 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
         await ws.close(code=4001, message=b"unauthorized")
         return ws
 
+    shield = request.app.get(KEY_SHIELD)
+    if shield is not None and shield.enabled and len(clients) >= shield.config.ws_max_clients:
+        await shield.audit_event(
+            "WS_CAP", str(user.get("sub", "?")), {"clients": len(clients)})
+        await ws.close(code=4002, message=b"busy")
+        return ws
     clients.add(ws)
     logger.info("[WS] client connected (sub=%s), total=%d", user.get("sub"), len(clients))
 
@@ -953,7 +982,7 @@ async def healthz(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "ready": cfg.ready})
 
 
-def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
+def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = None) -> web.Application:
     @web.middleware
     async def error_handler(request: web.Request, handler):
         """Никаких внутренностей наружу при неожиданной ошибке.
@@ -1001,7 +1030,12 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
             if not request.path.startswith("/static"):
                 resp.headers.setdefault("Cache-Control", "no-store")
             frame = _CSP_FRAME_LOGIN if request.path == "/login" else _CSP_FRAME_APP
-            resp.headers.setdefault("Content-Security-Policy", f"{_CSP_BASE}; {frame}")
+            csp = f"{_CSP_BASE}; {frame}"
+            if request.path == "/app/" or request.path.startswith("/app/"):
+                # Mini App: разрешаем только telegram-web-app.js снаружи (п.7 ТЗ).
+                csp = csp.replace("script-src 'self'",
+                                  _CSP_SCRIPT_APP, 1)
+            resp.headers.setdefault("Content-Security-Policy", csp)
             # HSTS только когда соединение фактически HTTPS (прямо или через
             # доверенный прокси): на plain-HTTP веб-клиенты игнорируют заголовок,
             # а ошибочная выдача в будущем могла бы закэшировать downgrade-политику.
@@ -1017,10 +1051,36 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
             _apply(e)
             raise
 
-    app = web.Application(client_max_size=1024 * 1024, middlewares=[security_headers, error_handler, origin_guard])
+    _shield = shield if shield is not None else Shield.from_env()
+    middlewares: list = [shield_middleware(_shield), security_headers, error_handler, origin_guard]
+    if cfg.miniapp_public_only:
+        # П.8 ТЗ: публично видны только Mini App и его API; остальное — 404.
+        @web.middleware
+        async def miniapp_only(request: web.Request, handler):
+            p = request.path
+            if p == "/app/" or p.startswith(("/app/", "/api/miniapp/", "/static/", "/healthz")):
+                return await handler(request)
+            logger.warning("[AUDIT] miniapp-only 404 ip=%s path=%s", _client_ip(request), p)
+            raise web.HTTPNotFound()
+
+        middlewares.insert(0, miniapp_only)
+    app = web.Application(
+        client_max_size=1024 * 1024,
+        middlewares=middlewares,
+    )
     app[KEY_CFG] = cfg
     app[KEY_DAEMON] = daemon
     app[KEY_WS_CLIENTS] = set()
+    app[KEY_SHIELD] = _shield
+
+    async def _shield_start(_app: web.Application) -> None:
+        await _app[KEY_SHIELD].start()
+
+    async def _shield_stop(_app: web.Application) -> None:
+        await _app[KEY_SHIELD].stop()
+
+    app.on_startup.append(_shield_start)
+    app.on_cleanup.append(_shield_stop)
 
     app.router.add_get("/", index)
     app.router.add_get("/login", login_page)
@@ -1037,6 +1097,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app.router.add_post("/api/farm/network/{name}/{action}", api_network_farm)
     app.router.add_get("/api/cycle-history", api_cycle_history)
     app.router.add_get("/api/metrics", api_metrics)
+    app.router.add_get("/api/guard", api_guard)
     app.router.add_get("/api/top-wallets", api_top_wallets)
     app.router.add_post("/api/wallets", api_wallets_create)
     app.router.add_get("/api/wallets/export", api_wallets_export)
@@ -1056,5 +1117,8 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon) -> web.Application:
     app.router.add_get("/api/rpc-health", api_rpc_health)
     app.router.add_get("/ws", websocket_endpoint)
     app.router.add_post("/api/tg/init", api_tg_init)
+    from portal.miniapp import register_miniapp
+
+    register_miniapp(app, cfg_key=KEY_CFG, daemon_key=KEY_DAEMON)
     app.router.add_static("/static", STATIC_DIR)
     return app

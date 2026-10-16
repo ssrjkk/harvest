@@ -612,8 +612,10 @@ _HOME_TEXT = (
 
 def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarkup:
     rows = []
-    if cfg.public_base_url:
-        rows.append([InlineKeyboardButton(text="[MINI APP]", web_app=WebAppInfo(url=cfg.public_base_url))])
+    # URL Mini App — из env (PORTAL_MINIAPP_URL), не из кода (п.8 ТЗ).
+    miniapp_url = (getattr(cfg, "miniapp_url", "") or "").strip() or cfg.public_base_url
+    if miniapp_url:
+        rows.append([InlineKeyboardButton(text="[MINI APP]", web_app=WebAppInfo(url=miniapp_url))])
     rows.extend(
         [
             [
@@ -731,10 +733,8 @@ class EncWiz(StatesGroup):
     password = State()
 
 
-# Профили шага 3/3 → флаги auto.py (флагов тихий/обычный/быстрый в коде нет;
-# отображение интерпретирующее: тихий=холостой прогон, быстрый=минимальные
-# задержки — см. расхождения в отчёте).
-_PROFILES: dict[str, list[str]] = {"quiet": ["--dry-run"], "normal": [], "fast": ["--fast"]}
+# Профили шага 3/3 → флаги auto.py: единый источник — bot_ops.PROFILE_FLAGS
+# (флагов тихий/обычный/быстрый в коде нет; отображение интерпретирующее).
 _PROFILE_LABEL = {"quiet": "тихий", "normal": "обычный", "fast": "быстрый"}
 
 # Родитель для [← Назад] (Поле — для большинства, иначе указано явно).
@@ -903,8 +903,7 @@ async def _master_finish(message: Message, state: FSMContext) -> None:
         await state.clear()
         await message.answer(f"[err] {_esc(e)}")
         return
-    for flag in _PROFILES.get(str(data.get("m_profile", "normal")), []):
-        cmd += f" {flag}"
+    cmd = _bot_ops.apply_profile_flags(cmd, str(data.get("m_profile", "normal")))
     try:
         _fn, yaml_text = _bot_ops.build_config_yaml(data["m_net"], data["m_wallets"])
     except ValueError as e:
@@ -1490,7 +1489,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await call.message.answer("Введи число циклов 0..100000 (0 — бесконечно). Или /cancel.")
         return True
     if screen == "master" and action == "profile":
-        if state is None or arg not in _PROFILES:
+        if state is None or arg not in _bot_ops.PROFILE_FLAGS:
             return True
         if _master_expired(await state.get_data()):
             await state.clear()
