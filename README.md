@@ -34,7 +34,10 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 
 Метрики поля публикует `python publish_dash.py` с машины фермы в
 изолированную ветку `gh-pages` (один amend-коммит, история `master`
-не растёт). Проверка сайта одной командой: `python tools/verify_site.py`,
+не растёт): рядом со `state.json` публикуется шифрованный
+`wallets.enc.json` (AES-256-GCM, ключ `WALLETS_KEY` только в env) —
+облачный BotForge-бот читает кошельки оттуда без нового провайдера.
+Проверка сайта одной командой: `python tools/verify_site.py`,
 скриншоты: `python tools/shoot_site.py`.
 
 ## Быстрый старт
@@ -111,7 +114,7 @@ health, количество кошельков), старт/стоп/пауза
 (`portal/`): запускайте только одну панель за раз.
 
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
-`TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY` и др.) — та же таблица env в
+`TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY`, `WALLETS_KEY` и др.) — та же таблица env в
 [§4.1 DOCUMENTATION.md](DOCUMENTATION.md).
 
 ### Сборка exe
@@ -138,7 +141,7 @@ docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
 tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
 harvest.spec   — спецификация PyInstaller (сборка: build.bat)
-publish_dash.py — публикация state.json поля в ветку gh-pages
+publish_dash.py — публикация state.json + шифрованного wallets.enc.json поля в ветку gh-pages
 ```
 
 Архитектура каждого модуля — [§3 DOCUMENTATION.md](DOCUMENTATION.md).
@@ -155,7 +158,7 @@ portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](D
 python -m pytest tests -q
 ```
 
-1554 теста, 62 файла — полный зелёный прогон (включая контуры `wait_for_receipt`:
+2034 теста, 67 файлов — полный зелёный прогон (включая контуры `wait_for_receipt`:
 EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
 `None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
 CI-гейты: 100% portal, 100% core.

@@ -321,11 +321,24 @@ def _publish_inner(state: dict, wallets_blob: dict | None = None) -> None:
         if not src.exists():
             print(f"warn: {d}/ нет в docs/ — пропускаю")
             continue
-        shutil.rmtree(wt / d, ignore_errors=True)
-        try:
-            shutil.copytree(src, wt / d)
-        except OSError as e:
-            print(f"warn: не скопирован {d}/: {e}")
+        # Windows: файл в worktree может держать лок (индексатор/редактор) —
+        # пара попыток с паузой вместо молчаливого полупустого assets/.
+        ok = False
+        for attempt in (1, 2, 3):
+            shutil.rmtree(wt / d, ignore_errors=True)
+            try:
+                shutil.copytree(src, wt / d)
+                ok = True
+                break
+            except OSError as e:
+                if attempt == 3:
+                    print(f"warn: не скопирован {d}/: {e}")
+                else:
+                    import time as _time
+
+                    _time.sleep(2 * attempt)
+        if not ok:
+            continue
     # Счётчики тестов — генерацией при публикации (не руками): gh-pages копии
     # получают свежие числа, master остаётся fallback-снапшотом.
     counted = collect_test_counts()

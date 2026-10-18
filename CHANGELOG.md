@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Шифрованный блоб кошельков вместо MotherDuck: `tools/sync_wallets_blob.py`
+  (AES-256-GCM, ключ `WALLETS_KEY` 64 hex только в env) → `wallets.enc.json`
+  в gh-pages рядом со `state.json`; BotForge-бот скачивает и расшифровывает
+  тем же ключом из Secrets. Нового провайдера нет, в открытом виде ключи
+  на публичный хост не попадают; без ключа с обеих сторон — штатный пропуск.
+  Выбор ключа БД — пробной расшифровкой (ферма могла стартовать из другой
+  папки, чем лежит БД). `duckdb` удалён из зависимостей.
 - Покрытие 100%: CI-гейты `portal` и `core` подняты до `--cov-fail-under=100`;
   новые добивочные тесты `test_cov_100*` (shield, api, bot_telegram/render,
   farm/miniapp); исправлен мёртвый код `/alerts off` в `portal/bot_telegram.py`

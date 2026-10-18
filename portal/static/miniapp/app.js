@@ -12,6 +12,7 @@
   var lang = "ru";
   var T = {
     openFromBot: { ru: "Открой из бота — здесь нет данных.", en: "Open from the bot — no data here." },
+    cdnFail: { ru: "Не загрузился Telegram SDK (сеть/CDN). Проверь соединение и обнови.", en: "Telegram SDK failed to load (network/CDN). Check connection and retry." },
     expired: { ru: "Сессия устарела — закрой и открой из бота.", en: "Session expired — reopen from the bot." },
     retry: { ru: "Повторить", en: "Retry" },
     stopped: { ru: "Ферма остановлена. Поле ждёт запуска.", en: "Farm stopped. Field awaits launch." },
@@ -631,6 +632,10 @@
         if (n !== null && n !== undefined) { e.preventDefault(); btns[n].focus(); btns[n].click(); }
       });
     } catch (e) { /* молча */ }
+    if (!window.Telegram || !window.Telegram.WebApp) {
+      showGate("<p>" + esc(tr("cdnFail")) + "</p>");
+      return;
+    }
     if (!tg || !tg.initData) {
       showGate("<p>" + esc(tr("openFromBot")) + "</p>");
       return;

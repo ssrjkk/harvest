@@ -50,6 +50,9 @@ def main() -> int:
         check("node --check sw.js", r.returncode == 0, (r.stderr or "")[-200:])
     check("pwa manifest linked", 'rel="manifest"' in html)
     check("pwa sw registered", "serviceWorker" in html)
+    if os.path.exists(sw):
+        swtxt = open(sw, encoding="utf-8").read()
+        check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
 
     # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
     # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).
