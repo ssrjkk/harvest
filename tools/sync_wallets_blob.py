@@ -64,15 +64,83 @@ def _key_from_env() -> bytes:
 
 
 def _master_key(db_path: str) -> bytes:
-    """Ключ БД: FARMER_MASTER_KEY env, иначе master.key рядом с БД/CWD."""
-    from core.crypto import MasterKeyError, resolve_master_key
+    """Ключ БД: перебирает кандидатов и возвращает тот, что реально расшифровывает.
 
-    cfg = {"database": {"master_key": str(Path(db_path).parent / "master.key")}}
+    Кандидаты: FARMER_MASTER_KEY env, master.key рядом с БД, master.key в CWD.
+    Живая ферма могла стартовать из другой папки, чем лежит БД, — файл рядом
+    с БД не всегда тот. Выбор проверяется пробной расшифровкой первого seed.
+    """
+    from core.crypto import MasterKeyError, decrypt_seed, resolve_master_key
+
+    cands: list[tuple[str, bytes]] = []
     try:
-        return resolve_master_key(cfg)
+        cands.append(("FARMER_MASTER_KEY", resolve_master_key({"database": {"master_key": ""}})))
     except MasterKeyError:
-        # Fallback на master.key в текущей папке (запуск из другого CWD).
-        return resolve_master_key({"database": {"master_key": "master.key"}})
+        pass
+    for label, path in (
+        ("рядом с БД", str(Path(db_path).parent / "master.key")),
+        ("в CWD", "master.key"),
+    ):
+        try:
+            cands.append((label, resolve_master_key({"database": {"master_key": path}}, ignore_env=True)))
+        except MasterKeyError:
+            pass
+    # Дубли убираем, порядок сохраняем.
+    seen: set[bytes] = set()
+    uniq: list[tuple[str, bytes]] = []
+    for label, k in cands:
+        if k not in seen:
+            seen.add(k)
+            uniq.append((label, k))
+    if not uniq:
+        raise MasterKeyError("нет кандидата ключа: ни FARMER_MASTER_KEY, ни master.key")
+    sample = _first_seed(db_path)
+    if sample is None:
+        return uniq[0][1]
+    for label, k in uniq:
+        try:
+            decrypt_seed(k, sample)
+            return k
+        except Exception:
+            continue
+    raise MasterKeyError(
+        "ни один ключ не расшифровал БД (проверены: %s)" % ", ".join(label for label, _ in uniq)
+    )
+
+
+def _first_seed(db_path: str) -> str | None:
+    """Первый enc: private_key для проверки ключа (None — нечего проверять)."""
+    import aiosqlite
+
+    async def _get() -> str | None:
+        try:
+            async with aiosqlite.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10) as db:
+                cur = await db.execute(
+                    "SELECT private_key FROM wallets WHERE private_key LIKE 'enc:%' LIMIT 1"
+                )
+                row = await cur.fetchone()
+                return row[0] if row else None
+        except Exception:
+            return None
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(_get())
+    # Уже в loop (sync вызывается из async): синхронный fallback через sqlite3.
+    import sqlite3
+
+    try:
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10)
+        try:
+            row = con.execute(
+                "SELECT private_key FROM wallets WHERE private_key LIKE 'enc:%' LIMIT 1"
+            ).fetchone()
+            return row[0] if row else None
+        finally:
+            con.close()
+    except Exception:
+        return None
 
 
 async def _read_wallets(db_path: str, key: bytes) -> list[dict]:

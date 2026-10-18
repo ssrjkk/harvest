@@ -222,6 +222,43 @@ class TestWalletsBlob(unittest.TestCase):
         with self.assertRaises(ValueError):
             sm._parse_key("zz" * 32)
 
+    def test_master_key_picks_working_candidate(self):
+        import secrets as _secrets
+        import sqlite3 as _sqlite3
+
+        from core.crypto import encrypt_seed
+        from tools import sync_wallets_blob as sm
+
+        good = _secrets.token_bytes(32)
+        bad = _secrets.token_bytes(32)
+        with tempfile.TemporaryDirectory() as dbdir, tempfile.TemporaryDirectory() as cwd:
+            db = os.path.join(dbdir, "t.db")
+            con = _sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                "mnemonic TEXT, total_actions INTEGER DEFAULT 0)"
+            )
+            con.execute(
+                "INSERT INTO wallets VALUES (?,?,?,?)",
+                ("0x" + "ab" * 20, encrypt_seed(good, "0xkey"), encrypt_seed(good, "w"), 1),
+            )
+            con.commit()
+            con.close()
+            # Рядом с БД — чужой ключ (ловушка), в CWD — рабочий.
+            Path(dbdir, "master.key").write_bytes(bad)
+            Path(cwd, "master.key").write_bytes(good)
+            prev = os.getcwd()
+            os.chdir(cwd)
+            wkey = _secrets.token_hex(32)
+            try:
+                res = asyncio.run(sm.sync(db_path=db, key_hex=wkey))
+            finally:
+                os.chdir(prev)
+            self.assertTrue(res["ok"], res)
+            self.assertEqual(res["count"], 1)
+            rows = sm.decrypt_blob(res["blob"], bytes.fromhex(wkey))
+            self.assertEqual(rows[0]["private_key"], "0xkey")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
