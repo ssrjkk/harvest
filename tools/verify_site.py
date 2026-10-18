@@ -150,6 +150,17 @@ def main() -> int:
     rm = css_txt.split("prefers-reduced-motion:reduce")[-1]
     check("css: reveal disabled under reduced-motion", ".rv [data-reveal]" in rm, "")
 
+    # Съёмка скриншотов ждёт общий якорь готовности страницы; он обязан быть
+    # на каждой странице, иначе playwright падает по таймауту (уже случилось
+    # на #proView — он скрыт в режиме «Новичок»).
+    shoot_path = os.path.join(ROOT, "tools", "shoot_site.py")
+    shoot = open(shoot_path, encoding="utf-8").read() if os.path.exists(shoot_path) else ""
+    m = re.search(r'PAGE_READY\s*=\s*"([^"]+)"', shoot)
+    ready = m.group(1).lstrip("#") if m else ""
+    check("shoot_site: PAGE_READY declared", bool(ready), str(ready))
+    for name, html in pages.items():
+        check(f"{name}: has #{ready} (shoot_site anchor)", f'id="{ready}"' in html, "")
+
     for name, html in pages.items():
         ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
         check(f"{name}: no duplicate ids", len(ids) == len(set(ids)))

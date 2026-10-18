@@ -26,13 +26,11 @@ OUT_DEFAULT = ROOT / "docs" / "screenshots"
 SITE_PAGES: tuple[str, ...] = ("index.html", "field.html", "demo.html", "docs.html")
 NAV_LINKS = 4
 
-# Узел, по которому страница считается загруженной (h1 есть не на всех).
-READY: dict[str, str] = {
-    "index.html": "#tickerIn",
-    "field.html": "#fieldGrid",
-    "demo.html": "#proView",
-    "docs.html": "#mainNav",
-}
+# Признак «страница отрисована»: #tickerIn есть на всех страницах и виден при
+# любой ширине. Ловить узел конкретной страницы нельзя — на «Демо» #proView
+# скрыт в режиме «Новичок», .play-tabs — вкладки Про-режима, а #mainNav скрыт
+# на бургере (≤900px). Наличие id=tickerIn на всех страницах держит verify_site.
+PAGE_READY = "#tickerIn"
 
 # (файл, страница, якорь, js-подготовка перед скриншотом)
 SHOTS: tuple[tuple[str, str, str | None, str | None], ...] = (
@@ -97,7 +95,7 @@ def main() -> int:
 
         def snap(name: str, page_name: str, anchor: str | None, setup: str | None) -> None:
             page.goto(_url(args.url, page_name), wait_until="networkidle")
-            page.wait_for_selector(READY[page_name], timeout=15000)
+            page.wait_for_selector(PAGE_READY, timeout=15000)
             if setup:
                 page.evaluate(setup)
                 page.wait_for_timeout(300)
@@ -151,13 +149,13 @@ def _matrix(browser, args, out: Path) -> int:
                 page.on("pageerror", lambda e, _errs=errors: _errs.append(str(e)))
                 if width == 375:  # главный кадр снимаем один раз на тему/язык
                     page.goto(_url(args.url, "index.html"), wait_until="networkidle")
-                    page.wait_for_selector(READY["index.html"], timeout=15000)
+                    page.wait_for_selector(PAGE_READY, timeout=15000)
                     page.wait_for_timeout(400)
                     page.screenshot(path=str(mdir / name))
                 for pg in SITE_PAGES:
                     errors.clear()
                     page.goto(_url(args.url, pg), wait_until="networkidle")
-                    page.wait_for_selector(READY[pg], timeout=15000)
+                    page.wait_for_selector(PAGE_READY, timeout=15000)
                     page.wait_for_timeout(250)
                     metrics = page.evaluate(METRICS)
                     ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
