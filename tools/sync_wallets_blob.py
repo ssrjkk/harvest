@@ -16,8 +16,11 @@
 Открытый текст: JSON-список [{"address","private_key","mnemonic","total_actions"}],
 AAD: b"wallets-blob-v1".
 
-Ключ: строго env WALLETS_KEY = 64 hex (32 байта), в файлы/конфиги не пишется.
-Генерация: python -c "import secrets; print(secrets.token_hex(32))"
+Ключ блоба: строго env WALLETS_KEY = 64 hex (32 байта), в файлы/конфиги
+не пишется. Генерация: python -c "import secrets; print(secrets.token_hex(32))".
+Ключ БД ищется так: FARMER_MASTER_KEY → master.key рядом с БД →
+master.key в CWD (поэтому publish запускается из корня репо) — и проверяется
+пробной расшифровкой первого seed; чужой ключ отбрасывается, а не роняет всё.
 
 Использование:
     WALLETS_KEY=... PORTAL_DB=farming_run200.db python -m tools.sync_wallets_blob
@@ -110,24 +113,6 @@ def _master_key(db_path: str) -> bytes:
 
 def _first_seed(db_path: str) -> str | None:
     """Первый enc: private_key для проверки ключа (None — нечего проверять)."""
-    import aiosqlite
-
-    async def _get() -> str | None:
-        try:
-            async with aiosqlite.connect(f"file:{db_path}?mode=ro", uri=True, timeout=10) as db:
-                cur = await db.execute(
-                    "SELECT private_key FROM wallets WHERE private_key LIKE 'enc:%' LIMIT 1"
-                )
-                row = await cur.fetchone()
-                return row[0] if row else None
-        except Exception:
-            return None
-
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return asyncio.run(_get())
-    # Уже в loop (sync вызывается из async): синхронный fallback через sqlite3.
     import sqlite3
 
     try:

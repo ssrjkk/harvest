@@ -654,7 +654,7 @@ db/farm_config/links):
 | `TELEGRAM_BOT_TOKEN` | токен бота (BotFather) |
 | `TELEGRAM_ALLOW_IDS` | default-deny список user_id |
 | `FARMER_MASTER_KEY` | мастер-ключ БД / PIN веб-входа |
-| `WALLETS_KEY` | 64-hex ключ шифроблоба `wallets.enc.json` (publish_dash → gh-pages → BotForge-бот); генерация: `python -c "import secrets;print(secrets.token_hex(32))"`; без него с обеих сторон — штатный пропуск кошельков |
+| `WALLETS_KEY` | 64-hex ключ шифрованного блоба `wallets.enc.json` (publish_dash → gh-pages → BotForge-бот); генерация: `python -c "import secrets;print(secrets.token_hex(32))"`; без него с обеих сторон — штатный пропуск кошельков |
 | `PORTAL_OPEN_ACCESS=1` | сознательно открыть доступ любому Google/TG-аккаунту |
 | `PORTAL_PASSWORD_LOGIN=1` | вход по мастер-ключу (default 1) |
 | `PORTAL_ALLOW_PASSWORD_HTTP=1` | пароль по HTTP (только dev) |
