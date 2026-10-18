@@ -194,7 +194,20 @@ class TestSchedulerEasy2(unittest.IsolatedAsyncioTestCase):
             s._running = True
             s._stop_event = asyncio.Event()
             # first wait_for raises TimeoutError -> continue, second returns -> break
-            with mock.patch("asyncio.wait_for", side_effect=[TimeoutError("t"), True]):
+            # mock закрывает переданную корутину, иначе "coroutine was never awaited".
+            _wf_calls = {"n": 0}
+
+            def _fake_wait_for(coro, timeout=None):
+                try:
+                    coro.close()
+                except Exception:
+                    pass
+                _wf_calls["n"] += 1
+                if _wf_calls["n"] == 1:
+                    raise TimeoutError("t")
+                return True
+
+            with mock.patch("asyncio.wait_for", side_effect=_fake_wait_for):
                 await s._loop()
             self.assertTrue(True)
 
@@ -725,7 +738,14 @@ class TestWorkpoolEasy2(unittest.IsolatedAsyncioTestCase):
         await pool.start()
         try:
             # force CancelledError inside _worker_loop via wait_for mock
-            with mock.patch("asyncio.wait_for", side_effect=asyncio.CancelledError()):
+            def _fake_wait_for_cancel(coro, timeout=None):
+                try:
+                    coro.close()
+                except Exception:
+                    pass
+                raise asyncio.CancelledError()
+
+            with mock.patch("asyncio.wait_for", side_effect=_fake_wait_for_cancel):
                 task = asyncio.create_task(pool._worker_loop())
                 with self.assertRaises(asyncio.CancelledError):
                     await task

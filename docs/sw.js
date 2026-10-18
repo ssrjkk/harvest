@@ -1,6 +1,6 @@
 /* harvest SW: статика — cache-first, state.json — network-first, офлайн — offline.html.
    CACHE bump при каждом релизе (v2.3.0): иначе клиенты сидят на старых ассетах. */
-const CACHE = "harvest-v2";
+const CACHE = "harvest-v2.3.0";
 const STATIC = [
   "./",
   "./index.html",

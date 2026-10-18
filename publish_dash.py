@@ -367,6 +367,10 @@ async def main() -> int:
     except Exception as e:  # noqa: BLE001
         print(f"git push не удался: {e}")
         return 1
+    # Без токена — штатный пропуск без импорта duckdb (exit 2, не ошибка паблиша).
+    if not os.environ.get("MOTHERDUCK_TOKEN", "").strip():
+        print("MotherDuck sync пропущен: no MOTHERDUCK_TOKEN — пропуск (бот без кошельков)")
+        return 2
     try:
         from tools.sync_motherduck import sync  # type: ignore
     except ImportError:

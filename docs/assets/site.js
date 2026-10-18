@@ -169,6 +169,15 @@ navToggle?.addEventListener("click",()=>{
 });
 navScrim?.addEventListener("click",()=>closeNav());
 document.addEventListener("keydown",e=>{if(e.key==="Escape")closeNav(true);});
+// Фокус-ловушка: таб не уходит под скрим из открытого меню.
+document.addEventListener("keydown",e=>{
+  if(e.key!=="Tab"||!mainNav||!mainNav.classList.contains("open"))return;
+  const f=Array.from(mainNav.querySelectorAll("a[href],button:not([disabled])")).filter(el=>el.offsetParent!==null);
+  if(!f.length)return;
+  const first=f[0],last=f[f.length-1];
+  if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+  else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+});
 mainNav?.addEventListener("click",e=>{if(e.target.closest("a"))closeNav();});
 syncNav();
 

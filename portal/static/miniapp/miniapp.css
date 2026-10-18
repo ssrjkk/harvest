@@ -2,6 +2,10 @@
    без hover-зависимости, без горизонтального скролла. Классы те же,
    что использует app.js. Цвета статусов — те же смыслы, что на сайте. */
 .tma {
+  color-scheme: dark light;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: none;
   --y2k-bg: #05060a;
   --y2k-panel: #0a0d16;
   --y2k-inset: #020306;
@@ -150,7 +154,8 @@
   border-radius: 0;
   color: var(--y2k-ink);
   padding: 8px 10px;
-  font-size: 14px;
+  font-size: 16px; /* iOS: <16px = авто-зум */
+  touch-action: manipulation;
 }
 .tma-backrow { display: flex; gap: 8px; }
 .skel {
@@ -158,3 +163,30 @@
   background: linear-gradient(90deg, var(--y2k-panel), #1e2538, var(--y2k-panel));
   min-height: 44px;
 }
+/* Светлая тема: из Telegram themeParams/colorScheme + системная.
+   Тёмная — дефолт, светлая — только переопределение переменных. */
+.tma[data-tma-theme="light"] {
+  --y2k-bg: #f4f1e8;
+  --y2k-panel: #ffffff;
+  --y2k-inset: #ece7d8;
+  --y2k-ink: #14110a;
+  --y2k-dim: #5b564a;
+  --y2k-edge: #14110a;
+}
+@media (prefers-color-scheme: light) {
+  .tma:not([data-tma-theme="dark"]) {
+    --y2k-bg: #f4f1e8;
+    --y2k-panel: #ffffff;
+    --y2k-inset: #ece7d8;
+    --y2k-ink: #14110a;
+    --y2k-dim: #5b564a;
+    --y2k-edge: #14110a;
+  }
+}
+.tma[data-tma-theme="light"] .tma-head {
+  background: linear-gradient(90deg, #ffd23f 0%, #ff9d00 55%, #ff6b00 100%);
+}
+.tma[data-tma-theme="light"] .tma-title { color: #14110a; text-shadow: none; }
+.tma[data-tma-theme="light"] .tma-sub { color: #0b5fff; }
+.tma[data-tma-theme="light"] .c-i { color: #8a8578; background: #e3ddcc; }
+.tma[data-tma-theme="light"] .tma th { background: #14110a; color: #f4f1e8; }

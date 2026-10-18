@@ -741,10 +741,10 @@ async function loadRpcHealth() {
           <div class="metric-sub">${fmt(d.cb_failures || 0)} сбоев подряд</div>
         </div>
       </div>
-      <table>
+      <div class="table-wrap"><table>
         <thead><tr><th scope="col">Нода</th><th scope="col">Задержка, мс</th><th scope="col">Скор</th><th scope="col">Ошибки</th><th scope="col">Статус</th></tr></thead>
         <tbody>${nodeRows}</tbody>
-      </table>
+      </table></div>
       <div class="rpc-meta">
         <span>chain <b class="mono">${esc(d.chain_id ?? "—")}</b></span>
         <span>RPC/мин <b class="mono">${d.rpc_rate != null ? Number(d.rpc_rate).toFixed(2) : "—"}</b></span>
@@ -793,10 +793,10 @@ async function loadFaucet() {
       : (drip.at
         ? `<div style="color:var(--text-2)">последний долив ${esc(drip.at)}: ok ${esc(drip.funded ?? 0)}, fail ${esc(drip.failed ?? 0)}${drip.error ? " (" + esc(drip.error) + ")" : ""}</div>`
         : "");
-    if (box) box.innerHTML = `<table>
+    if (box) box.innerHTML = `<div class="table-wrap"><table>
         <thead><tr><th scope="col">Стратегия</th><th scope="col">Статус</th><th scope="col">Причина</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="3" style="color:var(--text-3)">стратегий нет</td></tr>'}</tbody>
-      </table>${dripLine}`;
+      </table></div>${dripLine}`;
     const fp = $("btnFaucetProbe");
     if (fp) fp.onclick = loadFaucet;
     const fd = $("btnFaucetDrip");

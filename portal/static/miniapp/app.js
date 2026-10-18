@@ -127,6 +127,33 @@
     showGate("<p>" + esc(tr("expired")) + "</p>");
   }
 
+  /* ---------- тема + вьюпорт из Telegram ---------- */
+  function applyTheme() {
+    try {
+      var root = document.querySelector(".tma");
+      if (!root) return;
+      var scheme = "";
+      try { scheme = (tg && tg.colorScheme) || ""; } catch (e) {}
+      scheme = String(scheme).toLowerCase();
+      if (scheme !== "light" && scheme !== "dark") {
+        try { scheme = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; }
+        catch (e) { scheme = "dark"; }
+      }
+      root.setAttribute("data-tma-theme", scheme);
+      try {
+        var bg = (tg && tg.themeParams && tg.themeParams.bg_color) || (scheme === "light" ? "#ffffff" : "#05060a");
+        if (tg && tg.setBackgroundColor) tg.setBackgroundColor(bg);
+      } catch (e) { /* молча */ }
+    } catch (e) { /* молча: остаётся тёмная */ }
+  }
+  function syncViewport() {
+    try {
+      var h = 0;
+      if (tg) h = tg.viewportHeight || tg.viewportStableHeight || 0;
+      if (!h) h = window.innerHeight || 0;
+      if (h > 0) document.documentElement.style.setProperty("--tma-vh", (h / 100) + "px");
+    } catch (e) { /* молча */ }
+  }
   /* ---------- назад: TG BackButton или ряд в интерфейсе ---------- */
   function backRow() {
     var canTG = tg && tg.BackButton && atLeast("6.1");
@@ -145,13 +172,16 @@
   }
 
   /* ---------- MainButton ---------- */
+  var _mainHandler = null;
   function setMain(btn) {
     try {
       if (!tg || !tg.MainButton) return;
       if (!btn) { tg.MainButton.hide(); return; }
       tg.MainButton.setText(btn.text);
-      tg.MainButton.show();
+      if (_mainHandler) { try { tg.MainButton.offClick(_mainHandler); } catch (e) {} }
+      _mainHandler = btn.onClick;
       tg.MainButton.onClick(btn.onClick);
+      tg.MainButton.show();
     } catch (e) { /* молча: обычная кнопка в интерфейсе вместо MainButton */ }
   }
 
@@ -578,6 +608,29 @@
   });
   /* ---------- старт ---------- */
   (function init() {
+    applyTheme();
+    syncViewport();
+    try {
+      if (tg && tg.onEvent) {
+        tg.onEvent("themeChanged", applyTheme);
+        tg.onEvent("viewportChanged", syncViewport);
+      }
+    } catch (e) { /* молча */ }
+    window.addEventListener("resize", syncViewport);
+    // Табы стрелками — как в docs play-tabs.
+    try {
+      tabs.addEventListener("keydown", function (e) {
+        var btns = Array.prototype.slice.call(tabs.querySelectorAll("button[data-tab]"));
+        var i = btns.indexOf(document.activeElement);
+        if (i < 0) return;
+        var n = null;
+        if (e.key === "ArrowRight") n = (i + 1) % btns.length;
+        else if (e.key === "ArrowLeft") n = (i - 1 + btns.length) % btns.length;
+        else if (e.key === "Home") n = 0;
+        else if (e.key === "End") n = btns.length - 1;
+        if (n !== null && n !== undefined) { e.preventDefault(); btns[n].focus(); btns[n].click(); }
+      });
+    } catch (e) { /* молча */ }
     if (!tg || !tg.initData) {
       showGate("<p>" + esc(tr("openFromBot")) + "</p>");
       return;
@@ -586,8 +639,12 @@
       tg.ready();
       tg.expand();
       try {
+        if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();
+        applyTheme();
+        var scheme = (tg.colorScheme || "dark").toLowerCase();
+        var bg = (tg.themeParams && tg.themeParams.bg_color) || (scheme === "light" ? "#ffffff" : "#05060a");
         if (tg.setHeaderColor) tg.setHeaderColor("bg_color");
-        if (tg.setBackgroundColor) tg.setBackgroundColor("#08080e");
+        if (tg.setBackgroundColor) tg.setBackgroundColor(bg);
       } catch (e) { /* молча */ }
     } catch (e) { /* молча */ }
     hideGate();
