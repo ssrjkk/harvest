@@ -1236,3 +1236,37 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка чтения истории метрик: {e}")
         return rows
+
+    async def get_actions_since(self, since_id: int = 0, limit: int = 5000) -> list[dict]:
+        """Действия с id > since_id (свежие последними) — сырьё для PnL-отчёта.
+
+        Отдаём только то, что нужно отчёту: адрес, тип, хеш, исход и время.
+        Ничего секретного, поэтому отдельной защиты ключей здесь не требуется.
+        """
+        rows: list[dict] = []
+        try:
+            db = await self._connect()
+            async with db.execute(
+                """
+                SELECT id, address, action_type, tx_hash, success, timestamp
+                FROM actions_log
+                WHERE id > ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (int(max(0, since_id)), int(max(1, limit))),
+            ) as cur:
+                for row in await cur.fetchall():
+                    rows.append(
+                        {
+                            "id": int(row[0] or 0),
+                            "address": row[1] or "",
+                            "action_type": row[2] or "",
+                            "tx_hash": row[3] or "",
+                            "success": bool(row[4]),
+                            "timestamp": str(row[5] or ""),
+                        }
+                    )
+        except Exception as e:
+            logger.error(f"Ошибка чтения действий для PnL: {e}")
+        return rows

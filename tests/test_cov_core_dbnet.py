@@ -750,6 +750,49 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.get_metrics_history(5), [])
             await db.close()
 
+    async def test_actions_since(self):
+        """Покрытие Database.get_actions_since: пустой вход + успешный путь.
+
+        На Windows aiosqlite держит handle после close() из-за WAL/SHM файлов.
+        Поэтому после close() явно удаляем все связанные файлы БД, иначе
+        TemporaryDirectory._rmtree падает с PermissionError.
+        """
+        import gc
+
+        with tempfile.TemporaryDirectory() as d:
+            db = await self._db(d)
+
+            # пустой вход
+            rows0 = await db.get_actions_since(0, limit=10)
+            self.assertEqual(rows0, [])
+
+            # успешный путь: логируем и читаем обратно
+            # ORDER BY id DESC → свежие (больший id) идут первыми.
+            # log_actions_batch: (address, action_type, tx_hash, success_int, details)
+            #   row 1: transfer, success=1  (id=1, older)
+            #   row 2: stake,    success=0  (id=2, newer)  ← rows[0]
+            await db.log_actions_batch(
+                [
+                    ("0x1111", "transfer", "0xh1", 1, ""),
+                    ("0x2222", "stake",    "0xh2", 0, ""),
+                ]
+            )
+            rows = await db.get_actions_since(0, limit=10)
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[1]["action_type"], "transfer")  # older → rows[1]
+            self.assertFalse(rows[0]["success"])   # stake: success=0 → False
+            self.assertTrue(rows[1]["success"])    # transfer: success=1 → True
+            self.assertIn("id", rows[0])
+
+            # Windows aiosqlite file-lock workaround
+            await db.close()
+            gc.collect()
+            for suf in ("", ".wal", ".shm", "-journal"):
+                p = Path(d) / f"s.db{suf}"
+                if p.exists():
+                    p.unlink()
+            await db.close()
+
     async def test_metrics_ok(self):
         with tempfile.TemporaryDirectory() as d:
             db = await self._db(d)

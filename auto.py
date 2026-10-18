@@ -31,6 +31,7 @@ from core.license import LicenseError, enforce_license_async
 from core.logger import setup_logging
 from core.network import NetworkManager
 from core.performance import summarize
+from core.pnl import PnlTracker, build_report, describe, resolve_network_meta
 from core.pool import FarmerPool
 from core.single_instance import SingleInstance, default_lock_path
 from core.version import version_line
@@ -77,6 +78,22 @@ def parse_args() -> argparse.Namespace:
         help="Тестовый режим: симуляция без отправки транзакций",
     )
     p.add_argument("--encrypt", action="store_true", help="Зашифровать export-файлы (AES-256)")
+    p.add_argument(
+        "--pnl-sample",
+        type=int,
+        default=25,
+        help="Кошельков в выборке PnL-отчёта (0=все; по умолчанию 25)",
+    )
+    p.add_argument(
+        "--pnl-out",
+        default="pnl_report.html",
+        help="Путь для PnL-отчёта (по умолчанию pnl_report.html)",
+    )
+    p.add_argument(
+        "--skip-pnl",
+        action="store_true",
+        help="Не строить PnL-отчёт по окончании прогона",
+    )
     p.add_argument(
         "--decrypt",
         default=None,
@@ -252,12 +269,25 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                 return
         wallets = wallet_rows
 
+        # PnL-трекер: снимки балансов выборки в ключевых точках прогона.
+        # Сам отчёт собирается после экспорта, но снимки делаются здесь —
+        # если сеть недоступна, mark() просто не вызывается, и отчёт честно
+        # скажет «прочитать не удалось».
+        pnl_tracker: PnlTracker | None = None
+        if not args.skip_pnl and wallets:
+            pnl_tracker = PnlTracker(
+                [w["address"] for w in wallets], sample=args.pnl_sample, concurrency=8
+            )
+
         # === ФАЗА 2: КРАН ===
         if not args.skip_faucet:
             print(f"\n{Fore.CYAN}[2/4] Кран: пополнение {len(wallets)} кошельков...{Style.RESET_ALL}")
             if config.get("faucet", {}).get("enabled", True) and config.get("faucet", {}).get("strategies"):
                 t2 = time.monotonic()
                 network = NetworkManager(config, db)
+                if pnl_tracker is not None:
+                    # Снимок «до пополнения» — сразу после создания сети, до запросов крана.
+                    await pnl_tracker.mark(network, "pre_faucet")
                 faucet = Faucet(config)
                 try:
                     live = await faucet.validate()
@@ -303,6 +333,9 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             t3 = time.monotonic()
             if network is None:
                 network = NetworkManager(config, db)
+            if pnl_tracker is not None:
+                # Снимок «перед фармом» — после крана, до транзакций пула.
+                await pnl_tracker.mark(network, "pre_farm")
             pool = FarmerPool(config, db, network=network)
             try:
                 if cycle_count <= 0:
@@ -395,6 +428,30 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                         print(f"  {Fore.GREEN}Файлы зашифрованы (AES-256){Style.RESET_ALL}")
             else:
                 print(f"  {Fore.YELLOW}Пустой пароль, шифрование отменено{Style.RESET_ALL}")
+
+        # === PnL-ОТЧЁТ ===
+        if pnl_tracker is not None:
+            if network is None:
+                # Ни кран, ни фарм не запускались — сети нет, снимки невозможны.
+                print(f"  {Fore.YELLOW}PnL: сеть не создавалась, отчёт пропущен.{Style.RESET_ALL}")
+            else:
+                try:
+                    await pnl_tracker.mark(network, "post_run")
+                    net_meta = resolve_network_meta(config["network"])
+                    summary = await build_report(
+                        tracker=pnl_tracker,
+                        db=db,
+                        network=net_meta,
+                        currency=net_meta["currency"],
+                        explorer=net_meta["explorer"],
+                        out_path=args.pnl_out,
+                    )
+                    print(
+                        f"  {Fore.GREEN}PnL: {summary['path']}"
+                        f"{Style.RESET_ALL} · {describe(summary)}"
+                    )
+                except Exception as e:  # noqa: BLE001 — отчёт не должен ронять прогон
+                    logger.warning(f"PnL-отчёт не построен: {e}")
 
         # === ИТОГ ===
         stats = await db.get_stats()
