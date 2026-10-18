@@ -81,8 +81,94 @@ class TestFormatting(unittest.TestCase):
         self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wl:2")
 
     def test_fetch_wallets_without_key(self):
+        bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)
         result = asyncio.run(bot.fetch_wallets())
         self.assertIsNone(result)
+
+    def test_fetch_wallets_cache_and_errors(self):
+        import json as _json
+        import secrets as _secrets
+
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+        key = _secrets.token_bytes(32)
+        rows = [{"address": "0xaa", "private_key": "k", "mnemonic": None, "total_actions": 2},
+                {"address": "", "private_key": "x", "mnemonic": None, "total_actions": 9},
+                {"address": "0xbb", "private_key": "k2", "mnemonic": "w", "total_actions": 5}]
+        blob = {"v": 1, "alg": "AES-256-GCM", "nonce": _secrets.token_bytes(12).hex(), "ct": ""}
+        blob["ct"] = AESGCM(key).encrypt(
+            bytes.fromhex(blob["nonce"]), _json.dumps(rows).encode(), bot._WALLETS_AAD).hex()
+
+        class _FakeResp:
+            def __init__(self, status, payload=None):
+                self.status = status
+                self._payload = payload
+                self.headers = {"ETag": '"v1"'}
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def json(self, **k):
+                return self._payload
+
+        made = []
+
+        class _FakeSession:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def get(self, *a, **k):
+                made.append((a, k))
+                return _FakeResp(200, blob)
+
+        os.environ["WALLETS_KEY"] = key.hex()
+        real_session = bot.aiohttp.ClientSession
+        bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)
+        try:
+            bot.aiohttp.ClientSession = lambda: _FakeSession()  # noqa: E731
+            got = asyncio.run(bot.fetch_wallets())
+            # Пустой адрес отфильтрован, сортировка по total_actions desc.
+            self.assertEqual([w["address"] for w in got], ["0xbb", "0xaa"])
+            self.assertEqual(len(made), 1)
+            got2 = asyncio.run(bot.fetch_wallets())
+            self.assertEqual(got2, got)
+            self.assertEqual(len(made), 1, "второй вызов — из кэша, без сети")
+        finally:
+            bot.aiohttp.ClientSession = real_session
+            bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)
+            os.environ.pop("WALLETS_KEY", None)
+
+    def test_fetch_wallets_404(self):
+        class _FakeResp:
+            status = 404
+            headers = {}
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            async def json(self, **k):
+                return {}
+
+        class _FakeSession:
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *a):
+                return False
+            def get(self, *a, **k):
+                return _FakeResp()
+
+        os.environ["WALLETS_KEY"] = "ab" * 32
+        real_session = bot.aiohttp.ClientSession
+        bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)
+        try:
+            bot.aiohttp.ClientSession = lambda: _FakeSession()  # noqa: E731
+            with self.assertRaises(RuntimeError):
+                asyncio.run(bot.fetch_wallets())
+        finally:
+            bot.aiohttp.ClientSession = real_session
+            bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)
+            os.environ.pop("WALLETS_KEY", None)
 
     def test_decrypt_blob_roundtrip(self):
         import secrets as _secrets

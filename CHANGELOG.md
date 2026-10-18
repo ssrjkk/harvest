@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   на публичный хост не попадают; без ключа с обеих сторон — штатный пропуск.
   Выбор ключа БД — пробной расшифровкой (ферма могла стартовать из другой
   папки, чем лежит БД). `duckdb` удалён из зависимостей.
+- BotForge-бот: кэш расшифрованного блоба в памяти на 300с (+ETag/304 —
+  листание 250 страниц /wallets не качает 246КБ заново), понятная ошибка
+  при 404 (блоб ещё не опубликован); `verify_site` следит за свежестью
+  `harvest-botforge.zip` и отсутствием блоба в precache SW.
 - Покрытие 100%: CI-гейты `portal` и `core` подняты до `--cov-fail-under=100`;
   новые добивочные тесты `test_cov_100*` (shield, api, bot_telegram/render,
   farm/miniapp); исправлен мёртвый код `/alerts off` в `portal/bot_telegram.py`

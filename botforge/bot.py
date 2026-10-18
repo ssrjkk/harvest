@@ -40,6 +40,8 @@ WALLETS_URL = os.environ.get(
 # Ключ блоба: строго env, 64 hex. Формат блоба — tools/sync_wallets_blob.py:
 # {"v":1,"alg":"AES-256-GCM","nonce":hex,"ct":hex}, AAD b"wallets-blob-v1".
 _WALLETS_AAD = b"wallets-blob-v1"
+_WALLETS_TTL = 300  # секунд: кэш расшифрованных кошельков в памяти бота
+_WALLETS_CACHE: dict = {"at": 0.0, "etag": None, "rows": None}
 AUTHOR = "👤 Автор: <a href='https://t.me/ssrjkk_bot'>@ssrjkk_bot</a>"
 PER_PAGE = 4
 
@@ -129,12 +131,30 @@ def _decrypt_blob(blob: dict, key: bytes) -> list:
 
 
 async def fetch_wallets():
-    """Кошельки из шифрованного wallets.enc.json (gh-pages). None если нет ключа."""
+    """Кошельки из шифрованного wallets.enc.json (gh-pages). None если нет ключа.
+
+    Кэш в памяти на _WALLETS_TTL: листание /wallets на 1000 кошельков
+    (250 страниц) не качает блоб заново на каждую страницу.
+    """
+    import time as _time
+
     key = _wallets_key()
     if key is None:
         return None
+    now = _time.monotonic()
+    if _WALLETS_CACHE["rows"] is not None and now - _WALLETS_CACHE["at"] < _WALLETS_TTL:
+        return _WALLETS_CACHE["rows"]
+    headers = {}
+    if _WALLETS_CACHE["etag"]:
+        headers["If-None-Match"] = _WALLETS_CACHE["etag"]
     async with aiohttp.ClientSession() as session:
-        async with session.get(WALLETS_URL, timeout=aiohttp.ClientTimeout(total=20)) as r:
+        async with session.get(WALLETS_URL, headers=headers,
+                               timeout=aiohttp.ClientTimeout(total=20)) as r:
+            if r.status == 304 and _WALLETS_CACHE["rows"] is not None:
+                _WALLETS_CACHE["at"] = now
+                return _WALLETS_CACHE["rows"]
+            if r.status == 404:
+                raise RuntimeError("wallets blob not published yet (404)")
             if r.status != 200:
                 raise RuntimeError(f"wallets blob HTTP {r.status}")
             try:
@@ -142,10 +162,14 @@ async def fetch_wallets():
             except Exception as e:
                 raise RuntimeError(f"wallets blob bad JSON: {e}") from e
     rows = _decrypt_blob(blob, key)
+    rows = [w for w in rows
+            if isinstance(w, dict) and isinstance(w.get("address"), str) and w.get("address")]
+    rows.sort(key=lambda w: w.get("total_actions", 0) or 0, reverse=True)
+    _WALLETS_CACHE.update(at=now, etag=r.headers.get("ETag"), rows=rows)
     return [
         {"address": w.get("address", ""), "private_key": w.get("private_key", ""),
          "mnemonic": w.get("mnemonic"), "total_actions": w.get("total_actions", 0)}
-        for w in rows if isinstance(w, dict)
+        for w in rows
     ]
 
 
@@ -315,8 +339,9 @@ async def main():
         elif text == "/wallets":
             try:
                 wallets = await fetch_wallets()
-            except Exception:  # noqa: BLE001
-                await m.answer("⚠️ Не удалось прочитать кошельки из облака.", parse_mode=ParseMode.HTML)
+            except Exception as e:  # noqa: BLE001
+                await m.answer(f"⚠️ Кошельки недоступны: {esc(str(e))[:120]}",
+                               parse_mode=ParseMode.HTML)
                 return
             if wallets is None:
                 await m.answer(

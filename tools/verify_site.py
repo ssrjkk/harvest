@@ -53,6 +53,12 @@ def main() -> int:
     if os.path.exists(sw):
         swtxt = open(sw, encoding="utf-8").read()
         check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
+    # Деплой-архив бота не должен отставать от исходников.
+    zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
+    zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]
+    if os.path.exists(zipp) and all(os.path.exists(p) for p in zsrc):
+        check("botforge zip fresh",
+              os.path.getmtime(zipp) >= max(os.path.getmtime(p) for p in zsrc), "")
 
     # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
     # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).

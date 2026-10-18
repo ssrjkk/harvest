@@ -93,3 +93,5 @@ start_publish.ps1
 
 # Лок publish_dash.py (межпроцессный flock) — не коммитим.
 .dash-site.lock
+
+docs/screenshots/matrix/
