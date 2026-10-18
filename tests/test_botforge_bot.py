@@ -76,9 +76,12 @@ class TestFormatting(unittest.TestCase):
     def test_wallets_kb(self):
         self.assertIsNone(bot.wallets_kb(1, 1))
         kb = bot.wallets_kb(1, 3)
-        self.assertEqual(kb.inline_keyboard[0][0].callback_data, "wl:2")
+        self.assertEqual([b.callback_data for b in kb.inline_keyboard[0]], ["wl:2", "wl:3"])
         kb2 = bot.wallets_kb(3, 3)
-        self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wl:2")
+        self.assertEqual([b.callback_data for b in kb2.inline_keyboard[0]], ["wl:1", "wl:2"])
+        kbm = bot.wallets_kb(5, 10)
+        self.assertEqual([b.callback_data for b in kbm.inline_keyboard[0]],
+                         ["wl:1", "wl:4", "wl:6", "wl:10"])
 
     def test_fetch_wallets_without_key(self):
         bot._WALLETS_CACHE.update(at=0.0, etag=None, rows=None)

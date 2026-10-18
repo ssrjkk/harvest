@@ -184,7 +184,11 @@ def encrypt_wallets(rows: list[dict], key: bytes) -> dict:
     nonce = secrets.token_bytes(12)
     pt = json.dumps(rows, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     ct = aes(key).encrypt(nonce, pt, _AAD)
-    return {"v": _BLOB_VERSION, "alg": "AES-256-GCM", "nonce": nonce.hex(), "ct": ct.hex()}
+    from datetime import UTC, datetime
+
+    return {"v": _BLOB_VERSION, "alg": "AES-256-GCM",
+            "built_at": datetime.now(UTC).isoformat(timespec="seconds"),
+            "nonce": nonce.hex(), "ct": ct.hex()}
 
 
 def decrypt_blob(blob: dict, key: bytes) -> list[dict]:

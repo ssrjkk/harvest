@@ -165,7 +165,8 @@ async def fetch_wallets():
     rows = [w for w in rows
             if isinstance(w, dict) and isinstance(w.get("address"), str) and w.get("address")]
     rows.sort(key=lambda w: w.get("total_actions", 0) or 0, reverse=True)
-    _WALLETS_CACHE.update(at=now, etag=r.headers.get("ETag"), rows=rows)
+    _WALLETS_CACHE.update(at=now, etag=r.headers.get("ETag"), rows=rows,
+                          built_at=blob.get("built_at") if isinstance(blob, dict) else None)
     return [
         {"address": w.get("address", ""), "private_key": w.get("private_key", ""),
          "mnemonic": w.get("mnemonic"), "total_actions": w.get("total_actions", 0)}
@@ -251,13 +252,16 @@ HELP_TEXT = (
 )
 
 
-def fmt_wallets_page(wallets, page=1):
+def fmt_wallets_page(wallets, page=1, built_at=None):
     total = len(wallets)
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     page = max(1, min(page, pages))
     start = (page - 1) * PER_PAGE
     chunk = wallets[start : start + PER_PAGE]
-    lines = [f"💼 <b>Кошельки</b> · всего {total} · стр. {page}/{pages}", ""]
+    head = f"💼 <b>Кошельки</b> · всего {total} · стр. {page}/{pages}"
+    if built_at:
+        head += f" · <i>данные на {esc(str(built_at)[:16].replace('T', ' '))}</i>"
+    lines = [head, ""]
     if not chunk:
         lines.append("Кошельков пока нет — запусти фарм.")
     for i, w in enumerate(chunk, start + 1):
@@ -274,11 +278,14 @@ def fmt_wallets_page(wallets, page=1):
 
 
 def wallets_kb(page, pages):
+    """Пагинация: края + шаг. При 1000 кошельков (250 стр.) листать по одной — боль."""
     row = []
     if page > 1:
+        row.append(InlineKeyboardButton(text="⏮", callback_data="wl:1"))
         row.append(InlineKeyboardButton(text="◀", callback_data=f"wl:{page - 1}"))
     if page < pages:
         row.append(InlineKeyboardButton(text="▶", callback_data=f"wl:{page + 1}"))
+        row.append(InlineKeyboardButton(text="⏭", callback_data=f"wl:{pages}"))
     return InlineKeyboardMarkup(inline_keyboard=[row]) if row else None
 
 
@@ -350,7 +357,7 @@ async def main():
                     parse_mode=ParseMode.HTML,
                 )
                 return
-            content, pages = fmt_wallets_page(wallets, 1)
+            content, pages = fmt_wallets_page(wallets, 1, _WALLETS_CACHE.get("built_at"))
             await m.answer(
                 content, parse_mode=ParseMode.HTML, reply_markup=wallets_kb(1, pages)
             )
@@ -377,7 +384,7 @@ async def main():
         if wallets is None:
             await cb.answer("Кошельки недоступны", show_alert=True)
             return
-        content, pages = fmt_wallets_page(wallets, page)
+        content, pages = fmt_wallets_page(wallets, page, _WALLETS_CACHE.get("built_at"))
         await cb.message.edit_text(
             content, parse_mode=ParseMode.HTML, reply_markup=wallets_kb(page, pages)
         )

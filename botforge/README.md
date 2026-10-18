@@ -13,6 +13,7 @@
 4. В **Secrets** добавь переменные:
    - `BOT_TOKEN` = токен от @BotFather
    - `WALLETS_KEY` = 64 hex, ключ шифрования блоба (сгенерируй: `python -c "import secrets;print(secrets.token_hex(32))"`, тот же ключ в env на ПК — иначе `/wallets` недоступен)
+   - Ротация ключа: сгенерируй новый, положи в env на ПК и в Secrets, дождись прогона публикации — старый блоб станет нечитаемым, новый займёт его место
    - `STATE_URL` = `https://ssrjkk.github.io/harvest/state.json`
    - `TELEGRAM_ALLOW_IDS` = твой user_id (узнать: @userinfobot) — **обязательно!**
 5. Нажми **Start**.
