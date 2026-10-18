@@ -15,6 +15,11 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L22 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <link rel="manifest" href="manifest.webmanifest">
+<script>/* rv = разрешено показывать анимацию появления. Ставится до отрисовки,
+   иначе контент моргает: сначала виден, потом прячется до пересечения.
+   Через 2.5с после load класс снимается: если common.js не загрузился,
+   страница обязана остаться читаемой, а не пустой. */
+try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
 <link rel="stylesheet" href="assets/terminal.css">
@@ -46,7 +51,7 @@
 
 <main id="main">
 <!-- SPECS -->
-<section class="block" id="specs">
+<section class="block" data-reveal id="specs">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="specs_h">Факты</h2></div>
     <div class="table-wrap"><table class="t">
@@ -60,7 +65,7 @@
     </table></div>
   </div>
 </section><!-- 06 ARCH -->
-<section class="block" id="arch">
+<section class="block" data-reveal id="arch">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">06</span><h2 data-i18n="s5_h">Как устроено</h2></div>
     <p class="sec-sub" data-i18n="s5_sub">main.py (Rich-меню) и auto.py (CLI-автомат) делят одно ядро core/. Один NetworkManager на сессию — латентность, кэши и монитор общие. Запись в БД — через BatchWriter батчами, с cooldown после серии сбоев.</p>
@@ -99,7 +104,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     </div>
   </div>
 </section><!-- 07 PORTAL -->
-<section class="block" id="portal">
+<section class="block" data-reveal id="portal">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">07</span><h2 data-i18n="s6_h">Портал и Telegram</h2></div>
     <p class="sec-sub" data-i18n="s6_sub">python -m portal поднимает aiohttp (веб + API) и, при токене, бота. Секреты — только через env. Fail-closed: bind не на loopback без способа входа — отказ запуска.</p>
@@ -120,7 +125,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     </div>
   </div>
 </section><!-- 08 SECURITY -->
-<section class="block" id="security">
+<section class="block" data-reveal id="security">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">08</span><h2 data-i18n="s7_h">Безопасность — по умолчанию закрыто</h2></div>
     <div class="grid3">
@@ -131,7 +136,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     <p class="note" data-i18n="sec_rep">Нашли уязвимость — не открывайте публичный issue. Используйте private vulnerability reporting на GitHub или напишите мейнтейнеру. Поддерживается только последний релиз; ответ в течение 48 часов.</p>
   </div>
 </section><!-- 09 TESTS / FAQ -->
-<section class="block" id="tests">
+<section class="block" data-reveal id="tests">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
     <div class="grid2">
@@ -151,7 +156,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     </div>
   </div>
 </section><!-- 10 LICENSE -->
-<section class="block" id="license">
+<section class="block" data-reveal id="license">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">10</span><h2 data-i18n="s9_h">Лицензия MIT</h2></div>
     <p class="sec-sub" data-i18n="s9_sub">Свободно используйте, копируйте, изменяйте, публикуйте и продавайте — с сохранением уведомления об авторстве. Без гарантий.</p>
@@ -186,6 +191,14 @@ SOFTWARE.</div>
     <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
+<div class="cmdk" id="cmdk">
+  <div class="cmdk-scrim" id="cmdkScrim"></div>
+  <div class="cmdk-box" role="dialog" aria-modal="true" aria-label="harvest">
+    <input class="cmdk-in" id="cmdkIn" type="text" autocomplete="off" spellcheck="false" placeholder="Команда или раздел…" data-i18n-ph="cmdk_ph" aria-label="Команда или раздел">
+    <div class="cmdk-list" id="cmdkList" role="listbox" aria-label="harvest"></div>
+    <div class="cmdk-foot"><span data-i18n="cmdk_hint">↑↓ выбор · Enter выполнить · Esc закрыть</span><kbd class="cmdk-kbd">Ctrl</kbd><kbd class="cmdk-kbd">K</kbd></div>
+  </div>
+</div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="assets/common.js" defer></script>
 <script>

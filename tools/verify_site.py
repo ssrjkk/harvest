@@ -135,6 +135,21 @@ def main() -> int:
     check("legacy anchor map targets exist",
           all(os.path.exists(os.path.join(DOCS, t)) for t in targets), str(targets))
 
+    # Палитра команд и появление при скролле: разметка и флаг rv — на всех
+    # страницах (общий common.js подключается везде), плюс страховка от
+    # «контент навсегда остался невидимым», если common.js не загрузится.
+    for name, html in pages.items():
+        check(f"{name}: command palette markup",
+              all(f'id="{i}"' in html for i in ("cmdk", "cmdkIn", "cmdkList", "cmdkScrim")), "")
+        check(f"{name}: rv boot flag before paint", 'classList.add("rv")' in html, "")
+        check(f"{name}: rv failsafe", 'classList.remove("rv")' in html, "")
+        check(f"{name}: reveal targets marked", "data-reveal" in html, "")
+    css_txt = open(os.path.join(DOCS, "assets", "site.css"), encoding="utf-8").read()
+    check("css: reveal scoped to .rv", ".rv [data-reveal]" in css_txt, "")
+    check("css: palette styles", ".cmdk-box" in css_txt and ".cmdk-item" in css_txt, "")
+    rm = css_txt.split("prefers-reduced-motion:reduce")[-1]
+    check("css: reveal disabled under reduced-motion", ".rv [data-reveal]" in rm, "")
+
     for name, html in pages.items():
         ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
         check(f"{name}: no duplicate ids", len(ids) == len(set(ids)))

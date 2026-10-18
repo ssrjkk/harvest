@@ -257,4 +257,43 @@ footer a{color:var(--ink2)}
 .skip:focus{left:10px;top:10px;background:var(--chip);color:var(--chip-ink);padding:8px 12px;z-index:99}
 .toast{position:fixed;bottom:calc(18px + env(safe-area-inset-bottom, 0px));left:50%;transform:translateX(-50%);background:var(--ink);color:var(--bg);font-family:var(--mono);font-size:12.5px;font-weight:700;padding:10px 18px;opacity:0;pointer-events:none;transition:opacity .2s;border:2px solid var(--gold)}
 .toast.show{opacity:1}
-@media print{.topbar,.ticker,.hero-cta,.play-tabs,.toolbar,.toast{display:none}body{background:#fff}}
+/* ---------- появление при скролле ----------
+   Прячутся только когда <html> несёт класс rv (его ставит инлайн-скрипт в
+   <head> и только если motion не запрещён). Без JS/reduced-motion секции
+   видны сразу — то есть никогда не остаются невидимыми. */
+.rv [data-reveal]{opacity:0;transform:translateY(16px);transition:opacity .45s ease var(--d,0ms),transform .45s ease var(--d,0ms)}
+.rv [data-reveal].in{opacity:1;transform:none}
+.card,.kpi,.net{transition:transform .18s ease,box-shadow .18s ease}
+.card:hover,.net:hover{transform:translate(-2px,-2px);box-shadow:6px 6px 0 var(--line2)}
+
+/* ---------- палитра команд (Ctrl+K) ---------- */
+.cmdk{position:fixed;inset:0;z-index:120;display:none;padding:10vh 16px 16px;justify-content:center;align-items:flex-start}
+.cmdk.open{display:flex}
+.cmdk-scrim{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.cmdk-box{position:relative;width:min(620px,100%);background:var(--bg);border:2px solid var(--ink);box-shadow:8px 8px 0 var(--line2);animation:cmdkin .16s ease-out}
+@keyframes cmdkin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+.cmdk-in{width:100%;border:0;border-bottom:2px solid var(--ink);background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:15px;padding:13px 15px}
+.cmdk-in:focus{outline:none}
+.cmdk-list{max-height:min(50vh,400px);overflow-y:auto}
+.cmdk-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);padding:10px 15px;font-family:var(--mono);font-size:12.5px;color:var(--ink);cursor:pointer}
+.cmdk-item .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdk-item .k{border:2px solid var(--line2);padding:1px 7px;font-size:10px;text-transform:uppercase;letter-spacing:.1em;flex:none}
+.cmdk-item[aria-selected=true]{background:var(--gold);color:var(--gold-ink)}
+.cmdk-item[aria-selected=true] .k{border-color:var(--gold-ink);color:var(--gold-ink)}
+.cmdk-empty{padding:13px 15px;color:var(--muted);font-family:var(--mono);font-size:12.5px}
+.cmdk-foot{display:flex;align-items:center;gap:6px;padding:9px 15px;font-family:var(--mono);font-size:11px;color:var(--muted);border-top:2px solid var(--ink);flex-wrap:wrap}
+.cmdk-kbd{border:2px solid var(--line2);padding:1px 6px;font-size:10.5px}
+@media(max-width:520px){.cmdk{padding-top:5vh}.cmdk-box{box-shadow:4px 4px 0 var(--line2)}}
+
+/* ---------- выбранная клетка поля ---------- */
+.cell.sel{outline:2px solid var(--ink);outline-offset:1px;position:relative;z-index:1}
+.field-grid:focus-visible{outline:3px solid var(--gold);outline-offset:4px}
+
+@media (prefers-reduced-motion:reduce){
+  .rv [data-reveal]{opacity:1;transform:none;transition:none}
+  .cmdk-box{animation:none}
+  .card,.kpi,.net{transition:none}
+  .card:hover,.net:hover{transform:none}
+}
+
+@media print{.topbar,.ticker,.hero-cta,.play-tabs,.toolbar,.toast,.cmdk{display:none}body{background:#fff}}

@@ -88,6 +88,7 @@ q2:"Where are my demo keys?",a_q2:"Only in this tab's memory. The site is static
 q3:"What about 0x0 contracts in config?",a_q3:"Stubs by design: the validator passes them with a remark, runtime falls back to transfer. Fill in real addresses from the Tier-2 docs when ready.",
 q4:"Why is the field empty?",a_q4:"It comes alive after the first publish: run python publish_dash.py on the farm machine (scheduled every 30 min by default, 15–60 allowed). Everything else already works.",
 copy:"Copy",
+cmdk_ph:"Command or section…",cmdk_hint:"↑↓ select · Enter run · Esc close",
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
 preset_h:"Humanity profile (behavior section in YAML)",
 f_all:"ALL",fx_h:"Faucet & diagnostics",fx_p1:"Faucet probe is a quota-free handshake; top-up fills to the network maximum. Without a key the strategy is silently excluded at pre-flight.",fx_p2:"Key: console.chainstack.com → user/settings/api-keys (env CHAINSTACK_API_KEY, never in configs).",bot_h:"Telegram bot",bot_p:"Farm bot: Field, [Profiles], /profiles, /cmd /cfg builders, /check validation. Author contact is separate.",specs_h:"Facts",
@@ -130,8 +131,8 @@ window.hv.lang=()=>lang;
 window.hv.onLang=f=>{try{_langSubs.push(f);}catch(e){}};
 const _langSubs=[];
 const RU={};
-function snapRU(){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(!(k in RU))RU[k]=el.innerHTML;});}
-function applyLangStrings(){const D=lang==="en"?EN:RU;$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(D[k]!==undefined)el.innerHTML=D[k];});}
+function snapRU(){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(!(k in RU))RU[k]=el.innerHTML;});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(!(k in RU))RU[k]=el.placeholder;});}
+function applyLangStrings(){const D=lang==="en"?EN:RU;$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(D[k]!==undefined)el.innerHTML=D[k];});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(D[k]!==undefined)el.placeholder=D[k];});}
 function applyLang(){
   document.documentElement.lang=lang==="ru"?"ru":"en";
   const lr=$("#langRu"),le=$("#langEn");
@@ -221,4 +222,105 @@ async function pollOnce(){
 setInterval(async()=>{if(document.hidden)return;try{await pollOnce();}catch(e){}},60000);
 window.addEventListener("online",()=>{pollOnce().catch(()=>{});});
 pollOnce().catch(()=>{});
+
+/* ---------- появление при скролле ----------
+   Прячет только то, что помечено data-reveal, и только когда <html> несёт
+   класс rv (его ставит инлайн-скрипт в <head> и только при разрешённом
+   motion). Сетки раскрываются каскадом через --d, остальное целиком. */
+(function reveal(){
+  const secs=$$("[data-reveal]");
+  if(!secs.length)return;
+  const targets=[];
+  secs.forEach(sec=>{
+    const kids=sec.querySelectorAll(".grid2 > *,.grid3 > *,.grid4 > *,.grid5 > *,.optgrid > *");
+    if(kids.length){
+      Array.prototype.forEach.call(kids,(k,i)=>{k.setAttribute("data-reveal","");k.style.setProperty("--d",(i*55)+"ms");targets.push(k);});
+    } else targets.push(sec);
+  });
+  const all=()=>targets.forEach(el=>el.classList.add("in"));
+  try{
+    if(matchMedia("(prefers-reduced-motion: reduce)").matches||!("IntersectionObserver" in window)){all();return;}
+    const io=new IntersectionObserver(ents=>{
+      ents.forEach(en=>{if(!en.isIntersecting)return;en.target.classList.add("in");io.unobserve(en.target);});
+    },{rootMargin:"0px 0px -6% 0px",threshold:.06});
+    targets.forEach(el=>io.observe(el));
+    setTimeout(all,1500); // страховка: контент не должен остаться невидимым
+  }catch(e){all();}
+})();
+
+/* ---------- палитра команд (Ctrl+K) ----------
+   Разделы текущей страницы, переходы между страницами, тема и язык.
+   Список собирается при открытии — тогда подписи всегда на текущем языке. */
+(function palette(){
+  const box=$("#cmdk"),inp=$("#cmdkIn"),list=$("#cmdkList"),scrim=$("#cmdkScrim");
+  if(!box||!inp||!list)return;
+  const T=()=>lang==="en"
+    ?{theme:"Theme",lang:"Language",ru:"Russian",en:"English",none:"Nothing found",page:"page",section:"section"}
+    :{theme:"Тема",lang:"Язык",ru:"Русский",en:"English",none:"Ничего не найдено",page:"страница",section:"раздел"};
+  let items=[],cur=0;
+  function build(){
+    items=[];
+    $$("nav.main a").forEach(a=>items.push({t:(a.textContent||"").trim(),href:a.getAttribute("href"),k:T().page}));
+    $$("[data-reveal]").forEach(sec=>{
+      if(!sec.id)return;
+      const h=sec.querySelector("h1,h2");
+      if(h)items.push({t:(h.textContent||"").replace(/\s+/g," ").trim(),href:"#"+sec.id,k:T().section});
+    });
+    items.push({t:T().theme,run:()=>{const b=$("#themeBtn");if(b)b.click();},k:T().theme});
+    items.push({t:T().lang+": "+T().ru,run:()=>{const b=$("#langRu");if(b)b.click();},k:T().lang});
+    items.push({t:T().lang+": "+T().en,run:()=>{const b=$("#langEn");if(b)b.click();},k:T().lang});
+  }
+  function render(){
+    const s=(inp.value||"").trim().toLowerCase();
+    const out=s?items.filter(i=>i.t.toLowerCase().includes(s)):items;
+    if(cur>=out.length)cur=0;
+    list.textContent="";
+    if(!out.length){
+      const e=document.createElement("div");e.className="cmdk-empty";e.textContent=T().none;list.appendChild(e);
+      return;
+    }
+    out.forEach((it,i)=>{
+      const b=document.createElement("button");
+      b.type="button";b.className="cmdk-item";b.setAttribute("role","option");
+      b.setAttribute("aria-selected",i===cur?"true":"false");
+      const t=document.createElement("span");t.className="t";t.textContent=it.t;
+      const k=document.createElement("span");k.className="k";k.textContent=it.k;
+      b.appendChild(t);b.appendChild(k);
+      b.addEventListener("click",()=>run(it));
+      list.appendChild(b);
+    });
+  }
+  function move(d){
+    const its=list.querySelectorAll(".cmdk-item");
+    if(!its.length)return;
+    its[cur].setAttribute("aria-selected","false");
+    cur=(cur+d+its.length)%its.length;
+    its[cur].setAttribute("aria-selected","true");
+    its[cur].scrollIntoView({block:"nearest"});
+  }
+  function run(it){hide();if(it.run){it.run();return;}if(it.href)location.href=it.href;}
+  function show(){build();cur=0;inp.value="";render();box.classList.add("open");document.body.style.overflow="hidden";setTimeout(()=>inp.focus(),0);}
+  function hide(){box.classList.remove("open");document.body.style.overflow="";}
+  inp.addEventListener("input",()=>{cur=0;render();});
+  inp.addEventListener("keydown",e=>{
+    if(e.key==="ArrowDown"){e.preventDefault();move(1);}
+    else if(e.key==="ArrowUp"){e.preventDefault();move(-1);}
+    else if(e.key==="Enter"){
+      e.preventDefault();
+      const it=list.querySelectorAll(".cmdk-item")[cur];
+      if(it)it.click();
+    }
+  });
+  if(scrim)scrim.addEventListener("click",hide);
+  document.addEventListener("keydown",e=>{
+    const open=box.classList.contains("open");
+    if((e.ctrlKey||e.metaKey)&&(e.key==="k"||e.key==="K")){e.preventDefault();open?hide():show();return;}
+    if(e.key==="Escape"&&open){hide();return;}
+    if(e.key==="/"&&!open){
+      const a=document.activeElement;
+      if(a&&(a.tagName==="INPUT"||a.tagName==="TEXTAREA"||a.isContentEditable))return;
+      e.preventDefault();show();
+    }
+  });
+})();
 })();
