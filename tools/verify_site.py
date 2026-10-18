@@ -1,12 +1,13 @@
 """Одна команда для проверки сайта: python tools/verify_site.py.
 
 Статические проверки без браузера (stdlib only):
-- node --check для docs/assets/site.js;
-- все $("#id") из JS существуют в docs/index.html, дублей ID нет;
-- все data-i18n ключи покрыты словарём EN;
-- пресеты конструктора (NETS в site.js) совпадают с portal/networks.py;
+- node --check для docs/assets/common.js, field.js, demo.js;
+- все $("#id") из JS существуют на страницах, где этот JS подключён;
+- все data-i18n ключи всех страниц покрыты словарём EN (common.js);
+- пресеты конструктора (NETS в demo.js) совпадают с portal/networks.py;
 - contract-адреса в шаблонах — в кавычках (иначе YAML парсит 0x0 как int 0);
-- в RPC-пресетах нет заглушек example.* / TODO.
+- в RPC-пресетах нет заглушек example.* / TODO;
+- шапка/навигация одинаковы на всех 4 страницах.
 
 Возвращает exit 0, если всё чисто.
 """
@@ -20,9 +21,18 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "docs")
-HTML = os.path.join(DOCS, "index.html")
-JS = os.path.join(DOCS, "assets", "site.js")
 CSS = os.path.join(DOCS, "assets", "site.css")
+
+# Порядок ссылок в навигации: одинаковый на всех страницах.
+NAV_LINKS = ["index.html", "field.html", "demo.html", "docs.html"]
+
+# страница -> подключаемые JS (порядок как в <script>)
+PAGES: dict[str, list[str]] = {
+    "index.html": ["assets/common.js"],
+    "field.html": ["assets/common.js", "assets/field.js"],
+    "demo.html": ["assets/common.js", "assets/demo.js"],
+    "docs.html": ["assets/common.js"],
+}
 
 fails: list[str] = []
 
@@ -34,25 +44,33 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 
 def main() -> int:
-    for p in (HTML, JS, CSS, os.path.join(DOCS, ".nojekyll"), os.path.join(DOCS, "robots.txt"),
-              os.path.join(DOCS, "assets", "og.png"),
-              os.path.join(DOCS, "manifest.webmanifest"), os.path.join(DOCS, "sw.js"),
-              os.path.join(DOCS, "offline.html")):
+    want = ([os.path.join(DOCS, n) for n in PAGES]
+            + [os.path.join(DOCS, "assets", n) for n in ("common.js", "field.js", "demo.js")]
+            + [CSS, os.path.join(DOCS, ".nojekyll"), os.path.join(DOCS, "robots.txt"),
+               os.path.join(DOCS, "assets", "og.png"),
+               os.path.join(DOCS, "manifest.webmanifest"), os.path.join(DOCS, "sw.js"),
+               os.path.join(DOCS, "offline.html"), os.path.join(DOCS, "terminal.html")])
+    for p in want:
         check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
-    html = open(HTML, encoding="utf-8").read()
-    js = open(JS, encoding="utf-8").read()
+    pages = {n: open(os.path.join(DOCS, n), encoding="utf-8").read() for n in PAGES}
+    js = {n: open(os.path.join(DOCS, "assets", n), encoding="utf-8").read()
+          for n in ("common.js", "field.js", "demo.js")}
 
-    r = subprocess.run(["node", "--check", JS], capture_output=True, text=True)
-    check("node --check site.js", r.returncode == 0, (r.stderr or "")[-200:])
+    for n in ("common.js", "field.js", "demo.js", "sw.js"):
+        p = os.path.join(DOCS, "assets", n) if n != "sw.js" else os.path.join(DOCS, n)
+        r = subprocess.run(["node", "--check", p], capture_output=True, text=True)
+        check(f"node --check {n}", r.returncode == 0, (r.stderr or "")[-200:])
+    for name, html in pages.items():
+        check(f"{name}: pwa manifest linked", 'rel="manifest"' in html)
+        check(f"{name}: pwa sw registered", "serviceWorker" in html)
+        check(f"{name}: og meta present", 'property="og:image"' in html and "og.png" in html)
+        check(f"{name}: theme-color present", 'name="theme-color"' in html)
     sw = os.path.join(DOCS, "sw.js")
-    if os.path.exists(sw):
-        r = subprocess.run(["node", "--check", sw], capture_output=True, text=True)
-        check("node --check sw.js", r.returncode == 0, (r.stderr or "")[-200:])
-    check("pwa manifest linked", 'rel="manifest"' in html)
-    check("pwa sw registered", "serviceWorker" in html)
     if os.path.exists(sw):
         swtxt = open(sw, encoding="utf-8").read()
         check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
+        for n in list(PAGES) + ["assets/common.js", "assets/field.js", "assets/demo.js"]:
+            check(f"sw precaches {n}", f'"./{n}"' in swtxt, "")
     # Деплой-архив бота не должен отставать от исходников.
     zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
     zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]
@@ -78,21 +96,43 @@ def main() -> int:
         check("miniapp: no inline scripts",
               not re.search(r"<script(?![^>]*src=)", mh), "")
 
-    ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
-    check("no duplicate ids", len(ids) == len(set(ids)))
-    used = set(re.findall(r'\$\("#([A-Za-z0-9_-]+)"\)', js))
-    used |= set(re.findall(r'getElementById\("([A-Za-z0-9_-]+)"\)', html + js))
-    # Динамические id из innerHTML (retry-кнопки) — не обязаны быть в статике.
-    dynamic = {"liveRetry"}
-    missing = sorted(u for u in used if u not in set(ids) and u not in dynamic)
-    check("all JS id-refs exist in HTML", not missing, str(missing))
+    # Шапка/навигация одинаковы везде: те же 4 ссылки, ровно один aria-current.
+    navs = {}
+    navs_norm = {}
+    for name, html in pages.items():
+        m = re.search(r"<nav.*?</nav>", html, re.S)
+        navs[name] = m.group(0) if m else ""
+        links = re.findall(r'href="([^"]+)"', navs[name])
+        check(f"{name}: nav has 4 page links", links == NAV_LINKS, str(links))
+        check(f"{name}: single aria-current", navs[name].count('aria-current="page"') == 1, "")
+        # Для «везде одинаково» aria-current вырезаем: на каждой странице он
+        # законно стоит на своей ссылке — это и есть активный пункт меню.
+        navs_norm[name] = navs[name].replace(' aria-current="page"', "")
+    check("nav identical on all pages", len(set(navs_norm.values())) == 1, "")
+
+    for name, html in pages.items():
+        ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
+        check(f"{name}: no duplicate ids", len(ids) == len(set(ids)))
+    # id-ссылки JS: каждый файл проверяется против страниц, где он подключён.
+    for name, included in PAGES.items():
+        html = pages[name]
+        pool = set(re.findall(r'id="([A-Za-z0-9_-]+)"', html))
+        for asset in included:
+            code = js[os.path.basename(asset)]
+            used = set(re.findall(r'\$\("#([A-Za-z0-9_-]+)"\)', code))
+            used |= set(re.findall(r'getElementById\("([A-Za-z0-9_-]+)"\)', code))
+            dynamic = {"liveRetry"}
+            missing = sorted(u for u in used if u not in pool and u not in dynamic)
+            check(f"{asset} id-refs exist on {name}", not missing, str(missing))
     # Wizard-шаги w1..w3/st1..st3 обязаны существовать статически.
     for wid in ("w1", "w2", "w3", "st1", "st2", "st3"):
-        check(f"wizard step #{wid}", f'id="{wid}"' in html)
+        check(f"wizard step #{wid}", f'id="{wid}"' in pages["demo.html"])
 
-    m = re.search(r"const EN=\{(.*?)\n\};", js, re.S)
+    m = re.search(r"const EN=\{(.*?)\n\};", js["common.js"], re.S)
     en_keys = set(re.findall(r"(?:[{,]\s*)([a-z][a-z0-9_]*):", "{" + m.group(1))) if m else set()
-    html_keys = set(re.findall(r'data-i18n="([a-z0-9_]+)"', html))
+    html_keys: set[str] = set()
+    for html in pages.values():
+        html_keys |= set(re.findall(r'data-i18n="([a-z0-9_]+)"', html))
     missing_en = sorted(html_keys - en_keys)
     check("i18n keys covered by EN", not missing_en, str(missing_en))
 
@@ -109,8 +149,9 @@ def main() -> int:
         m = re.search(r"database:\s*\n\s*path:\s*\"?([^\"\s]+)\"?", s)
         return m.group(1) if m else None
 
+    demo_js = js["demo.js"]
     canon = {n["slug"]: n for n in NETWORKS}
-    for mm in re.finditer(r"(\w+):\{file:\"([^\"]+)\",db:\"([^\"]+)\",chain:(\d+),rpc:\"([^\"]+)\"", js):
+    for mm in re.finditer(r"(\w+):\{file:\"([^\"]+)\",db:\"([^\"]+)\",chain:(\d+),rpc:\"([^\"]+)\"", demo_js):
         slug, cfg, db, chain, rpc = mm.groups()
         c = canon.get(slug)
         if c is not None:
@@ -126,12 +167,8 @@ def main() -> int:
         check(f"NETS {slug} rpc real", "example" not in rpc and "TODO" not in rpc, rpc)
 
     # contract-адреса обязаны быть в кавычках (голый 0x0…0 = int 0 в YAML 1.1).
-    bare = re.findall(r"contract: 0x[0-9a-fA-F]+", js)
+    bare = re.findall(r"contract: 0x[0-9a-fA-F]+", demo_js)
     check("no unquoted contract addresses", not bare, str(bare[:3]))
-
-    # OG/robots для шаринга.
-    check("og meta present", 'property="og:image"' in html and "og.png" in html)
-    check("theme-color present", 'name="theme-color"' in html)
 
     # Токены: сгенерированный CSS свеж (пересборка не должна ничего менять).
     before = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()
@@ -140,20 +177,36 @@ def main() -> int:
     after = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()
     check("tokens.css fresh", r.returncode == 0 and before == after)
 
-    # Бургер, статусы, сетка: обязательные id/классы на месте.
-    for el in ["navToggle", "mainNav", "fieldGrid", "fieldEmpty", "fieldLegend",
-               "fieldMore", "lastCycle", "cellTip", "fxFilters", "fxZoom", "fxQ",
-               "fxInspector", "cfgPreset", "cmdPreset"]:
-        check(f"html has #{el}", f'id="{el}"' in html)
-    for sec in ['id="faucet"', 'id="bot"', 'id="specs"']:
-        check(f"html has section {sec}", sec in html)
+    # Обязательные узлы по страницам.
+    required: dict[str, list[str]] = {
+        "index.html": ["navToggle", "mainNav", "tickerIn"],
+        "field.html": ["navToggle", "mainNav", "fieldGrid", "fieldEmpty", "fieldLegend",
+                       "fieldMore", "lastCycle", "cellTip", "fxFilters", "fxZoom", "fxQ",
+                       "fxInspector", "updated", "term", "dot", "status", "net", "health",
+                       "liveAlert", "nets", "chartMain", "chartProc", "tWallets", "tHistory"],
+        "demo.html": ["navToggle", "mainNav", "modeNew", "modePro", "newView", "proView",
+                      "cfgNet", "cfgOut", "cmdOut", "wRows", "simLog", "simChart",
+                      "vText", "vOut"],
+        "docs.html": ["navToggle", "mainNav"],
+    }
+    for name, els in required.items():
+        html = pages[name]
+        for el in els:
+            check(f"{name} has #{el}", f'id="{el}"' in html)
+    for sec, page in [("field", "field.html"), ("faucet", "field.html"), ("bot", "field.html"),
+                      ("app", "demo.html"), ("overview", "index.html"),
+                      ("networks", "index.html"), ("quickstart", "index.html"),
+                      ("specs", "docs.html"), ("arch", "docs.html"), ("portal", "docs.html"),
+                      ("security", "docs.html"), ("tests", "docs.html"), ("license", "docs.html")]:
+        check(f"{page} has section #{sec}", f'id="{sec}"' in pages[page])
     css = open(os.path.join(DOCS, "assets", "site.css"), encoding="utf-8").read()
     for cls in [".field-grid", ".cell.c-o", ".cell-tip", ".dot.mut",
                 ".termline.live", ".is-loading", ".nav-toggle", "nav.main.open"]:
         check(f"css has {cls}", cls in css)
 
     # Переименование Поле: никаких «пульт» в пользовательском сайте и боте.
-    for rel in ["docs/index.html", "docs/assets/site.js",
+    for rel in ["docs/index.html", "docs/field.html", "docs/demo.html", "docs/docs.html",
+                "docs/assets/common.js", "docs/assets/field.js", "docs/assets/demo.js",
                 "portal/bot_ops.py", "portal/bot_telegram.py"]:
         txt = open(os.path.join(ROOT, rel), encoding="utf-8").read()
         check(f"no пульт in {rel}", re.search(r"[Пп]ульт", txt) is None)

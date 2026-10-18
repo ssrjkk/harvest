@@ -68,6 +68,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   мастер 3 шага с TTL, Live 10 мин, шифрованный экспорт .enc, ключи с
   подтверждением, setMyCommands RU, трекер 409, редакция токена в логах
 
+### Changed
+- Сайт разбит с одной ленты на 4 страницы: `index.html` (главная: обзор, сети,
+  быстрый старт), `field.html` (Поле, кран, бот), `demo.html` (демо-зона),
+  `docs.html` (факты, архитектура, портал, безопасность, тесты, лицензия)
+- `docs/assets/site.js` нарезан на `common.js` (темы/i18n/nav/копирование,
+  общий API `window.hv`), `field.js` (живое поле) и `demo.js` (конструкторы
+  и симулятор); страничный скрипт выходит по своему якорю (`#fieldGrid`/`#proView`)
+- Старые якоря ленты (`#field`, `#app`, `#specs`, …) редиректятся на новые
+  страницы, поэтому старые закладки и ссылки из Telegram не ломаются
+- `sw.js`: кэш `v2.3.1`, в precache новые страницы и скрипты вместо `site.js`
+- `publish_dash.py`: новые страницы в `SITE_FILES`, счётчики тестов
+  подставляются во все `*.html` + `assets/*.js` (glob вместо хардкода)
+- `verify_site.py`: проверки `node --check`/`data-i18n`/`#id` по страницам,
+  сравнение nav без `aria-current` (активный пункт у каждой страницы свой)
+
 ### Fixed
 - Кран: `ensure_balance` честно по `target_balance` (частичный долив —
   неуспех); `validate()` пишет разбор `{type,url,alive,reason}` в

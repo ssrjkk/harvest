@@ -1,0 +1,310 @@
+/* harvest field page — живое поле. Только если есть #fieldGrid. */
+(function(){
+"use strict";
+if(!document.getElementById("fieldGrid"))return;
+const hv=window.hv;
+const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
+const toast=hv.toast, esc=hv.esc, fmt=hv.fmt;
+const setPill=hv.pill;
+let lang=hv.lang();
+hv.onLang(()=>{lang=hv.lang();renderLive(window.hvLast);});
+
+/* ---------- live pulpit (state.json) ---------- */
+let live={actions:[],errors:[],proc:[]};
+const FALLBACK_NETS=[
+ {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Permissionless launchpad на Robinhood Chain",description:"Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",rewards:"5% сапплая VIBE · торговля, стейкинг, клейм наград",activities:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"]},
+ {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Базовый L2-тестнет Robinhood",description:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",rewards:"Базовый тестнет-эирдроп и опыт",activities:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"]},
+ {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",faucet:"",explorer:"",tagline:"Launchpad Flop Labs",description:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",rewards:"Тестнет-баллы и эирдроп",activities:["Compute / validate / stake","Трансферы"]},
+ {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",faucet:"",explorer:"https://explorer.testnet.arc.network",tagline:"Launchpad Minara.Fun",description:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",rewards:"Тестнет-эирдроп за активности",activities:["Запуск / торговля / добавление ликвидности","Трансферы"]}
+];
+async function loadState(){
+  try{const r=await fetch("state.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;return await r.json();}
+  catch(e){return null;}
+}
+let gridPainted=false;
+const _noMotion=()=>typeof matchMedia!=="undefined"&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+const _hasRAF=()=>typeof requestAnimationFrame==="function";
+function setNum(id,raw){
+  const el=$("#"+id);if(!el)return;const v=Number(raw)||0;
+  const from=parseFloat(el.dataset.raw||"0")||0;el.dataset.raw=String(v);
+  if(_noMotion()||!_hasRAF()||!isFinite(from)){el.textContent=fmt(v);return;}
+  const t0=performance.now();
+  const step=t=>{const k=Math.min(1,(t-t0)/600),e=1-Math.pow(1-k,3);
+    el.textContent=fmt(from+(v-from)*e);if(k<1)requestAnimationFrame(step);};
+  requestAnimationFrame(step);
+}
+function cellName(c){
+  const names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
+  const n=names[c]||names.i;return lang==="en"?n.en:n.ru;
+}
+function renderGrid(cells,n,running){
+  const g=$("#fieldGrid");
+  const show=String(cells||"").slice(0,400);
+  g.innerHTML=show.split("").map((c,i)=>
+    `<span class="cell c-${"iwoer".includes(c)?c:"i"}" data-i="${i}" tabindex="-1" role="img" aria-label="#${i+1} · ${cellName(c)}"></span>`).join("");
+  g.classList.toggle("flash",!gridPainted&&show.length>0);
+  gridPainted=gridPainted||show.length>0;
+  const counts={i:0,w:0,o:0,e:0,r:0};
+  for (const ch of show) { if (counts[ch] !== undefined) counts[ch]++; }
+  g.setAttribute("aria-label",
+    (lang==="en"?"wallets grid":"сетка кошельков") +
+    `: ${show.length}` +
+    (lang==="en"?` (ok ${counts.o}, work ${counts.w}, err ${counts.e})`:` (ok ${counts.o}, work ${counts.w}, err ${counts.e})`));
+  const fm=$("#fieldMore");if(fm)fm.textContent=n>400?`+${n-400}`:"";
+}
+let gridDetails=[];
+function cellDetail(i){
+  const d=gridDetails[i];
+  if(!d||typeof d.a!=="number")return "";
+  const cyc=(d.c===null||d.c===undefined||d.c<0)?"—":String(d.c);
+  const base=lang==="en"
+    ?` · ${d.a} actions / ${d.t} tries · last cycle ${cyc}`
+    :` · действий ${d.a} / попыток ${d.t} · цикл ${cyc}`;
+  if(!d.e)return base;
+  return base+(lang==="en"?` · last error: ${d.e}`:` · ошибка: ${d.e}`);
+}
+window.cellDetail=cellDetail;
+function lastCycleText(hist){
+  if(!hist.length)return "—";
+  const c=hist[0];
+  const dur=(Math.round(Number(c.duration_s||0)*100)/100);
+  return lang==="en"
+    ?`cycle ${c.id} · ${dur}s · ${c.wallets||0} wallets · ${c.errors||0} errors`
+    :`цикл ${c.id} · ${dur} с · ${c.wallets||0} кошельков · ${c.errors||0} ошибок`;
+}
+function renderLive(s){
+  document.body.classList.remove("is-loading");
+  if(!s){
+    const retryBtn='<button class="btn small" id="liveRetry" type="button">'+(lang==="en"?"retry":"повторить")+"</button>";
+    const la=$("#liveAlert");
+    if(la)la.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"state.json not published yet — the farm will upload metrics. The rest of the site already works.":"state.json ещё не опубликован — ферма скоро загрузит метрики. Остальной сайт уже работает.")+" "+retryBtn+"</div>";
+    const rb=$("#liveRetry");
+    if(rb)rb.addEventListener("click",()=>{refetch();});
+    const nets=$("#nets");if(nets)nets.innerHTML=FALLBACK_NETS.map(netCard).join("");
+    paintTicker(null);
+    setPill("mut","—");return;
+  }
+  const la=$("#liveAlert");if(la)la.innerHTML="";
+  const pool=s.pool||{},db=s.db||{};
+  const total=(pool.actions??0)+(pool.errors??0);
+  const rate=total>0?(pool.actions/total*100):null;
+  setNum("cActions",pool.actions);setNum("cProcessed",pool.processed);
+  setNum("cErrors",pool.errors);setNum("cCycles",pool.cycles);setNum("cWallets",s.wallet_count);
+  const el=(id,t)=>{const n=$("#"+id);if(n)n.textContent=t;};
+  el("sActions",(lang==="en"?"per cycle ":"за цикл ")+fmt((pool.actions??0)/Math.max(pool.cycles||1,1)));
+  el("sProcessed",(lang==="en"?"of ":"из ")+fmt(s.wallet_count));
+  el("sErrors",(lang==="en"?"dropped ":"дроп ")+fmt(pool.dropped??0));
+  el("sCycles",(lang==="en"?"history ":"история ")+fmt(db.cycles));
+  el("sRate",rate===null?(lang==="en"?"success —":"успех —"):(lang==="en"?"success ":"успех ")+rate.toFixed(1)+"%");
+  const dot=$("#dot"),st=$("#status");
+  const Lst=lang==="en"?{off:"stopped",pause:"paused",on:"running"}:{off:"стоп",pause:"пауза",on:"работает"};
+  if(dot&&st){
+    if(!s.running){dot.className="dot mut";st.textContent=Lst.off;setPill("mut",Lst.off);}
+    else if(pool.paused){dot.className="dot pau";st.textContent=Lst.pause;setPill("pau",Lst.pause);}
+    else{dot.className="dot on";st.textContent=Lst.on;setPill("on",Lst.on);}
+  }
+  const term=$("#term");if(term)term.classList.toggle("live",!!s.running&&!pool.paused);
+  el("net",s.network||"—");
+  const hf=$("#health");if(hf)hf.textContent=Number(s.health_factor??1).toFixed(2);
+  el("updated",(lang==="en"?"updated: ":"обновлено: ")+(s.updated_at||"—"));
+  const nets=(s.networks&&s.networks.length)?s.networks:FALLBACK_NETS;
+  const netsBox=$("#nets");if(netsBox)netsBox.innerHTML=nets.map(n=>netCard(n,n.slug===s.network)).join("");
+  paintTicker(nets);
+  const hist0=s.history||[];
+  el("lastCycle",lastCycleText(hist0));
+  const wc=s.wallet_cells||{};
+  const cells=typeof wc.cells==="string"?wc.cells:"";
+  const nWallets=wc.n||s.wallet_count||0;
+  gridDetails=Array.isArray(wc.details)?wc.details:[];
+  const hasData=cells.length>0||hist0.length>0;
+  const fe=$("#fieldEmpty");if(fe)fe.hidden=hasData;
+  const fg=$("#fieldGrid");if(fg)fg.style.display=cells?"":"none";
+  const fl=$("#fieldLegend");if(fl)fl.style.display=cells?"":"none";
+  renderGrid(cells,nWallets,!!s.running);
+  const pick=(arr,fb)=>((arr&&arr.length)?arr.slice(-60):fb);
+  live.actions=pick(s.chart?.actions,hist0.map(c=>c.actions_ok||0).slice(-60));
+  live.errors=pick(s.chart?.errors,hist0.map(c=>c.errors||0).slice(-60));
+  live.proc=pick(s.chart?.processed,hist0.map(c=>c.wallets||0).slice(-60));
+  drawLive();
+  const tw=$("#tWallets");
+  if(tw)tw.innerHTML=(s.top_wallets||[]).map((w,i)=>
+    `<tr><td class="num" style="color:var(--muted)">#${w.n??i+1}</td><td class="num">${fmt(w.actions)}</td></tr>`).join("")
+    ||'<tr><td colspan="2" class="note">—</td></tr>';
+  const th=$("#tHistory");
+  if(th)th.innerHTML=(s.history||[]).map(c=>{const e=c.errors||0;
+    const b=e===0?'<span class="pill ok">ok</span>':`<span class="pill warn">${esc(e)}</span>`;
+    const dur=Number(c.duration_s);const durS=isFinite(dur)?dur.toFixed(1):"—";
+    return `<tr><td class="num" style="color:var(--muted)">${esc(c.id)}</td><td>${b}</td><td class="num">${fmt(c.actions_ok)}</td><td class="num">${esc(e)}</td><td class="num">${durS}</td><td class="num">${esc(c.wallets)}</td></tr>`;}).join("")
+    ||'<tr><td colspan="6" class="note">—</td></tr>';
+}
+function netCard(n,cur){
+  const acts=(n.activities||[]).map(a=>"<li>"+esc(a)+"</li>").join("");
+  const links=[n.faucet?'<a href="'+esc(n.faucet)+'" target="_blank" rel="noopener">faucet</a>':"",n.explorer?'<a href="'+esc(n.explorer)+'" target="_blank" rel="noopener">explorer</a>':""].filter(Boolean).join(" · ");
+  return `<div class="net"><div><span class="name">${esc(n.name)}</span>${cur?' <span class="cur">'+(lang==="en"?"current":"текущая")+"</span>":""}</div>
+    <div class="meta">chain ${esc(n.chain_id)} · ${esc(n.currency)}</div>
+    <div class="tag">${esc(n.tagline||"")}</div>
+    <div class="desc">${esc(n.description||"")}</div>
+    <div class="rewards">${esc(n.rewards||"—")}</div><ul>${acts}</ul>${links?'<div class="toolbar">'+links+"</div>":""}</div>`;
+}
+function paintTicker(nets){
+  try{
+    const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
+    const tag=lang==="en"?"TESTS":"ТЕСТОВ";
+    const ti=$("#tickerIn");if(ti)ti.textContent=("harvest v2.3.0 · "+list.join(" · ")+` · 1467 ${tag} · MIT · `).repeat(4);
+  }catch(e){}
+}
+function drawLive(){
+  lineChart($("#chartMain"),[live.actions,live.errors]);
+  lineChart($("#chartProc"),[live.proc]);
+}
+(function(){
+  const tip=$("#cellTip"), grid=$("#fieldGrid");
+  if(!tip||!grid)return;
+  function show(el,x,y){tip.textContent=el.getAttribute("aria-label")||"";tip.hidden=false;
+    try{
+      tip.style.left=Math.min(x+12,window.innerWidth-200)+"px";tip.style.top=(y+16)+"px";
+    }catch(e){}
+  }
+  function hide(){tip.hidden=true;}
+  const cellOf=e=>(e.target&&e.target.closest)?e.target.closest(".cell"):null;
+  grid.addEventListener("mousemove",e=>{const c=cellOf(e);if(!c){hide();return;}show(c,e.clientX,e.clientY);});
+  grid.addEventListener("mouseleave",hide);
+  grid.addEventListener("focusin",e=>{const c=cellOf(e);if(!c)return;const r=c.getBoundingClientRect();show(c,r.left,r.bottom);});
+  grid.addEventListener("focusout",hide);
+})();
+function lineChart(cv,series){
+  if(!cv)return;const dpr=window.devicePixelRatio||1;
+  const W=cv.clientWidth||600,H=150;cv.width=W*dpr;cv.height=H*dpr;
+  const x=cv.getContext("2d");x.scale(dpr,dpr);
+  const cs=getComputedStyle(document.documentElement);
+  const acc=cs.getPropertyValue("--gold").trim()||"#D4A72C";
+  const amb=cs.getPropertyValue("--warn").trim()||"#E07B39";
+  const grid=cs.getPropertyValue("--line").trim()||"#DDD6C2";
+  const mut=cs.getPropertyValue("--muted").trim()||"#6F6A5C";
+  x.clearRect(0,0,W,H);x.strokeStyle=grid;
+  for(let i=1;i<4;i++){const y=6+(i/4)*(H-12);x.beginPath();x.moveTo(6,y);x.lineTo(W-6,y);x.stroke();}
+  const cols=[acc,amb];
+  series.forEach((data,si)=>{
+    if(!data||data.length<2){return;}
+    const max=Math.max(...data,1),min=Math.min(...data,0);
+    const px=i=>6+(i/(data.length-1))*(W-12);
+    const py=v=>H-6-((v-min)/Math.max(max-min,1e-9))*(H-12);
+    x.beginPath();data.forEach((v,i)=>i?x.lineTo(px(i),py(v)):x.moveTo(px(i),py(v)));
+    x.strokeStyle=cols[si%cols.length];x.lineWidth=si===0?2:1.4;x.stroke();
+    if(si===0){x.lineTo(px(data.length-1),H);x.lineTo(px(0),H);x.closePath();x.globalAlpha=.12;x.fillStyle=cols[0];x.fill();x.globalAlpha=1;}
+  });
+  x.fillStyle=mut;x.font="11px monospace";x.textAlign="right";
+  series.forEach((data,si)=>{
+    if(!data||!data.length)return;
+    x.fillStyle=cols[si%cols.length];
+    x.fillText(fmt(data[data.length-1]),W-8,16+si*14);
+  });
+  x.textAlign="left";
+  if(!series.some(d=>d&&d.length)){x.fillStyle=mut;x.font="12px monospace";x.fillText(lang==="en"?"no data":"нет данных",14,H/2);}
+}
+async function refetch(){
+  const s=await loadState();window.hvLast=s;renderLive(s);
+}
+refetch();
+let _failStreak=0;
+setInterval(async()=>{
+  if(document.hidden) return;
+  if(!navigator.onLine){
+    _failStreak++;
+    return;
+  }
+  const s=await loadState();
+  if(s){_failStreak=0;window.hvLast=s;renderLive(s);}
+  else{
+    _failStreak++;
+    if(_failStreak>5){
+      const el=$("#liveAlert");
+      if(el && !el.innerHTML){
+        el.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"offline — retrying…":"офлайн — повторяю…")+'</div>';
+      }
+    }
+  }
+},60000);
+window.addEventListener("online",()=>{_failStreak=0;refetch();});
+window.addEventListener("offline",()=>{
+  const el=$("#liveAlert");
+  if(el)el.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"offline":"офлайн")+'</div>';
+});
+let _rzT=0;
+window.addEventListener("resize",()=>{clearTimeout(_rzT);_rzT=setTimeout(()=>{drawLive();},150);});
+window.hvRedraw=()=>{try{drawLive();}catch(e){}};
+window.addEventListener("hv:state",e=>{if(e.detail!==undefined){window.hvLast=e.detail;}});
+
+/* ---------- фильтры/зум/поиск/инспектор поля (только чтение DOM) ---------- */
+(function(){
+"use strict";
+var filter="all",zoom250=true,query="",sel=-1;
+function L(){return lang==="en"?"en":"ru";}
+function cells(){return Array.prototype.slice.call(document.querySelectorAll("#fieldGrid .cell"));}
+function apply(){
+  var list=cells();
+  list.forEach(function(el,i){
+    var ok=true;
+    if(filter!=="all")ok=el.classList.contains("c-"+filter);
+    if(ok&&query)ok=String(i+1).indexOf(query)!==-1;
+    el.style.display=ok?"":"none";
+  });
+  var box=document.getElementById("fxInspector");
+  if(box){
+    if(sel>=0&&list[sel]){
+      var cls=list[sel].className;
+      var st=(cls.match(/c-([iwoer])/)||[])[1]||"i";
+      var names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
+      var det="";
+      try{if(window.cellDetail)det=window.cellDetail(sel)||"";}catch(_){}
+      box.textContent="";
+      var b=document.createElement("b");b.textContent="#"+(sel+1);box.appendChild(b);
+      box.appendChild(document.createTextNode(" · "+names[st][L()]+det));
+    }else{box.innerHTML='<span class="note">—</span>';}
+  }
+  var z=document.getElementById("fxZoom");
+  if(z){z.textContent=zoom250?(L()==="en"?"250 DETAIL":"250 ДЕТАЛЬНО"):(L()==="en"?"PANORAMA":"ПАНОРАМА");z.setAttribute("aria-label",L()==="en"?"Field zoom":"Масштаб поля");}
+  var g=document.getElementById("fieldGrid");
+  if(g){
+    if(zoom250){g.classList.remove("zoom");list.forEach(function(el){el.textContent="";});}
+    else{g.classList.add("zoom");list.forEach(function(el,i){el.textContent=String(i+1);});}
+  }
+  var q=document.getElementById("fxQ");
+  if(q)q.placeholder=L()==="en"?"search #…" :"поиск #…";
+}
+document.addEventListener("click",function(e){
+  var b=e.target.closest?e.target.closest("#fxFilters [data-f]"):null;
+  if(b){filter=b.dataset.f;sel=-1;
+    Array.prototype.forEach.call(document.querySelectorAll("#fxFilters [data-f]"),function(x){x.classList.remove("on");x.setAttribute("aria-pressed","false");});
+    b.classList.add("on");b.setAttribute("aria-pressed","true");apply();return;}
+  if(e.target.closest&&e.target.closest("#fxZoom")){zoom250=!zoom250;apply();return;}
+  var c=e.target.closest?e.target.closest("#fieldGrid .cell"):null;
+  if(c){var list=cells();sel=list.indexOf(c);apply();}
+});
+document.addEventListener("input",function(e){
+  if(e.target&&e.target.id==="fxQ"){query=e.target.value.replace(/\D/g,"");apply();}
+});
+var gridEl=document.getElementById("fieldGrid");
+if(gridEl)gridEl.addEventListener("keydown",function(e){
+  var list=cells().filter(function(el){return el.style.display!=="none";});
+  if(!list.length)return;
+  var cols=1;
+  try{
+    var top=list[0].offsetTop;
+    for(var i=1;i<list.length;i++){if(list[i].offsetTop!==top)break;cols=i;}
+  }catch(_){cols=1;}
+  var cur=list.indexOf(cells()[sel]);
+  if(cur<0)cur=0;
+  var n=null;
+  if(e.key==="ArrowRight")n=Math.min(list.length-1,cur+1);
+  else if(e.key==="ArrowLeft")n=Math.max(0,cur-1);
+  else if(e.key==="ArrowDown")n=Math.min(list.length-1,cur+cols);
+  else if(e.key==="ArrowUp")n=Math.max(0,cur-cols);
+  else if(e.key==="Home")n=0;
+  else if(e.key==="End")n=list.length-1;
+  if(n!==null){e.preventDefault();sel=cells().indexOf(list[n]);apply();}
+});
+new MutationObserver(apply).observe(gridEl,{childList:true});
+apply();
+})();
+})();
