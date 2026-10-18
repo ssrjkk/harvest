@@ -1,7 +1,8 @@
 # harvest — автономный бот-поле для BotForge
 
 Бот работает **24/7 в облаке BotForge** (бесплатно, без твоего ПК), показывает
-статус фермы и **кошельки с ключами и сид-фразами из облачной БД MotherDuck**.
+статус фермы и **кошельки с ключами и сид-фразами из шифрованного блоба
+`wallets.enc.json` на GitHub Pages** (публикует ПК, расшифровка ключом из Secrets).
 
 ## Деплой (5 минут)
 
@@ -11,7 +12,7 @@
 3. **Settings** → Start Command: `python main.py` → Save.
 4. В **Secrets** добавь переменные:
    - `BOT_TOKEN` = токен от @BotFather
-   - `MOTHERDUCK_TOKEN` = токен MotherDuck (чтобы кошельки были видны без ПК)
+   - `WALLETS_KEY` = 64 hex, ключ шифрования блоба (сгенерируй: `python -c "import secrets;print(secrets.token_hex(32))"`, тот же ключ в env на ПК — иначе `/wallets` недоступен)
    - `STATE_URL` = `https://ssrjkk.github.io/harvest/state.json`
    - `TELEGRAM_ALLOW_IDS` = твой user_id (узнать: @userinfobot) — **обязательно!**
 5. Нажми **Start**.
@@ -40,8 +41,11 @@
 |---|---|---|
 | Бот | BotForge (облако) | ✅ всегда |
 | Сайт | GitHub Pages | ✅ всегда |
-| Кошельки/метрики | MotherDuck (облако) | ✅ всегда (синхронизирует ПК) |
+| Кошельки/метрики | gh-pages (`state.json` + шифрованный `wallets.enc.json`) | ✅ всегда (публикует ПК) |
 | Ферма (фарм) | твой ПК | ❌ пока ПК выключен |
 
-Данные в облако пишет `sync_motherduck.py` (запускается с ПК вместе с
-`publish_dash.py` каждые 5 минут). Бот читает их из MotherDuck.
+Данные в облако пишет `publish_dash.py` (запускается с ПК вместе с
+публикацией сайта каждые 30 минут): рядом со `state.json` публикуется
+шифрованный `wallets.enc.json`, который бот скачивает и расшифровывает
+ключом `WALLETS_KEY` из Secrets. В открытом виде ключи на публичный
+хост не попадают.

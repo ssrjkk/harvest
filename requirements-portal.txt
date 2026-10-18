@@ -5,5 +5,4 @@
 aiogram>=3.10,<4
 aiohttp>=3.11.2,<4
 pyyaml>=6.0,<7
-duckdb>=1.0,<2
 Pillow>=11,<13

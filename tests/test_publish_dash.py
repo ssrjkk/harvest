@@ -171,25 +171,56 @@ class TestPublishDash(unittest.TestCase):
         self.assertNotIn(addr, json.dumps(state))
 
 
-class TestSyncMotherduck(unittest.TestCase):
-    def test_no_token_skips(self):
-        from tools import sync_motherduck as sm
+class TestWalletsBlob(unittest.TestCase):
+    def test_no_key_skips(self):
+        from tools import sync_wallets_blob as sm
 
-        old = os.environ.pop("MOTHERDUCK_TOKEN", None)
+        old = os.environ.pop("WALLETS_KEY", None)
         try:
-            res = asyncio.run(sm.sync(db_path="whatever.db", token=""))
+            res = asyncio.run(sm.sync(db_path="whatever.db", key_hex=""))
             self.assertFalse(res["ok"])
-            self.assertIn("MOTHERDUCK_TOKEN", res["reason"])
+            self.assertIn("WALLETS_KEY", res["reason"])
         finally:
             if old is not None:
-                os.environ["MOTHERDUCK_TOKEN"] = old
+                os.environ["WALLETS_KEY"] = old
 
     def test_missing_db(self):
-        from tools import sync_motherduck as sm
+        import secrets as _secrets
 
-        res = asyncio.run(sm.sync(db_path="no-such.db", token="x" * 8))
+        from tools import sync_wallets_blob as sm
+
+        res = asyncio.run(sm.sync(db_path="no-such.db", key_hex=_secrets.token_hex(32)))
         self.assertFalse(res["ok"])
         self.assertIn("не найдена", res["reason"])
+
+    def test_roundtrip_and_wrong_key(self):
+        import secrets as _secrets
+
+        from tools import sync_wallets_blob as sm
+
+        rows = [
+            {"address": "0xaa", "private_key": "0xkey", "mnemonic": "w1 w2", "total_actions": 3},
+            {"address": "0xbb", "private_key": "0xkey2", "mnemonic": None, "total_actions": 0},
+        ]
+        key = _secrets.token_bytes(32)
+        blob = sm.encrypt_wallets(rows, key)
+        self.assertEqual(blob["v"], 1)
+        self.assertNotIn("0xkey", json.dumps(blob))
+        self.assertEqual(sm.decrypt_blob(blob, key), rows)
+        with self.assertRaises(ValueError):
+            sm.decrypt_blob(blob, _secrets.token_bytes(32))
+        bad = dict(blob)
+        bad["ct"] = "00" * 8
+        with self.assertRaises(ValueError):
+            sm.decrypt_blob(bad, key)
+
+    def test_bad_key_rejected(self):
+        from tools import sync_wallets_blob as sm
+
+        with self.assertRaises(ValueError):
+            sm._parse_key("short")
+        with self.assertRaises(ValueError):
+            sm._parse_key("zz" * 32)
 
 
 if __name__ == "__main__":

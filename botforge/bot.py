@@ -2,13 +2,16 @@
 
 Читает state.json с GitHub Pages (метрики фермы, которые публикует
 publish_dash.py с твоего ПК). Кошельки с ключами и сид-фразами читает
-из облачной БД MotherDuck (синхронизирует sync_motherduck.py) —
-поэтому /wallets работает даже когда ПК выключен.
+из шифрованного `wallets.enc.json` там же (собирает publish_dash.py) —
+поэтому /wallets работает даже когда ПК выключен. На публичном хосте
+лежит только шифротекст; ключ никуда не пишется, только в Secrets.
 
 Переменные окружения:
   BOT_TOKEN           — токен от @BotFather (обязательно)
   STATE_URL           — URL state.json (по умолчанию https://ssrjkk.github.io/harvest/state.json)
-  MOTHERDUCK_TOKEN    — токен MotherDuck для чтения кошельков (опционально)
+  WALLETS_URL         — URL wallets.enc.json (по умолчанию рядом с STATE_URL)
+  WALLETS_KEY         — 64 hex, ключ шифрования блоба (опционально, но без
+                        него /wallets недоступен; тот же ключ в env на ПК)
   TELEGRAM_ALLOW_IDS  — разрешённые Telegram user_id через запятую (default-deny!)
   TELEGRAM_OPEN_ACCESS=1 — сознательно открыть доступ всем (не рекомендуется)
 """
@@ -31,6 +34,12 @@ TOKEN = _TOKEN
 STATE_URL = os.environ.get(
     "STATE_URL", "https://ssrjkk.github.io/harvest/state.json"
 )
+WALLETS_URL = os.environ.get(
+    "WALLETS_URL", "https://ssrjkk.github.io/harvest/wallets.enc.json"
+)
+# Ключ блоба: строго env, 64 hex. Формат блоба — tools/sync_wallets_blob.py:
+# {"v":1,"alg":"AES-256-GCM","nonce":hex,"ct":hex}, AAD b"wallets-blob-v1".
+_WALLETS_AAD = b"wallets-blob-v1"
 AUTHOR = "👤 Автор: <a href='https://t.me/ssrjkk_bot'>@ssrjkk_bot</a>"
 PER_PAGE = 4
 
@@ -89,38 +98,55 @@ async def fetch_state():
             return data
 
 
-def _fetch_wallets_sync():
-    """Синхронная версия: duckdb не async, поэтому вызываем через to_thread."""
-    token = os.environ.get("MOTHERDUCK_TOKEN", "").strip()
-    if not token:
-        return None
-    import duckdb
-
-    con = None
+def _wallets_key() -> bytes | None:
+    """Ключ из env или None (тогда /wallets недоступен, как и раньше без токена)."""
+    s = os.environ.get("WALLETS_KEY", "").strip()
+    if s[:2].lower() == "0x":
+        s = s[2:]
     try:
-        # Токен передаём через config, чтобы не светить в URL/ошибках.
-        con = duckdb.connect("md:harvest", config={"motherduck_token": token})
-        rows = con.execute(
-            "SELECT address, private_key, mnemonic, total_actions "
-            "FROM wallets ORDER BY total_actions DESC"
-        ).fetchall()
-    finally:
-        try:
-            if con is not None:
-                con.close()
-        except Exception:
-            pass
-    return [
-        {"address": r[0], "private_key": r[1], "mnemonic": r[2], "total_actions": r[3]}
-        for r in rows
-    ]
+        key = bytes.fromhex(s)
+    except ValueError:
+        return None
+    return key if len(key) == 32 else None
+
+
+def _decrypt_blob(blob: dict, key: bytes) -> list:
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    if not isinstance(blob, dict) or blob.get("v") != 1:
+        raise ValueError("bad wallets blob version")
+    try:
+        nonce = bytes.fromhex(blob["nonce"])
+        ct = bytes.fromhex(blob["ct"])
+        pt = AESGCM(key).decrypt(nonce, ct, _WALLETS_AAD)
+        rows = __import__("json").loads(pt.decode("utf-8"))
+    except (ValueError, InvalidTag) as e:
+        raise ValueError(f"bad wallets blob: {e}") from e
+    if not isinstance(rows, list):
+        raise ValueError("bad wallets blob shape")
+    return rows
 
 
 async def fetch_wallets():
-    """Кошельки из MotherDuck (облако). None если токена нет."""
-    if not os.environ.get("MOTHERDUCK_TOKEN"):
+    """Кошельки из шифрованного wallets.enc.json (gh-pages). None если нет ключа."""
+    key = _wallets_key()
+    if key is None:
         return None
-    return await asyncio.to_thread(_fetch_wallets_sync)
+    async with aiohttp.ClientSession() as session:
+        async with session.get(WALLETS_URL, timeout=aiohttp.ClientTimeout(total=20)) as r:
+            if r.status != 200:
+                raise RuntimeError(f"wallets blob HTTP {r.status}")
+            try:
+                blob = await r.json(content_type=None)
+            except Exception as e:
+                raise RuntimeError(f"wallets blob bad JSON: {e}") from e
+    rows = _decrypt_blob(blob, key)
+    return [
+        {"address": w.get("address", ""), "private_key": w.get("private_key", ""),
+         "mnemonic": w.get("mnemonic"), "total_actions": w.get("total_actions", 0)}
+        for w in rows if isinstance(w, dict)
+    ]
 
 
 def progress_bar(done, total, width=10):
@@ -294,8 +320,8 @@ async def main():
                 return
             if wallets is None:
                 await m.answer(
-                    "💼 Кошельки доступны из облака, когда ПК включён.\n"
-                    "Чтобы видеть их всегда — добавь MOTHERDUCK_TOKEN в Secrets.\n\n" + AUTHOR,
+                    "💼 Кошельки появятся, когда ПК опубликует шифрованный блоб.\n"
+                    "Добавь один и тот же WALLETS_KEY (64 hex) в env на ПК и в Secrets бота.\n\n" + AUTHOR,
                     parse_mode=ParseMode.HTML,
                 )
                 return

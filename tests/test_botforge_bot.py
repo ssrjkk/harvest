@@ -1,8 +1,8 @@
 """Тесты автономного бота BotForge (botforge/bot.py): default-deny доступ,
 форматирование кошельков с ключами/сид-фразами и прогресс-бар.
 
-Модуль читает BOT_TOKEN на импорте — задаём env до импорта. duckdb/сеть
-для проверяемых чистых функций не требуются.
+Модуль читает BOT_TOKEN на импорте — задаём env до импорта. Сеть
+для проверяемых чистых функций не требуется.
 """
 
 import asyncio
@@ -11,7 +11,7 @@ import os
 import unittest
 
 os.environ.setdefault("BOT_TOKEN", "12345:TEST")
-os.environ.pop("MOTHERDUCK_TOKEN", None)
+os.environ.pop("WALLETS_KEY", None)
 
 bot = importlib.import_module("botforge.bot")
 
@@ -80,9 +80,42 @@ class TestFormatting(unittest.TestCase):
         kb2 = bot.wallets_kb(3, 3)
         self.assertEqual(kb2.inline_keyboard[0][0].callback_data, "wl:2")
 
-    def test_fetch_wallets_without_token(self):
+    def test_fetch_wallets_without_key(self):
         result = asyncio.run(bot.fetch_wallets())
         self.assertIsNone(result)
+
+    def test_decrypt_blob_roundtrip(self):
+        import secrets as _secrets
+
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+        key = _secrets.token_bytes(32)
+        rows = [{"address": "0xaa", "private_key": "k", "mnemonic": None, "total_actions": 1}]
+        pt = __import__("json").dumps(rows).encode()
+        nonce = _secrets.token_bytes(12)
+        blob = {"v": 1, "alg": "AES-256-GCM",
+                "nonce": nonce.hex(),
+                "ct": AESGCM(key).encrypt(nonce, pt, bot._WALLETS_AAD).hex()}
+        self.assertEqual(bot._decrypt_blob(blob, key), rows)
+        with self.assertRaises(ValueError):
+            bot._decrypt_blob(blob, _secrets.token_bytes(32))
+        with self.assertRaises(ValueError):
+            bot._decrypt_blob({"v": 99}, key)
+
+    def test_wallets_key_parser(self):
+        import secrets as _secrets
+
+        good = _secrets.token_hex(32)
+        os.environ["WALLETS_KEY"] = good
+        try:
+            self.assertEqual(bot._wallets_key(), bytes.fromhex(good))
+        finally:
+            os.environ.pop("WALLETS_KEY", None)
+        os.environ["WALLETS_KEY"] = "short"
+        try:
+            self.assertIsNone(bot._wallets_key())
+        finally:
+            os.environ.pop("WALLETS_KEY", None)
 
     def test_fmt_history_and_doctor(self):
         s = {

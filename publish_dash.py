@@ -288,14 +288,14 @@ def _acquire_publish_lock():
         return "busy"
 
 
-def publish(state: dict) -> None:
+def publish(state: dict, wallets_blob: dict | None = None) -> None:
     # Межпроцессный лок: два overlapping-запуска (таск 30 мин + collect до 180с)
     # иначе мутят одно worktree и ловят index.lock / проигранный lease.
     lock_fh = _acquire_publish_lock()
     if lock_fh == "busy":
         return
     try:
-        _publish_inner(state)
+        _publish_inner(state, wallets_blob)
     finally:
         try:
             if lock_fh is not None:
@@ -304,7 +304,7 @@ def publish(state: dict) -> None:
             pass
 
 
-def _publish_inner(state: dict) -> None:
+def _publish_inner(state: dict, wallets_blob: dict | None = None) -> None:
     # git уже авторизован (gh credential helper): push идёт в gh-pages.
     wt = site_worktree()
     for name in SITE_FILES:
@@ -335,7 +335,13 @@ def _publish_inner(state: dict) -> None:
     else:
         print("счётчики тестов: пропуск (pytest недоступен)")
     (wt / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-    git("add", "-f", *SITE_FILES, *SITE_DIRS, "state.json", cwd=wt)
+    extra = ["state.json"]
+    if wallets_blob is not None:
+        # Шифротекст кошельков для облачного бота (ключа здесь нет — только ct).
+        (wt / "wallets.enc.json").write_text(
+            json.dumps(wallets_blob, ensure_ascii=False), encoding="utf-8")
+        extra.append("wallets.enc.json")
+    git("add", "-f", *SITE_FILES, *SITE_DIRS, *extra, cwd=wt)
     if git("diff", "--cached", "--quiet", cwd=wt, check=False).returncode == 0:
         print("нет изменений — пропускаю push")
         return
@@ -362,35 +368,43 @@ async def main() -> int:
     except Exception as e:  # noqa: BLE001 — нет таблиц/БД locked: понятный exit, а не трейс
         print(f"collect не удался ({DB}): {e}")
         return 1
+    # Блоб кошельков собираем ДО публикации — один коммит/пуш.
+    # Без WALLETS_KEY — штатный пропуск (exit 2, не ошибка паблиша).
+    # Старый wallets.enc.json в gh-pages при этом остаётся — бот продолжает
+    # работать с чуть устаревшими данными, а не падает.
+    blob = None
+    blob_count = 0
+    if not os.environ.get("WALLETS_KEY", "").strip():
+        print("блоб кошельков пропущен: no WALLETS_KEY — пропуск (бот без свежих кошельков)")
+    else:
+        try:
+            from tools.sync_wallets_blob import sync as sync_blob  # type: ignore
+        except ImportError:
+            try:
+                from sync_wallets_blob import sync as sync_blob  # type: ignore  # legacy рядом с publish
+            except ImportError as e:
+                print(f"блоб кошельков пропущен (нет модуля sync_wallets_blob): {e}")
+                sync_blob = None
+        if sync_blob is not None:
+            try:
+                res = await sync_blob()
+            except Exception as e:  # noqa: BLE001
+                print(f"блоб кошельков пропущен: {e}")
+                res = None
+            if isinstance(res, dict) and res.get("ok"):
+                blob, blob_count = res.get("blob"), res.get("count", 0)
+            else:
+                print(f"блоб кошельков пропущен: {res.get('reason') if isinstance(res, dict) else res}")
     try:
-        publish(state)
+        publish(state, blob)
     except Exception as e:  # noqa: BLE001
         print(f"git push не удался: {e}")
         return 1
-    # Без токена — штатный пропуск без импорта duckdb (exit 2, не ошибка паблиша).
-    if not os.environ.get("MOTHERDUCK_TOKEN", "").strip():
-        print("MotherDuck sync пропущен: no MOTHERDUCK_TOKEN — пропуск (бот без кошельков)")
+    if blob is None:
+        print(f"опубликовано в GitHub Pages: {DASH_BRANCH} (без свежего блоба кошельков)")
         return 2
-    try:
-        from tools.sync_motherduck import sync  # type: ignore
-    except ImportError:
-        try:
-            from sync_motherduck import sync  # type: ignore  # legacy рядом с publish
-        except ImportError as e:
-            # Exit 2 = sync пропущен (отличимо от успеха в мониторинге таска).
-            print(f"MotherDuck sync пропущен (нет модуля sync_motherduck): {e}")
-            return 2
-    try:
-        res = await sync()
-    except Exception as e:  # noqa: BLE001
-        print(f"MotherDuck sync пропущен: {e}")
-        return 2
-    if isinstance(res, dict) and res.get("ok"):
-        print(f"синхронизировано в MotherDuck: {res.get('upserted')} кошельков")
-        return 0
-    reason = res.get("reason") if isinstance(res, dict) else res
-    print(f"MotherDuck sync пропущен: {reason}")
-    return 2
+    print(f"опубликовано в GitHub Pages + блоб: {blob_count} кошельков")
+    return 0
 
 
 if __name__ == "__main__":
