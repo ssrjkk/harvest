@@ -9,6 +9,10 @@ state.json в изолированной ветке gh-pages, где лежит 
 Запуск по расписанию (Windows Task Scheduler, задача HarvestDashPublish) каждые 30 минут:
     python publish_dash.py
 Для push нужен токен: set GITHUB_TOKEN=ghp_...
+
+exit 0 — опубликовано со свежим блобом кошельков; 2 — опубликовано без него
+(нет WALLETS_KEY, sync не удался или кошельков 0), старый wallets.enc.json
+в gh-pages при этом сохраняется; 1 — паблиш не удался.
 """
 
 import asyncio
@@ -372,6 +376,26 @@ def _publish_inner(state: dict, wallets_blob: dict | None = None) -> None:
     print(f"опубликовано в GitHub Pages: {DASH_BRANCH}")
 
 
+def _blob_from_sync(res: object) -> tuple[dict | None, int]:
+    """Отчёт sync() → (blob, count). Пустой блоб публиковать нельзя.
+
+    sync() отдаёт ok=True даже когда не расшифровал ни одного кошелька
+    (не та БД, не тот master.key, пустая таблица). Публикация такого блоба
+    тихо оставила бы облачного бота без кошельков, поэтому count<=0
+    приравниваем к штатному пропуску: старый wallets.enc.json в gh-pages
+    остаётся, бот продолжает работать с чуть устаревшими данными.
+    """
+    if not isinstance(res, dict) or not res.get("ok"):
+        return None, 0
+    count = res.get("count", 0) or 0
+    if count <= 0:
+        return None, 0
+    blob = res.get("blob")
+    if not isinstance(blob, dict):  # битый блоб — тоже пропуск, count не в счёт
+        return None, 0
+    return blob, count
+
+
 async def main() -> int:
     if not Path(DB).exists():
         print(f"БД не найдена: {DB} (путь к БД через PORTAL_DB или дефолт farming_vibevibe.db)")
@@ -404,9 +428,11 @@ async def main() -> int:
             except Exception as e:  # noqa: BLE001
                 print(f"блоб кошельков пропущен: {e}")
                 res = None
-            if isinstance(res, dict) and res.get("ok"):
-                blob, blob_count = res.get("blob"), res.get("count", 0)
-            else:
+            blob, blob_count = _blob_from_sync(res)
+            if blob is None and isinstance(res, dict) and res.get("ok"):
+                print("блоб кошельков пропущен: 0 кошельков — старый wallets.enc.json "
+                      "оставлен (проверь PORTAL_DB и master.key)")
+            elif blob is None:
                 print(f"блоб кошельков пропущен: {res.get('reason') if isinstance(res, dict) else res}")
     try:
         publish(state, blob)

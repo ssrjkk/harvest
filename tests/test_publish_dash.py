@@ -133,6 +133,22 @@ class TestPublishDash(unittest.TestCase):
         missing = [n for n in publish_dash.SITE_FILES if not (docs / n).exists()]
         self.assertEqual(missing, [], f"нет в docs/: {missing}")
 
+    def test_empty_blob_never_published(self):
+        """Блоб без кошельков в gh-pages тихо оставил бы бота без кошельков."""
+        f = publish_dash._blob_from_sync
+        # Норма: есть кошельки — публикуем.
+        good = {"v": 1, "alg": "AES-256-GCM", "nonce": "00" * 12, "ct": "aa" * 8}
+        self.assertEqual(f({"ok": True, "blob": good, "count": 1000}), (good, 1000))
+        # Пустой результат при ok=True — не та БД / не тот master.key.
+        self.assertEqual(f({"ok": True, "blob": good, "count": 0}), (None, 0))
+        self.assertEqual(f({"ok": True, "blob": good}), (None, 0))
+        self.assertEqual(f({"ok": True, "blob": good, "count": None}), (None, 0))
+        # Ошибка sync и мусор на входе — тоже пропуск.
+        self.assertEqual(f({"ok": False, "reason": "no WALLETS_KEY"}), (None, 0))
+        self.assertEqual(f({"ok": True, "blob": "не словарь", "count": 5}), (None, 0))
+        self.assertEqual(f(None), (None, 0))
+        self.assertEqual(f("строка"), (None, 0))
+
     def test_collect_counts_matches_suite(self):
         n, m = publish_dash.collect_test_counts()
         self.assertIsNotNone(n)
