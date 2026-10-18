@@ -110,6 +110,31 @@ def main() -> int:
         navs_norm[name] = navs[name].replace(' aria-current="page"', "")
     check("nav identical on all pages", len(set(navs_norm.values())) == 1, "")
 
+    # Внутренние ссылки и ресурсы резолвятся в реальные файлы docs/: страницы
+    # лежат в корне docs/, поэтому относительный путь проверяем от DOCS.
+    link_pages = dict(pages)
+    for extra in ("terminal.html", "offline.html"):
+        p = os.path.join(DOCS, extra)
+        if os.path.exists(p):
+            link_pages[extra] = open(p, encoding="utf-8").read()
+    for name, html in link_pages.items():
+        refs = set(re.findall(r'(?:href|src)="([^"]+)"', html))
+        broken = []
+        for r in sorted(refs):
+            if re.match(r"^(?:[a-z][a-z0-9+.-]*:|//|#)", r, re.I):
+                continue  # внешняя ссылка, data:, чистый якорь
+            rel = r.split("#")[0].split("?")[0]
+            if rel and not os.path.exists(os.path.join(DOCS, rel)):
+                broken.append(r)
+        check(f"{name}: internal links resolve", not broken, str(broken))
+
+    # Старые якоря ленты редиректятся на существующие страницы.
+    m = re.search(r"var map=\{.*?\};", pages["index.html"], re.S)
+    targets = re.findall(r'"([a-z]+\.html)"', m.group(0)) if m else []
+    check("legacy anchor map present", bool(targets), "")
+    check("legacy anchor map targets exist",
+          all(os.path.exists(os.path.join(DOCS, t)) for t in targets), str(targets))
+
     for name, html in pages.items():
         ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
         check(f"{name}: no duplicate ids", len(ids) == len(set(ids)))

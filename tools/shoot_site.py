@@ -4,9 +4,14 @@
 Снимает 4 кадра (hero, поле, мастер новичка, про-справочник) в дефолтной
 тёмной теме. Анимации заморожены (reduced-motion) для детерминированности.
 
-Матрица приёмки: --matrix снимает hero на 375/768/1440 × 3 темы × RU/EN
-в docs/screenshots/matrix/ и проверяет отсутствие горизонтального скролла
-и видимость бургера на 375px.
+Сайт многостраничный, поэтому кадр задаёт свою страницу: якоря ленты (#field
+на «Поле», #app на «Демо») больше не на одной странице и скроллом не достаются.
+Готовность страницы ждём по её собственному узлу (h1 есть не везде).
+
+Матрица приёмки: --matrix снимает главную на 375/768/1440 × 3 темы × RU/EN
+в docs/screenshots/matrix/ и проверяет на всех 4 страницах отсутствие
+горизонтального скролла, видимость бургера на 375px, состав навигации и
+отсутствие ошибок JS (страничные скрипты выходят по своим якорям).
 """
 
 from __future__ import annotations
@@ -17,12 +22,46 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DEFAULT = ROOT / "docs" / "screenshots"
 
-SHOTS: tuple[tuple[str, str], ...] = (
-    ("shot-hero.png", "hero"),
-    ("shot-live.png", "live"),
-    ("shot-wizard.png", "wizard"),
-    ("shot-pro.png", "pro"),
+# Синхронно с NAV_LINKS в tools/verify_site.py.
+SITE_PAGES: tuple[str, ...] = ("index.html", "field.html", "demo.html", "docs.html")
+NAV_LINKS = 4
+
+# Узел, по которому страница считается загруженной (h1 есть не на всех).
+READY: dict[str, str] = {
+    "index.html": "#tickerIn",
+    "field.html": "#fieldGrid",
+    "demo.html": "#proView",
+    "docs.html": "#mainNav",
+}
+
+# (файл, страница, якорь, js-подготовка перед скриншотом)
+SHOTS: tuple[tuple[str, str, str | None, str | None], ...] = (
+    ("shot-hero.png", "index.html", None, None),
+    ("shot-live.png", "field.html", "field", None),
+    ("shot-wizard.png", "demo.html", "app", None),
+    (
+        "shot-pro.png",
+        "demo.html",
+        "app",
+        'document.getElementById("modePro").click();'
+        'document.querySelector(\'.play-tabs button[data-tab="t-ref"]\').click();',
+    ),
 )
+
+METRICS = """() => ({
+    scrollW: document.documentElement.scrollWidth,
+    innerW: window.innerWidth,
+    burger: getComputedStyle(document.getElementById('navToggle')).display,
+    navLinks: document.querySelectorAll('#mainNav a').length
+})"""
+
+
+def _url(base: str, page: str) -> str:
+    """Страница сайта относительно базы: .../harvest → .../harvest/field.html."""
+    root = base.rstrip("/")
+    if root.endswith(".html"):
+        root = root.rsplit("/", 1)[0]
+    return f"{root}/{page}"
 
 
 def main() -> int:
@@ -55,14 +94,18 @@ def main() -> int:
             f"localStorage.setItem('hv-lang','{args.lang}');"
         )
         page = ctx.new_page()
-        page.goto(args.url, wait_until="networkidle")
-        page.wait_for_selector("h1", timeout=15000)
 
-        def snap(name: str, anchor: str | None) -> None:
+        def snap(name: str, page_name: str, anchor: str | None, setup: str | None) -> None:
+            page.goto(_url(args.url, page_name), wait_until="networkidle")
+            page.wait_for_selector(READY[page_name], timeout=15000)
+            if setup:
+                page.evaluate(setup)
+                page.wait_for_timeout(300)
             if anchor:
                 page.evaluate(
                     """(id) => {
                         const el = document.getElementById(id);
+                        if (!el) throw new Error('нет якоря #' + id);
                         el.scrollIntoView({block: 'start'});
                         window.scrollBy(0, -90);
                     }""", anchor)
@@ -71,23 +114,21 @@ def main() -> int:
                 page.evaluate("window.scrollTo(0, 0)")
                 page.wait_for_timeout(400)
             page.screenshot(path=str(out / name))
-            print(f"ok: {name}")
+            print(f"ok: {name} ({page_name})")
 
-        snap("shot-hero.png", None)
-        snap("shot-live.png", "live")
-        snap("shot-wizard.png", "app")
-        # Про-режим + вкладка справочника.
-        page.evaluate("document.getElementById('modePro').click()")
-        page.evaluate(
-            "document.querySelector('.play-tabs button[data-tab=\"t-ref\"]').click()")
-        snap("shot-pro.png", "app")
+        for name, page_name, anchor, setup in SHOTS:
+            snap(name, page_name, anchor, setup)
 
         browser.close()
     return 0
 
 
 def _matrix(browser, args, out: Path) -> int:
-    """Матрица приёмки: ширины × темы × языки. Проверяет скролл и бургер."""
+    """Матрица приёмки: ширины × темы × языки.
+
+    Скриншот снимает главную (как раньше), а скролл/бургер/навигацию/ошибки JS
+    проверяет на всех страницах — регресс на многостраничность иначе не видно.
+    """
     mdir = out / "matrix"
     mdir.mkdir(parents=True, exist_ok=True)
     fails = 0
@@ -105,26 +146,31 @@ def _matrix(browser, args, out: Path) -> int:
                     f"localStorage.setItem('hv-lang','{lang}');"
                 )
                 page = ctx.new_page()
-                page.goto(args.url, wait_until="networkidle")
-                page.wait_for_selector("h1", timeout=15000)
-                page.wait_for_timeout(400)
-                page.screenshot(path=str(mdir / name))
-                metrics = page.evaluate(
-                    """() => ({
-                        scrollW: document.documentElement.scrollWidth,
-                        innerW: window.innerWidth,
-                        burger: getComputedStyle(document.getElementById('navToggle')).display,
-                        navLinks: document.querySelectorAll('#mainNav a').length
-                    })"""
-                )
-                ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
-                ok_burger = (metrics["burger"] != "none") if width <= 900 else True
-                ok_nav = metrics["navLinks"] == 11
-                status = "ok" if (ok_scroll and ok_burger and ok_nav) else "FAIL"
-                if status == "FAIL":
-                    fails += 1
-                print(f"{status}: {name} scroll={metrics['scrollW']}/{metrics['innerW']} "
-                      f"burger={metrics['burger']} links={metrics['navLinks']}")
+                errors: list[str] = []
+                # _errs=errors — привязка к текущему списку, а не к переменной цикла.
+                page.on("pageerror", lambda e, _errs=errors: _errs.append(str(e)))
+                if width == 375:  # главный кадр снимаем один раз на тему/язык
+                    page.goto(_url(args.url, "index.html"), wait_until="networkidle")
+                    page.wait_for_selector(READY["index.html"], timeout=15000)
+                    page.wait_for_timeout(400)
+                    page.screenshot(path=str(mdir / name))
+                for pg in SITE_PAGES:
+                    errors.clear()
+                    page.goto(_url(args.url, pg), wait_until="networkidle")
+                    page.wait_for_selector(READY[pg], timeout=15000)
+                    page.wait_for_timeout(250)
+                    metrics = page.evaluate(METRICS)
+                    ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
+                    ok_burger = (metrics["burger"] != "none") if width <= 900 else True
+                    ok_nav = metrics["navLinks"] == NAV_LINKS
+                    ok_js = not errors
+                    status = "ok" if (ok_scroll and ok_burger and ok_nav and ok_js) else "FAIL"
+                    if status == "FAIL":
+                        fails += 1
+                        print(f"{status}: {name} {pg} scroll={metrics['scrollW']}/{metrics['innerW']} "
+                              f"burger={metrics['burger']} links={metrics['navLinks']} js={errors}")
+                    else:
+                        print(f"{status}: {name} {pg}")
                 ctx.close()
     browser.close()
     print(f"matrix done, fails={fails}")

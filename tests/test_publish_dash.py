@@ -96,20 +96,42 @@ class TestPublishDash(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "assets").mkdir()
-            (root / "index.html").write_text(
-                "1335 TESTS · 1335 · 54 файла", encoding="utf-8")
-            (root / "assets" / "site.js").write_text(
-                "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
-            (root / "terminal.html").write_text(
-                "<title>harvest</title>", encoding="utf-8")
+            # Набор страниц/скриптов — как в настоящем docs/: inject_test_counts
+            # берёт glob по *.html и assets/*.js, а не хардкод-список.
+            for name in ("index.html", "field.html", "demo.html", "docs.html"):
+                (root / name).write_text("1335 TESTS · 1335 · 54 файла", encoding="utf-8")
+            for name in ("common.js", "field.js", "demo.js"):
+                (root / "assets" / name).write_text(
+                    "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
+            # Страница без счётчиков должна пройти нетронутой.
+            (root / "terminal.html").write_text("<title>harvest</title>", encoding="utf-8")
             n = publish_dash.inject_test_counts(root, 1400, 55)
             self.assertGreater(n, 0)
-            html = (root / "index.html").read_text(encoding="utf-8")
-            self.assertIn("1400 TESTS", html)
-            self.assertIn("1400 · 55 файлов", html)
-            self.assertNotIn("1335", html)
-            js = (root / "assets" / "site.js").read_text(encoding="utf-8")
-            self.assertIn("1400 tests · 55 files", js)
+            for name in ("index.html", "field.html", "demo.html", "docs.html"):
+                html = (root / name).read_text(encoding="utf-8")
+                self.assertIn("1400 TESTS", html)
+                self.assertIn("1400 · 55 файлов", html)
+                self.assertNotIn("1335", html)
+            for name in ("common.js", "field.js", "demo.js"):
+                js = (root / "assets" / name).read_text(encoding="utf-8")
+                self.assertIn("1400 tests · 55 files", js)
+                self.assertNotIn("1335", js)
+            self.assertEqual(
+                (root / "terminal.html").read_text(encoding="utf-8"), "<title>harvest</title>")
+
+    def test_site_files_cover_all_docs_pages(self):
+        """Новая страница в docs/ не должна молча остаться неопубликованной."""
+        docs = Path(publish_dash.DOCS)
+        pages = {p.name for p in docs.glob("*.html")}
+        self.assertTrue(pages)
+        missing = sorted(pages - set(publish_dash.SITE_FILES))
+        self.assertEqual(missing, [], f"страницы вне SITE_FILES: {missing}")
+
+    def test_site_files_all_exist(self):
+        """Опечатка в SITE_FILES — это тихая потеря файла в gh-pages."""
+        docs = Path(publish_dash.DOCS)
+        missing = [n for n in publish_dash.SITE_FILES if not (docs / n).exists()]
+        self.assertEqual(missing, [], f"нет в docs/: {missing}")
 
     def test_collect_counts_matches_suite(self):
         n, m = publish_dash.collect_test_counts()
@@ -161,7 +183,7 @@ class TestPublishDash(unittest.TestCase):
             addr = "0x%s" % ("11" * 20)
             con.execute(
                 "INSERT INTO actions_log (address, action_type, success, details) VALUES (?, ?, ?, ?)",
-                (f"0x{'00' * 20}", "transfer", 0, "to=%s, amount=0.5" % addr),
+                (f"0x{'00' * 20}", "transfer", 0, f"to={addr}, amount=0.5"),
             )
             con.commit()
             con.close()

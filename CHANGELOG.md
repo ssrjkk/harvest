@@ -81,7 +81,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `publish_dash.py`: новые страницы в `SITE_FILES`, счётчики тестов
   подставляются во все `*.html` + `assets/*.js` (glob вместо хардкода)
 - `verify_site.py`: проверки `node --check`/`data-i18n`/`#id` по страницам,
-  сравнение nav без `aria-current` (активный пункт у каждой страницы свой)
+  сравнение nav без `aria-current` (активный пункт у каждой страницы свой);
+  внутренние `href`/`src` всех страниц резолвятся в реальные файлы `docs/`,
+  цели legacy-маппинга якорей существуют
+
+### Fixed
+- `tools/shoot_site.py` после разбивки снимал несуществующие якоря (`#live`,
+  `#app`, `#modePro`) на главной и ждал `navLinks == 11` при четырёх ссылках —
+  матрица приёмки падала на каждом кадре. Теперь кадр задаёт свою страницу,
+  готовность ждётся по узлу страницы (`#fieldGrid`/`#proView`/`#mainNav`),
+  скролл/бургер/навигация/ошибки JS проверяются на всех 4 страницах
+- `docs/terminal.html` вёл на `index.html#field` и прыгал на «Поле» вторым
+  редиректом — теперь один хоп, прямо на `field.html#field`
+- Линт: `except (OSError, IOError)` → `OSError` (`publish_dash.py`, ловится
+  конфигом `[tool.ruff]`, но не правилом `--select=E,F,W` из CI)
 
 ### Fixed
 - Кран: `ensure_balance` честно по `target_balance` (частичный долив —

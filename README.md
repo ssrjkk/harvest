@@ -17,10 +17,11 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 ## Сайт
 
 Живой сайт проекта: **[ssrjkk.github.io/harvest](https://ssrjkk.github.io/harvest/)** —
-поле фермы (метрики из `state.json`), полная документация и браузерная
-демо-зона: режимы «Новичок» (мастер за 3 шага) и «Про» (конструктор конфига
-и команд, генератор кошельков, симулятор фарма, проверка конфига,
-справочник параметров). Темы Paper/Ink/Field, языки RU/EN.
+четыре страницы: «Главная» (обзор, сети, быстрый старт), «Поле» (метрики из
+`state.json`, кран, бот), «Демо» (режимы «Новичок» — мастер за 3 шага, и «Про» —
+конструктор конфига и команд, генератор кошельков, симулятор фарма, проверка
+конфига, справочник параметров), «Доки» (факты, архитектура, портал,
+безопасность, тесты, лицензия). Темы Paper/Ink/Field, языки RU/EN.
 
 ## Screenshots
 
@@ -137,7 +138,9 @@ core/          — ядро: config, network (мульти-RPC/EMA/1559-фолл
                  web_gui (локальная FastAPI-панель)
 portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
 tests/         — pytest-набор (57 файлов; test_load_opt.py — нагрузка, opt-in)
-docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
+docs/          — сайт: index.html (Главная), field.html (Поле), demo.html (Демо),
+                 docs.html (Доки) + assets/ (CSS и common/field/demo JS),
+                 sw.js, screenshots/ → ssrjkk.github.io/harvest
 tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
 harvest.spec   — спецификация PyInstaller (сборка: build.bat)

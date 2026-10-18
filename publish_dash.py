@@ -279,7 +279,7 @@ def _acquire_publish_lock():
 
             _msvcrt.locking(fh.fileno(), _msvcrt.LK_NBLCK, 1)
         return fh
-    except (OSError, IOError) as e:
+    except OSError as e:  # IOError — тот же OSError в py3
         print(f"publish уже идёт в другом процессе — пропуск ({e})")
         try:
             fh.close()
