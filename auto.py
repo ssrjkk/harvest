@@ -261,10 +261,16 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                 faucet = Faucet(config)
                 try:
                     live = await faucet.validate()
+                    for p in faucet.probe_report():
+                        mark = f"{Fore.GREEN}ok" if p["alive"] else f"{Fore.RED}dead"
+                        print(f"  {mark}{Style.RESET_ALL} {p['type']}: {p['reason']}")
                     if live <= 0:
                         print(
-                            f"  {Fore.YELLOW}Кран: все стратегии недоступны, пропуск. "
-                            f"Фарм пойдёт без пополнения (force_farm).{Style.RESET_ALL}"
+                            f"  {Fore.RED}Кран: 0 живых стратегий — задайте CHAINSTACK_API_KEY "
+                            f"в окружении фарм-машины и перезапустите задачу.{Style.RESET_ALL}"
+                        )
+                        print(
+                            f"  {Fore.YELLOW}Фарм пойдёт без пополнения (force_farm).{Style.RESET_ALL}"
                         )
                         config.setdefault("advanced", {})["force_farm"] = True
                     else:
@@ -324,7 +330,12 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                         if cycle < cycle_count:
                             wait = min(random.uniform(2, 10), 15)  # авто-режим: ускоренные паузы
                             print(f"  Пауза {wait:.0f} сек...")
-                            await asyncio.sleep(wait)
+                            try:
+                                await asyncio.wait_for(stop_event.wait(), timeout=wait)
+                                print(f"  {Fore.YELLOW}Остановлено по сигналу{Style.RESET_ALL}")
+                                break
+                            except TimeoutError:
+                                pass
             finally:
                 await pool.close()
             print(f"  {Fore.GREEN}Фарм: {time.monotonic() - t3:.1f} сек{Style.RESET_ALL}")
@@ -342,6 +353,15 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             # приватные ключи и сид-фразы рабочего флота, копии которых нигде.
             csv_path = f"{args.export}_dryrun.csv"
             json_path = f"{args.export}_dryrun.json"
+        if not args.encrypt:
+            # Открытые ключи ложатся на диск: требуем осознанности.
+            # --encrypt шифрует сразу; без него — громкое предупреждение
+            # (файлы уже в .gitignore, но диск/бэкапы их всё равно видят).
+            print(
+                f"  {Fore.RED}ВНИМАНИЕ: {csv_path}, {json_path} — ОТКРЫТЫЕ "
+                f"приватные ключи и сид-фразы. Используйте --encrypt, "
+                f"храните офлайн, не коммитьте.{Style.RESET_ALL}"
+            )
         export_csv(export_data, csv_path)
         export_json(export_data, json_path)
         print(f"  CSV:  {csv_path}")

@@ -27,12 +27,18 @@ faucet:
   strategies:
     # chainstack — MCP-кран: нужен CHAINSTACK_API_KEY в переменных окружения
     # (https://console.chainstack.com/user/settings/api-keys). Без ключа стратегия
-    # исключается на pre-flight, пополнение идёт только через direct/другие стратегии.
+    # исключается на pre-flight.
     - type: "chainstack"
       url: "https://mcp.chainstack.com/mcp"
       network_param: "robinhood"
-    - type: "direct"
-      url: "https://faucet.testnet.chain.robinhood.com/claim"
+    # donor — авто-донор (Hub & Spoke): мастер-кошелёк раздаёт тестовый ETH
+    # нативным трансфером, без mainnet-гейтов и квот. Ключ ТОЛЬКО через env
+    # (FAUCET_DONOR_KEY); сам донор пополняется авто-клеймом консоли
+    # https://console.chainstack.com/faucet (Saved Wallets + recurring auto-claim).
+    # Раскомментируйте, задайте FAUCET_DONOR_KEY=0x... и перезапустите фарм:
+    # - type: "donor"
+    #   private_key_env: "FAUCET_DONOR_KEY"
+    #   topup_amount: 0.01
   delay_between_requests: [5, 15]
 
 # ---------- Действия ----------

@@ -223,11 +223,40 @@ def validate_config(config: dict) -> None:
                 if not isinstance(s, dict):
                     errors.append(f"faucet.strategies[{i}]: ожидается объект (dict), получен {type(s).__name__}")
                     continue
+                stype = s.get("type", "")
+                if stype and stype not in ("chainstack", "direct", "web", "donor"):
+                    errors.append(
+                        f"faucet.strategies[{i}].type: неизвестный '{stype}' "
+                        "(ожидается chainstack/direct/web/donor)"
+                    )
+                if stype == "donor":
+                    # У донора нет url: пополнение — нативным трансфером.
+                    # Ключ проверяется в рантайме (env), здесь — только сумма.
+                    amt = s.get("topup_amount", 0)
+                    if amt is None:
+                        pass
+                    elif isinstance(amt, bool) or not isinstance(amt, (int, float)):
+                        errors.append(f"faucet.strategies[{i}].topup_amount: ожидается число, получено {amt!r}")
+                    elif amt < 0:
+                        errors.append(f"faucet.strategies[{i}].topup_amount: ожидается >= 0")
+                    continue
                 url = s.get("url", "")
                 if not isinstance(url, str) or not url:
                     errors.append(f"faucet.strategies[{i}].url: обязателен")
                     continue
                 _check_https_or_localhost(f"faucet.strategies[{i}].url", url, errors)
+                if stype == "chainstack":
+                    np = s.get("network_param", "")
+                    if not isinstance(np, str) or not np.strip():
+                        errors.append(
+                            f"faucet.strategies[{i}].network_param: обязателен "
+                            "для chainstack (например 'robinhood')"
+                        )
+                    if not url.rstrip("/").endswith("/mcp"):
+                        errors.append(
+                            f"faucet.strategies[{i}].url: chainstack требует путь /mcp "
+                            "(POST на /request_testnet_funds отвечает 404)"
+                        )
 
     # --- actions ---
     actions = config.get("actions")

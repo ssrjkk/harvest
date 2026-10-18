@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import json
 import logging
 import os
@@ -278,6 +277,9 @@ def _session_user(request: web.Request) -> dict | None:
     user = auth.read_token(request.app[KEY_CFG].secret, cookie)
     if user is None:
         return None
+    # Технические токены (confirm/ws) сессией не являются — см. auth.is_session_sub.
+    if not auth.is_session_sub(user.get("sub")):
+        return None
     if _is_revoked(user.get("jti")):
         return None
     return user
@@ -291,6 +293,25 @@ def _require_user(request: web.Request) -> dict:
         logger.warning("[AUDIT] deny unauth sub=- ip=%s path=%s", _client_ip(request), request.path)
         raise web.HTTPUnauthorized()
     return user
+
+
+def _guard_check(request: web.Request, obj: object) -> web.Response | None:
+    """Строгая проверка свободного ввода через shield.sanitize (stored-XSS guard).
+
+    Возвращает 400-ответ при отказе, иначе None. Хранимые имена/тексты без
+    этого держались только на esc() у текущих потребителей — новый рендер
+    без esc получил бы stored-XSS.
+    """
+    shield = request.app.get(KEY_SHIELD)
+    guard = getattr(shield, "sanitize", None)
+    if guard is None:
+        return None
+    try:
+        guard.check(obj)
+    except Exception as e:  # noqa: BLE001 — SanitizationError(ValueError)
+        logger.warning("[AUDIT] sanitize-reject path=%s err=%s", request.path, e)
+        return _json({"error": f"bad input: {e}"}, status=400)
+    return None
 
 
 def _client_ip(request: web.Request) -> str:
@@ -347,7 +368,12 @@ def _json(payload: dict, status: int = 200) -> web.Response:
 
 
 def _html(path: str) -> web.Response:
-    return web.Response(text=(STATIC_DIR / path).read_text(encoding="utf-8"), content_type="text/html")
+    try:
+        return web.Response(text=(STATIC_DIR / path).read_text(encoding="utf-8"), content_type="text/html")
+    except FileNotFoundError:
+        raise web.HTTPNotFound()
+    except OSError:
+        raise web.HTTPInternalServerError()
 
 
 async def index(request: web.Request) -> web.Response:
@@ -390,6 +416,8 @@ async def api_login_password(request: web.Request) -> web.Response:
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
+        return _json({"error": "ожидается application/json"}, status=400)
+    if not isinstance(body, dict):
         return _json({"error": "ожидается application/json"}, status=400)
     password = str(body.get("password", ""))
     if not password or len(password) > _MAX_PASSWORD_LEN:
@@ -449,7 +477,7 @@ async def api_google_callback(request: web.Request) -> web.Response:
     if not _choke_allowed_global("google_cb") or not _choke_allowed("google_cb", ip):
         logger.warning("[AUDIT] google_cb choke ip=%s", ip)
         resp = web.HTTPFound(location="/login?error=rate")
-        resp.del_cookie(OAUTH_COOKIE, path="/")
+        resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
     code = request.query.get("code", "")
     state = request.query.get("state", "")
@@ -467,7 +495,7 @@ async def api_google_callback(request: web.Request) -> web.Response:
     if not auth.verify_csrf_state(cfg.secret, state) or state != stored_state:
         logger.warning("[AUDIT] oauth bad_state ip=%s", _client_ip(request))
         resp = web.HTTPFound(location="/login?error=bad_state")
-        resp.del_cookie(OAUTH_COOKIE, path="/")
+        resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
     redirect = cfg.google_redirect_uri or f"{cfg.public_base_url}/auth/google/callback"
     _shield = request.app.get(KEY_SHIELD)
@@ -478,17 +506,17 @@ async def api_google_callback(request: web.Request) -> web.Response:
     )
     if profile is None:
         resp = web.HTTPFound(location="/login?error=google")
-        resp.del_cookie(OAUTH_COOKIE, path="/")
+        resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
     email = profile["email"]
     if not cfg.google_email_allowed(email):
         logger.warning("[AUDIT] oauth denied email=%s ip=%s", email, _client_ip(request))
         resp = web.HTTPFound(location="/login?error=denied")
-        resp.del_cookie(OAUTH_COOKIE, path="/")
+        resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
     logger.info("[AUDIT] login-ok (google) email=%s ip=%s", email, _client_ip(request))
     resp = web.HTTPFound(location="/")
-    resp.del_cookie(OAUTH_COOKIE, path="/")
+    resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
     _set_session_cookie(resp, cfg, auth.sign_token(cfg.secret, profile["sub"], profile["name"] or email))
     raise resp
 
@@ -512,7 +540,7 @@ async def api_farm_action(request: web.Request) -> web.Response:
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     action = request.match_info.get("action", "")
     if action not in {"start", "stop", "pause", "resume"}:
-        return _json({"error": "unknown"}, status=404)
+        return _json({"error": "unknown action"}, status=400)
     _audit(request, f"farm:{action}")
     if action == "stop" and daemon.running:
         # Остановка может занять время (ждём завершение цикла) — не блокируем HTTP.
@@ -554,7 +582,7 @@ async def api_network_farm(request: web.Request) -> web.Response:
     slug = request.match_info.get("name", "")
     action = request.match_info.get("action", "")
     if action not in {"start", "stop"}:
-        return _json({"error": "unknown"}, status=404)
+        return _json({"error": "unknown action"}, status=400)
     _audit(request, f"network:{slug}:{action}")
     if action == "start":
         switched = await daemon.switch_to(slug)
@@ -585,9 +613,10 @@ async def api_metrics(request: web.Request) -> web.Response:
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     try:
         limit = int(request.query.get("limit", "100"))
-    except ValueError:
-        limit = 100
-    limit = max(1, min(limit, 1000))
+    except (TypeError, ValueError):
+        return _json({"error": "limit must be 1-1000"}, status=400)
+    if not 1 <= limit <= 1000:
+        return _json({"error": "limit must be 1-1000"}, status=400)
     return _json({"metrics": await daemon.metrics_history(limit)})
 
 
@@ -610,7 +639,16 @@ async def api_wallets_export(request: web.Request) -> web.Response:
         logger.warning("[AUDIT] wallets-export denied over HTTP ip=%s", _client_ip(request))
         return _json({"error": "Экспорт ключей доступен только по HTTPS"}, status=403)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
-    fmt = request.query.get("format", "csv")
+    fmt = request.query.get("format", "")
+    if not fmt and request.method == "POST":
+        try:
+            _body = await request.json()
+            if isinstance(_body, dict):
+                fmt = str(_body.get("format", ""))
+        except Exception:  # noqa: BLE001
+            fmt = ""
+    if not fmt:
+        fmt = "csv"
     if fmt not in {"csv", "json"}:
         return _json({"error": "format должен быть csv или json"}, status=400)
     _audit(request, f"wallets:export:{fmt}")
@@ -659,12 +697,13 @@ async def api_tg_init(request: web.Request) -> web.Response:
     try:
         tg_id = int(user.get("id", 0))
     except (TypeError, ValueError):
-        logger.warning("[AUDIT] tg bad id=%r ip=%s", user.get("id"), _client_ip(request))
-        return _json({"error": "bad init_data"}, status=401)
+        logger.warning("[AUDIT] tg bad id ip=%s", _client_ip(request))
+        return _json({"error": "unauthorized"}, status=401)
     if not cfg.telegram_user_allowed(tg_id):
+        # Uniform-401: «неверная подпись / не в списке» неразличимы снаружи.
         logger.warning("[AUDIT] tg denied id=%s ip=%s", tg_id, _client_ip(request))
-        return _json({"error": "denied"}, status=403)
-    name = html.escape(str(user.get("first_name", "")))[:200]
+        return _json({"error": "unauthorized"}, status=401)
+    name = str(user.get("first_name", ""))[:200]
     sub = f"{_SESSION_TG}:{tg_id}"
     resp = _json({"ok": True, "name": user.get("first_name", "")})
     _set_session_cookie(resp, cfg, auth.sign_token(cfg.secret, sub, name))
@@ -676,6 +715,16 @@ async def api_groups_list(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     return _json({"groups": await daemon.list_groups()})
+
+
+async def api_ws_token(request: web.Request) -> web.Response:
+    """Короткий (60с) WS-тикет в query. Сессия живёт в cookie, в query —
+    только тикет: долгоживущий токен в access-логах/proxy не оседает."""
+    user = _require_user(request)
+    cfg: PortalConfig = request.app[KEY_CFG]
+    sub = str(user.get("sub", ""))
+    name = str(user.get("name", ""))
+    return _json({"token": auth.issue_ws_ticket(cfg.secret, sub, name)})
 
 
 @idempotent("wallets:create")
@@ -696,7 +745,7 @@ async def api_wallets_create(request: web.Request) -> web.Response:
     try:
         created = await daemon.create_wallets(count)
     except RuntimeError as e:
-        return _json({"error": str(e)}, status=500)
+        return _json({"error": str(e)}, status=503)
     _audit(request, f"wallets:create count={len(created)}")
     return _json({"ok": True, "created": len(created), **daemon.run_state()})
 
@@ -712,7 +761,14 @@ async def api_groups_create(request: web.Request) -> web.Response:
     name = str(body.get("name", "")).strip()
     if not name or len(name) > 100:
         return _json({"error": "name required (max 100 chars)"}, status=400)
+    import re as _re
+
     color = str(body.get("color", "#007bff")).strip()[:20]
+    if not _re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+        return _json({"error": "color must be #rrggbb"}, status=400)
+    bad = _guard_check(request, {"name": name})
+    if bad is not None:
+        return bad
     try:
         group = await daemon.create_group(name, color)
         _audit(request, f"group:create id={group.get('id')}")
@@ -786,16 +842,27 @@ async def api_scheduler_add_task(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"error": "ожидается application/json"}, status=400)
+    if not isinstance(body, dict):
+        return _json({"error": "ожидается application/json"}, status=400)
     task_id = str(body.get("task_id", "")).strip()
     if not task_id or len(task_id) > 100:
         return _json({"error": "task_id required (max 100 chars)"}, status=400)
     name = str(body.get("name", "")).strip()[:200]
-    interval_hours = float(body.get("interval_hours", 0))
-    interval_minutes = float(body.get("interval_minutes", 0))
+    try:
+        interval_hours = float(body.get("interval_hours", 0))
+        interval_minutes = float(body.get("interval_minutes", 0))
+    except (TypeError, ValueError):
+        return _json({"error": "interval must be a number"}, status=400)
     run_at_time = body.get("run_at_time")
-    cycles = int(body.get("cycles", 1))
+    try:
+        cycles = int(body.get("cycles", 1))
+    except (TypeError, ValueError):
+        return _json({"error": "cycles must be 1-1000"}, status=400)
     if cycles < 1 or cycles > 1000:
         return _json({"error": "cycles must be 1-1000"}, status=400)
+    bad = _guard_check(request, {"task_id": task_id, "name": name, "run_at_time": run_at_time})
+    if bad is not None:
+        return bad
     task = await daemon.add_scheduler_task(
         task_id,
         name=name,
@@ -817,22 +884,37 @@ async def api_scheduler_update_task(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"error": "ожидается application/json"}, status=400)
-    updates = {}
+    if not isinstance(body, dict):
+        return _json({"error": "ожидается application/json"}, status=400)
+    updates: dict = {}
     if "name" in body:
         updates["name"] = str(body["name"]).strip()[:200]
     if "interval_hours" in body:
-        updates["interval_hours"] = float(body["interval_hours"])
+        try:
+            updates["interval_hours"] = float(body["interval_hours"])
+        except (TypeError, ValueError):
+            return _json({"error": "interval_hours must be a number"}, status=400)
     if "interval_minutes" in body:
-        updates["interval_minutes"] = float(body["interval_minutes"])
+        try:
+            updates["interval_minutes"] = float(body["interval_minutes"])
+        except (TypeError, ValueError):
+            return _json({"error": "interval_minutes must be a number"}, status=400)
     if "run_at_time" in body:
         updates["run_at_time"] = body["run_at_time"]
     if "cycles" in body:
-        cycles = int(body["cycles"])
+        try:
+            cycles = int(body["cycles"])
+        except (TypeError, ValueError):
+            return _json({"error": "cycles must be 1-1000"}, status=400)
         if cycles < 1 or cycles > 1000:
             return _json({"error": "cycles must be 1-1000"}, status=400)
         updates["cycles"] = cycles
     if "enabled" in body:
         updates["enabled"] = bool(body["enabled"])
+    if updates:
+        bad = _guard_check(request, {"task_id": task_id, **{k: v for k, v in updates.items() if isinstance(v, str)}})
+        if bad is not None:
+            return bad
     task = await daemon.update_scheduler_task(task_id, **updates)
     if task is None:
         return _json({"error": "task not found"}, status=404)
@@ -885,8 +967,13 @@ async def api_set_balance_alerts(request: web.Request) -> web.Response:
         body = await request.json()
     except Exception:  # noqa: BLE001
         return _json({"error": "ожидается application/json"}, status=400)
+    if not isinstance(body, dict):
+        return _json({"error": "ожидается application/json"}, status=400)
     enabled = bool(body.get("enabled", False))
-    threshold = float(body.get("threshold", 0.001))
+    try:
+        threshold = float(body.get("threshold", 0.001))
+    except (TypeError, ValueError):
+        return _json({"error": "threshold must be 0-100"}, status=400)
     if threshold < 0 or threshold > 100:
         return _json({"error": "threshold must be 0-100"}, status=400)
     result = await daemon.set_balance_alerts(enabled, threshold)
@@ -901,45 +988,88 @@ async def api_rpc_health(request: web.Request) -> web.Response:
     return _json(await daemon.rpc_health())
 
 
+async def api_faucet(request: web.Request) -> web.Response:
+    """Статус крана: разбор pre-flight по стратегиям (без траты квоты)."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        report = await daemon.faucet_report()
+    except Exception as e:  # noqa: BLE001
+        return _json({"error": str(e)[:200]}, status=500)
+    live = sum(1 for p in report if isinstance(p, dict) and p.get("alive"))
+    return _json({"live": live, "strategies": report, "drip": daemon.drip_state()})
+
+
+async def api_faucet_drip(request: web.Request) -> web.Response:
+    """Ручной долив всех кошельков (фоновая задача, single-flight)."""
+    _require_user(request)
+    daemon: FarmDaemon = request.app[KEY_DAEMON]
+    try:
+        res = await daemon.drip_faucet()
+    except RuntimeError as e:
+        return _json({"error": str(e)}, status=503)
+    _audit(request, f"faucet:drip started={res.get('started')}")
+    return _json(res, status=202 if res.get("started") else 409)
+
+
 async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
     """WebSocket для real-time обновлений (статус, логи, события).
 
-    Аутентификация: токен сессии в query-param (ws?token=...) или cookie.
-    Cookie не работает для WebSocket из-за CORS/браузерных ограничений,
-    поэтому поддерживаем query-param (токен одноразовый, живёт 60 сек).
+    Аутентификация: cookie сессии ЛИБО короткий WS-тикет в query
+    (POST /api/ws/token, живёт 60 сек). Долгоживущая сессия в query
+    не принимается — она бы осела в access-логах/proxy/history.
     """
     cfg: PortalConfig = request.app[KEY_CFG]
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     clients: set = request.app[KEY_WS_CLIENTS]
 
-    ws = web.WebSocketResponse(heartbeat=30.0)
-    await ws.prepare(request)
-
+    # Auth ДО prepare: не занимаем слот ws_max_clients анонимами.
     token = request.query.get("token", "")
     cookie = _get_session_cookie(request)
     user = None
     if token:
-        user = auth.read_token(cfg.secret, token)
+        cand = auth.read_token(cfg.secret, token)
+        # В query — только ws-тикеты, сессионные/confirm-токены отклоняем.
+        if (
+            cand is not None
+            and isinstance(cand.get("sub"), str)
+            and cand["sub"].startswith("ws:")
+            and not _is_revoked(cand.get("jti"))
+        ):
+            user = cand
     elif cookie:
-        user = auth.read_token(cfg.secret, cookie)
+        cand = auth.read_token(cfg.secret, cookie)
+        if (
+            cand is not None
+            and auth.is_session_sub(cand.get("sub"))
+            and not _is_revoked(cand.get("jti"))
+        ):
+            user = cand
 
-    if user is None or _is_revoked(user.get("jti")):
-        await ws.close(code=4001, message=b"unauthorized")
-        return ws
+    if user is None:
+        raise web.HTTPUnauthorized()
 
+    # Кап ДО prepare: handshake неуспешных не тратит FD/слот.
     shield = request.app.get(KEY_SHIELD)
     if shield is not None and shield.enabled and len(clients) >= shield.config.ws_max_clients:
         await shield.audit_event(
             "WS_CAP", str(user.get("sub", "?")), {"clients": len(clients)})
-        await ws.close(code=4002, message=b"busy")
-        return ws
+        raise web.HTTPServiceUnavailable()
+
+    ws = web.WebSocketResponse(heartbeat=30.0)
+    await ws.prepare(request)
     clients.add(ws)
     logger.info("[WS] client connected (sub=%s), total=%d", user.get("sub"), len(clients))
 
     try:
         # Пушим статус с фиксированным шагом: клиент рисует дашборд из этих
         # кадров и переключается на HTTP-опрос только при обрыве сокета.
+        # Revoke проверяем в цикле: logout кикает живой WS, украденная сессия
+        # не живёт в сокете до обрыва.
         while not ws.closed:
+            if _is_revoked(user.get("jti")):
+                await ws.close(code=4001, message=b"unauthorized")
+                break
             stats = await daemon.statistics()
             await ws.send_json({"type": "status", **stats})
             try:
@@ -1100,7 +1230,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
     app.router.add_get("/api/guard", api_guard)
     app.router.add_get("/api/top-wallets", api_top_wallets)
     app.router.add_post("/api/wallets", api_wallets_create)
-    app.router.add_get("/api/wallets/export", api_wallets_export)
+    app.router.add_post("/api/wallets/export", api_wallets_export)
     app.router.add_get("/api/groups", api_groups_list)
     app.router.add_post("/api/groups", api_groups_create)
     app.router.add_delete("/api/groups/{id}", api_groups_delete)
@@ -1115,6 +1245,9 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
     app.router.add_get("/api/balance-alerts", api_balance_alerts)
     app.router.add_post("/api/balance-alerts", api_set_balance_alerts)
     app.router.add_get("/api/rpc-health", api_rpc_health)
+    app.router.add_get("/api/faucet", api_faucet)
+    app.router.add_post("/api/faucet/drip", api_faucet_drip)
+    app.router.add_post("/api/ws/token", api_ws_token)
     app.router.add_get("/ws", websocket_endpoint)
     app.router.add_post("/api/tg/init", api_tg_init)
     from portal.miniapp import register_miniapp

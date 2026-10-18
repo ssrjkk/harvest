@@ -137,10 +137,15 @@ def encrypt_seed(key: bytes | None, plaintext: str | None) -> str | None:
 
 def decrypt_seed(key: bytes | None, value: str | None) -> str | None:
     """Расшифровывает seed-строку. Legacy-значения (без префикса) возвращает как есть."""
-    if key is None or value is None:
-        return value
+    if value is None:
+        return None
     if not value.startswith(_ENC_PREFIX):
         return value
+    # Fail-closed: шифротекст без ключа — ошибка, а не «вернуть как есть»
+    # (иначе get_all_wallets положит "enc:..." в private_key и каждое
+    # действие упадёт в sign_transaction вместо понятной диагностики).
+    if key is None:
+        raise MasterKeyError("master_key не задан — зашифрованные seed-данные нечитаемы")
     aes = _aesgcm()
     if aes is None:
         raise ValueError("cryptography не установлена — расшифровка seed-данных невозможна")

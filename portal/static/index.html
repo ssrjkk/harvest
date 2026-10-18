@@ -10,10 +10,11 @@
   <link rel="stylesheet" href="/static/app.css?v=2.3.0">
 </head>
 <body>
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
   <div id="mouseGlow"></div>
   <div class="app">
     <!-- SIDEBAR -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Навигация">
       <div class="sidebar-brand">
         <div class="logo">H</div>
         <div>
@@ -22,57 +23,59 @@
         </div>
       </div>
 
-      <nav class="sidebar-nav">
+      <nav class="sidebar-nav" aria-label="Разделы">
         <div class="nav-group-label">Dashboard</div>
-        <div class="nav-item active" data-nav="overview">
-          <i class="ti ti-layout-dashboard"></i> Обзор
-        </div>
-        <div class="nav-item" data-nav="networks">
-          <i class="ti ti-world"></i> Сети
-        </div>
-        <div class="nav-item" data-nav="scheduler">
-          <i class="ti ti-calendar-time"></i> Расписание
-        </div>
+        <button class="nav-item active" data-nav="overview" aria-current="page">
+          <i class="ti ti-layout-dashboard" aria-hidden="true"></i> Обзор
+        </button>
+        <button class="nav-item" data-nav="networks">
+          <i class="ti ti-world" aria-hidden="true"></i> Сети
+        </button>
+        <button class="nav-item" data-nav="scheduler">
+          <i class="ti ti-calendar-time" aria-hidden="true"></i> Расписание
+        </button>
 
         <div class="nav-group-label">Данные</div>
-        <div class="nav-item" data-nav="wallets">
-          <i class="ti ti-wallet"></i> Кошельки
-        </div>
-        <div class="nav-item" data-nav="groups">
-          <i class="ti ti-tags"></i> Группы
-        </div>
-        <div class="nav-item" data-nav="history">
-          <i class="ti ti-history"></i> История
-        </div>
+        <button class="nav-item" data-nav="wallets">
+          <i class="ti ti-wallet" aria-hidden="true"></i> Кошельки
+        </button>
+        <button class="nav-item" data-nav="groups">
+          <i class="ti ti-tags" aria-hidden="true"></i> Группы
+        </button>
+        <button class="nav-item" data-nav="history">
+          <i class="ti ti-history" aria-hidden="true"></i> История
+        </button>
 
         <div class="nav-group-label">Диагностика</div>
-        <div class="nav-item" data-nav="rpc">
-          <i class="ti ti-antenna"></i> RPC Health
-        </div>
-        <div class="nav-item" data-nav="alerts">
-          <i class="ti ti-bell"></i> Алерты
-        </div>
+        <button class="nav-item" data-nav="rpc">
+          <i class="ti ti-antenna" aria-hidden="true"></i> RPC Health
+        </button>
+        <button class="nav-item" data-nav="alerts">
+          <i class="ti ti-bell" aria-hidden="true"></i> Алерты
+        </button>
 
         <div class="nav-group-label">Инфо</div>
-        <div class="nav-item" data-nav="howto">
-          <i class="ti ti-help-circle"></i> Как начать
-        </div>
-        <div class="nav-item" data-nav="links">
-          <i class="ti ti-link"></i> Ссылки
-        </div>
+        <button class="nav-item" data-nav="howto">
+          <i class="ti ti-help-circle" aria-hidden="true"></i> Как начать
+        </button>
+        <button class="nav-item" data-nav="links">
+          <i class="ti ti-link" aria-hidden="true"></i> Ссылки
+        </button>
       </nav>
 
       <div class="sidebar-footer">
-        <div class="nav-item" id="navLogout">
-          <i class="ti ti-power"></i> Выйти
-        </div>
+        <button class="nav-item" id="navLogout">
+          <i class="ti ti-power" aria-hidden="true"></i> Выйти
+        </button>
       </div>
     </aside>
+    <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
 
     <!-- MAIN -->
     <div class="main">
       <header class="header">
         <div class="header-left">
+          <button class="nav-burger" id="navBurger" aria-label="Меню" aria-expanded="false" aria-controls="sidebar">☰</button>
           <span class="header-title">Поле фермы</span>
           <span class="header-network" id="headerNet">—</span>
         </div>
@@ -81,11 +84,12 @@
         </div>
       </header>
 
-      <div class="content">
+      <div class="content" id="main-content">
+        <div class="content-inner" id="offlineBanner" hidden role="alert" style="margin-bottom:12px;padding:10px 14px;border:1px solid var(--border);border-radius:8px;background:var(--bg-2)">Нет соединения — показаны последние данные, повтор через <span id="offlineRetry">…</span></div>
         <div class="content-inner">
           <!-- STATUS BAR -->
-          <div class="status-bar">
-            <span class="status-seg"><span class="status-dot on" id="dot"></span><b id="statusText">—</b></span>
+          <div class="status-bar" role="status" aria-live="polite">
+            <span class="status-seg"><span class="status-dot on" id="dot" aria-hidden="true"></span><b id="statusText">—</b></span>
             <span class="status-seg">сеть <b id="netName">—</b></span>
             <span class="status-seg">health <b id="healthText">—</b></span>
             <span class="status-seg">обновлено <b id="updatedText">—</b></span>
@@ -219,12 +223,15 @@
                 <span style="font-family:var(--font-data);font-size:9px;color:var(--text-3)">клик — копировать</span>
               </div>
               <div class="panel-body">
+                <div class="table-wrap">
                 <table>
-                  <thead><tr><th>#</th><th>Адрес</th><th>Действий</th></tr></thead>
+                  <thead><tr><th scope="col">#</th><th scope="col">Адрес</th><th scope="col">Действий</th></tr></thead>
                   <tbody id="tWallets"><tr><td colspan="3" style="color:var(--text-3)">загрузка...</td></tr></tbody>
                 </table>
+                </div>
               </div>
               <div class="panel-footer">
+                <label for="inWalletCount" class="visually-hidden">Сколько создать</label>
                 <input type="number" id="inWalletCount" min="1" max="50" value="3" style="width:64px;padding:7px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-0);font-family:var(--font-data);font-size:12px;outline:none">
                 <button class="btn btn-primary btn-sm" id="btnWalletCreate"><i class="ti ti-plus"></i> Создать</button>
                 <button class="btn btn-ghost btn-sm" id="btnExportCsv"><i class="ti ti-download"></i> CSV</button>
@@ -240,10 +247,12 @@
                 <span class="panel-title">История циклов</span>
               </div>
               <div class="panel-body">
+                <div class="table-wrap">
                 <table>
-                  <thead><tr><th>#</th><th>Статус</th><th>Действий</th><th>Ошибок</th><th>Время, с</th><th>Кошельков</th><th>Когда</th></tr></thead>
+                  <thead><tr><th scope="col">#</th><th scope="col">Статус</th><th scope="col">Действий</th><th scope="col">Ошибок</th><th scope="col">Время, с</th><th scope="col">Кошельков</th><th scope="col">Когда</th></tr></thead>
                   <tbody id="tHistory"><tr><td colspan="7" style="color:var(--text-3)">загрузка...</td></tr></tbody>
                 </table>
+                </div>
               </div>
             </div>
           </section>
@@ -260,10 +269,12 @@
                 </div>
               </div>
               <div class="panel-body">
+                <div class="table-wrap">
                 <table>
-                  <thead><tr><th>ID</th><th>Имя</th><th>Интервал</th><th>Циклы</th><th>Последний</th><th>Следующий</th><th>Статус</th><th></th></tr></thead>
+                  <thead><tr><th scope="col">ID</th><th scope="col">Имя</th><th scope="col">Интервал</th><th scope="col">Циклы</th><th scope="col">Последний</th><th scope="col">Следующий</th><th scope="col">Статус</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
                   <tbody id="tScheduler"><tr><td colspan="8" style="color:var(--text-3)">загрузка...</td></tr></tbody>
                 </table>
+                </div>
               </div>
             </div>
           </section>
@@ -276,10 +287,12 @@
                 <button class="btn btn-primary btn-sm" id="btnGroupAdd"><i class="ti ti-plus"></i> Группа</button>
               </div>
               <div class="panel-body">
+                <div class="table-wrap">
                 <table>
-                  <thead><tr><th>Цвет</th><th>Имя</th><th>Кошельков</th><th>Создана</th><th></th></tr></thead>
+                  <thead><tr><th scope="col">Цвет</th><th scope="col">Имя</th><th scope="col">Кошельков</th><th scope="col">Создана</th><th scope="col"><span class="visually-hidden">Действия</span></th></tr></thead>
                   <tbody id="tGroups"><tr><td colspan="5" style="color:var(--text-3)">загрузка...</td></tr></tbody>
                 </table>
+                </div>
               </div>
             </div>
           </section>
@@ -310,7 +323,7 @@
                     <span style="font-size:12.5px">Включить мониторинг балансов</span>
                   </label>
                   <label style="display:flex;flex-direction:column;gap:4px">
-                    <span style="font-size:12px;color:var(--text-2)">Порог баланса (ETH):</span>
+                    <span style="font-size:12px;color:var(--text-2)"><label for="inpBalanceThreshold" style="font-size:12px;color:var(--text-2)">Порог баланса (ETH):</label></span>
                     <input type="number" id="inpBalanceThreshold" step="0.0001" min="0" max="100" value="0.001" style="width:140px;padding:7px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-0);font-family:var(--font-data);font-size:12px;outline:none">
                   </label>
                   <button class="btn btn-primary btn-sm" id="btnSaveAlerts" style="align-self:flex-start"><i class="ti ti-check"></i> Сохранить</button>

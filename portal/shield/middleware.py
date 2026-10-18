@@ -33,10 +33,23 @@ _RISK_EXEMPT_PREFIXES = (
 
 
 def _client_ip(request: web.Request) -> str:
+    # Доверяем X-Forwarded-For только при явном PORTAL_TRUST_PROXY=1,
+    # иначе злоумышленник подменяет IP одной строкой заголовка.
     try:
-        return request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
-            request.remote or "unknown")
-    except Exception:  # noqa: BLE001
+        cfg = request.app.get("cfg") if hasattr(request, "app") and request.app else None
+        trust = bool(getattr(cfg, "trust_proxy", False)) if cfg is not None else False
+        # legacy-ключ api.py: app[KEY_CFG]
+        if not trust and hasattr(request, "app") and request.app:
+            for _v in request.app.values():
+                if hasattr(_v, "trust_proxy"):
+                    trust = bool(_v.trust_proxy)
+                    break
+        if trust:
+            return request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or (
+                request.remote or "unknown"
+            )
+        return request.remote or "unknown"
+    except Exception:  # noqa: BLE001 # pragma: no cover - defensive
         return "unknown"
 
 

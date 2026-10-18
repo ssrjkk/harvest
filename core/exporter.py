@@ -252,7 +252,12 @@ def decrypt_file(path: str, password: str) -> str:
             wf.write(data)
         restrict_file_permissions(tmp_out)
         os.replace(tmp_out, out_path)
-        os.remove(path)
+        # Исходный .enc удаляем best-effort: при неудаче (Windows-лок) честно
+        # предупреждаем, что рядом остались И plaintext, И шифротекст.
+        try:
+            os.remove(path)
+        except OSError as e:
+            print(f"  {Fore.YELLOW}Расшифровано в {out_path}, исходник не удалён ({e}){Style.RESET_ALL}")
         return out_path
     except ImportError:
         print(f"  {Fore.YELLOW}Для расшифровки установите: pip install cryptography{Style.RESET_ALL}")

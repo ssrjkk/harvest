@@ -123,9 +123,18 @@ class PortalConfig:
 
         self.telegram_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
         # default-deny: бот отвечает только перечисленным Telegram user_id.
-        self.telegram_allow_ids: list[int] = [
-            int(i) for i in os.environ.get("TELEGRAM_ALLOW_IDS", "").split(",") if i.strip().isdigit()
-        ]
+        # Поддерживаем отрицательные ID (каналы/группы -100...).
+        self.telegram_allow_ids: list[int] = []
+        for _raw in os.environ.get("TELEGRAM_ALLOW_IDS", "").split(","):
+            _s = _raw.strip()
+            if not _s:
+                continue
+            _num = _s[1:] if _s.startswith(("+", "-")) else _s
+            if _num.isdigit():
+                try:
+                    self.telegram_allow_ids.append(int(_s))
+                except ValueError:
+                    continue
         self.master_key: str = os.environ.get("FARMER_MASTER_KEY", "").strip()
 
         self.open_access: bool = _env_flag("PORTAL_OPEN_ACCESS", default=False)

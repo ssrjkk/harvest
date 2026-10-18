@@ -87,3 +87,9 @@ portal.err*.log
 start_all.ps1
 start_publish.ps1
 *.state.json
+
+# Маркер bootstrap.py (pip уже ставлен по хешу requirements) — не коммитим.
+.pip_ok
+
+# Лок publish_dash.py (межпроцессный flock) — не коммитим.
+.dash-site.lock

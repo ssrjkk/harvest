@@ -20,6 +20,11 @@ import aiohttp
 
 _SESSION_TTL = 7 * 24 * 3600
 
+# Короткоживущий WS-тикет (query): в access-логах/proxy оседает только он,
+# а не долгоживущая сессия. Неймспейсы sub: "tma-confirm:*" (miniapp),
+# "ws:*" (сокет). HTTP-сессией считаются только остальные sub.
+WS_TICKET_TTL = 60
+
 # Провайдеры id_token Google (защита от подмены issuer).
 _GOOGLE_ISS = {"https://accounts.google.com", "accounts.google.com"}
 _ID_TOKEN_LEEWAY = 60
@@ -115,6 +120,24 @@ def read_token(secret: str, token: str) -> dict | None:
     if exp < time.time():
         return None
     return payload
+
+
+def is_session_sub(sub: object) -> bool:
+    """True, если sub — HTTP-сессия пользователя, а не технический токен.
+
+    Технические неймспейсы тем же HMAC-ключом/форматом подписываются,
+    но сессией не являются: "tma-confirm:*" (miniapp export), "ws:*" (сокет).
+    Их принятие как сессии — privilege confusion (confirm-токен давал бы
+    доступ ко всему web-API).
+    """
+    if not isinstance(sub, str) or not sub:
+        return False
+    return not (sub.startswith("tma-confirm:") or sub.startswith("ws:"))
+
+
+def issue_ws_ticket(secret: str, sub: str, name: str = "") -> str:
+    """Короткий (60с) тикет только для WS-handshake в query. Не сессия."""
+    return sign_token(secret, f"ws:{sub}", name, ttl=WS_TICKET_TTL)
 
 
 def check_master_key(actual: str, given: str) -> bool:
@@ -228,15 +251,41 @@ async def google_exchange(
 
 
 def csrf_state(secret: str) -> str:
-    return secrets.token_urlsafe(24)
+    # HMAC-привязка к secret запуска: state = rand + sig(rand, secret).
+    # Верификация сверяет подпись, а не только charset — подделка без secret не проходит.
+    # Разделитель "~" (вне base64url и вне "." разделителя oauth-cookie).
+    rand = secrets.token_urlsafe(18)
+    sig = hmac.new(secret.encode("utf-8"), rand.encode("ascii"), hashlib.sha256).digest()
+    sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode("ascii")
+    return f"{rand}~{sig_b64}"
 
 
 def verify_csrf_state(secret: str, state: str) -> bool:
-    # state — случайная строка token_urlsafe; форма и длина фиксированы.
-    # Итоговая привязка к запуску — сравнение с cookie в хендлере.
-    if not state or len(state) < 16:
+    if not state or len(state) < 16 or len(state) > 256:
         return False
-    return set(state) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+    if "~" in state:
+        if state.count("~") != 1:
+            return False
+        rand, sig_b64 = state.split("~", 1)
+        if not rand or not sig_b64:
+            return False
+        allowed = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        if not (set(rand) <= allowed and set(sig_b64) <= allowed):
+            return False
+        try:
+            pad = "=" * (-len(sig_b64) % 4)
+            sig = base64.urlsafe_b64decode(sig_b64 + pad)
+        except Exception:  # noqa: BLE001
+            return False
+        exp = hmac.new(secret.encode("utf-8"), rand.encode("ascii"), hashlib.sha256).digest()
+        return hmac.compare_digest(sig, exp)
+    if "." in state:
+        return False
+    # Legacy-формат (только rand): принимаем по charset, итоговая привязка —
+    # сравнение с cookie в хендлере. Новые state всегда с подписью.
+    if set(state) <= set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"):
+        return len(state) >= 16
+    return False
 
 
 def pkce_pair() -> tuple[str, str]:

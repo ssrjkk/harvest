@@ -127,6 +127,19 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(backups), 0)
         await self.db.close()
 
+    async def test_restore_cleans_stale_wal(self):
+        await self.db.init()
+        await self.db.backup_now()
+        # stale WAL/SHM к моменту restore — чистятся восстановлением.
+        # Соединение закрываем: truncate живого mmap-шного -shm под Windows запрещён.
+        await self.db.close()
+        db_path = Path(self.db.path)
+        (db_path.parent / (db_path.name + "-wal")).write_bytes(b"stale")
+        (db_path.parent / (db_path.name + "-shm")).write_bytes(b"stale")
+        self.assertTrue(await self.db.restore_backup(0))
+        self.assertEqual(await self.db.count_wallets(), 0)
+        await self.db.close()
+
     async def test_wrong_key_fails_closed(self):
         # Чтение БД ключом, не подходящим к данным, происходит fail-closed:
         # кошельки не расшифровываются и пропускаются.

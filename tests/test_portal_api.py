@@ -133,6 +133,41 @@ class _StubDaemon:
     async def rpc_health(self) -> dict:
         return {"nodes": [{"url": "https://rpc.test", "latency_ms": 42, "healthy": True}]}
 
+    async def faucet_report(self) -> list:
+        return [{"type": "chainstack", "url": "https://mcp.chainstack.com/mcp",
+                 "alive": True, "reason": "MCP handshake ok"}]
+
+    def drip_state(self) -> dict:
+        return {"running": False, "at": None, "funded": 0, "failed": 0}
+
+    async def drip_faucet(self) -> dict:
+        st = self.drip_state()
+        st["started"] = True
+        return st
+
+    async def create_wallets(self, count: int) -> list:
+        return [{"address": f"0x{i:040x}"} for i in range(max(1, min(int(count), 50)))]
+
+    async def export_wallets(self, fmt: str = "csv") -> tuple:
+        if fmt == "json":
+            return ('[{"address": "0x1"}]', "wallets.json")
+        return ("address,private_key\n0x1,abc\n", "wallets.csv")
+
+    async def wallet_cells(self) -> tuple:
+        return ("o", 1)
+
+    async def wallet_balances(self, limit: int = 20) -> list:
+        return [{"address": "0xabc", "balance": 1.0}][: max(1, min(int(limit), 50))]
+
+    async def wallet_count(self) -> int:
+        return 1
+
+    async def all_wallets(self) -> list:
+        return [{"address": "0xabc", "private_key": "k", "total_actions": 1}]
+
+    async def _check_faucet_once(self) -> int:
+        return 1
+
 
 def _make_cfg(
     public_base_url: str = "",
@@ -144,24 +179,45 @@ def _make_cfg(
 ) -> PortalConfig:
     prev = {
         k: os.environ.get(k)
-        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "PORTAL_COOKIE_SECURE", "PORTAL_TRUST_PROXY")
+        for k in (
+            "PORTAL_SECRET",
+            "FARMER_MASTER_KEY",
+            "PORTAL_COOKIE_SECURE",
+            "PORTAL_TRUST_PROXY",
+            "TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_ALLOW_IDS",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+            "GOOGLE_ALLOW_EMAILS",
+            "GOOGLE_REDIRECT_URI",
+            "PORTAL_OPEN_ACCESS",
+            "PORTAL_PASSWORD_LOGIN",
+            "PORTAL_ALLOW_PASSWORD_HTTP",
+            "PORTAL_BASE_URL",
+        )
     }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
     os.environ.pop("PORTAL_COOKIE_SECURE", None)
     os.environ.pop("PORTAL_TRUST_PROXY", None)
-    cfg = PortalConfig()
-    cfg.public_base_url = public_base_url
-    cfg.allow_insecure_password = allow_insecure
-    cfg.cookie_secure = cookie_secure
-    cfg.password_login = password
-    cfg.trust_proxy = trust_proxy
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    # Тесты портального конфига не должны зависеть от окружения машины
+    # (например, от реального TELEGRAM_BOT_TOKEN в shell).
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.public_base_url = public_base_url
+        cfg.allow_insecure_password = allow_insecure
+        cfg.cookie_secure = cookie_secure
+        cfg.password_login = password
+        cfg.trust_proxy = trust_proxy
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class PortalApiTest(unittest.TestCase):
@@ -657,12 +713,13 @@ class TestWebSocket(PortalApiTest, unittest.IsolatedAsyncioTestCase):
         self.fail(f"no {want!r} frame within deadline")
 
     async def test_anonymous_socket_is_refused(self):
+        from aiohttp.client_exceptions import WSServerHandshakeError
+
         client, _app = await self._client()
         async with client:
-            ws = await client.ws_connect("/ws")
-            msg = await ws.receive()
-            self.assertIs(msg.type, web.WSMsgType.CLOSE)
-            self.assertEqual(int(msg.data), 4001)
+            with self.assertRaises(WSServerHandshakeError) as cm:
+                await client.ws_connect("/ws")
+            self.assertEqual(cm.exception.status, 401)
 
     async def test_status_frames_keep_coming(self):
         # Регрессия на «один кадр и молчание»: дашборд живёт из потока статуса.
@@ -715,23 +772,48 @@ class TestWebSocket(PortalApiTest, unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(frame["action"], "stop")
 
     async def test_token_in_query_authenticates(self):
-        # Браузер не отдаёт cookie при handshake WebSocket, поэтому токен
-        # живёт в query — проверяем, что он принимается так же, как cookie.
+        # В query — только короткий WS-тикет (POST /api/ws/token, 60с):
+        # долгоживущая сессия живёт в cookie и в URL не оседает.
         self._fast_push()
         client, app = await self._client()
-        token = auth.sign_token(app[api.KEY_CFG].secret, "tester", "Тест")
         async with client:
+            await self._login(client)
+            resp = await client.post("/api/ws/token")
+            self.assertEqual(resp.status, 200)
+            token = (await resp.json())["token"]
             async with client.ws_connect("/ws?token=" + token) as ws:
                 frame = await self._frame(ws, "status")
                 self.assertEqual(frame["pool"]["actions"], 7)
 
-    async def test_broken_token_in_query_is_refused(self):
+    async def test_session_token_in_query_is_refused(self):
+        # Сессия в query отклоняется (401), confirm-токен как cookie — тоже.
+        from aiohttp.client_exceptions import WSServerHandshakeError
+
+        client, app = await self._client()
+        token = auth.sign_token(app[api.KEY_CFG].secret, "tester", "Тест")
+        async with client:
+            with self.assertRaises(WSServerHandshakeError) as cm:
+                await client.ws_connect("/ws?token=" + token)
+            self.assertEqual(cm.exception.status, 401)
+            self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 0)
+
+    async def test_confirm_token_is_not_a_session(self):
         client, app = await self._client()
         async with client:
-            ws = await client.ws_connect("/ws?token=%25%25not-a-token")
-            msg = await ws.receive(timeout=2.0)
-            self.assertIs(msg.type, web.WSMsgType.CLOSE)
-            self.assertEqual(int(msg.data), 4001)
+            confirm = auth.sign_token(app[api.KEY_CFG].secret, "tma-confirm:123:export:csv", "", ttl=300)
+            client.session.cookie_jar.update_cookies(
+                {"harvest_session": confirm}, URL("http://127.0.0.1"))
+            resp = await client.get("/api/stats")
+            self.assertEqual(resp.status, 401)
+
+    async def test_broken_token_in_query_is_refused(self):
+        from aiohttp.client_exceptions import WSServerHandshakeError
+
+        client, app = await self._client()
+        async with client:
+            with self.assertRaises(WSServerHandshakeError) as cm:
+                await client.ws_connect("/ws?token=%25%25not-a-token")
+            self.assertEqual(cm.exception.status, 401)
             self.assertEqual(len(app[api.KEY_WS_CLIENTS]), 0)
 
     async def _expect_socket_death(self, exc: BaseException) -> tuple[set, int]:
@@ -817,13 +899,13 @@ class TestNetworkRoutes(PortalApiTest, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(body["networks"], app[api.KEY_DAEMON].networks_info())
             self.assertTrue(body["networks"][0]["current"])
 
-    async def test_network_action_unknown_verb_404(self):
+    async def test_network_action_unknown_verb_400(self):
         client, _app = await self._client()
         async with client:
             await self._login(client)
             resp = await client.post("/api/farm/network/vibevibe/restart")
-            self.assertEqual(resp.status, 404)
-            self.assertEqual(await resp.json(), {"error": "unknown"})
+            self.assertEqual(resp.status, 400)
+            self.assertEqual(await resp.json(), {"error": "unknown action"})
 
     async def test_network_start_rejects_unknown_network(self):
         client, app = await self._client()
@@ -847,20 +929,22 @@ class TestNetworkRoutes(PortalApiTest, unittest.IsolatedAsyncioTestCase):
 
 
 class TestMetricsEndpoint(PortalApiTest, unittest.IsolatedAsyncioTestCase):
-    """limit временного ряда зажат в [1; 1000], мусор в query не роняет портал."""
+    """limit временного ряда валидируется: мусор в query → 400, а не молча clamp."""
 
     async def _login(self, client: TestClient) -> None:
         self.assertEqual((await client.post("/api/login/password", json={"password": "k" * 64})).status, 200)
 
-    async def test_limit_clamped(self):
+    async def test_limit_validated(self):
         client, app = await self._client()
         async with client:
             await self._login(client)
             daemon = app[api.KEY_DAEMON]
-            for query, _want in (("", 100), ("?limit=99999", 1000), ("?limit=0", 1), ("?limit=abc", 100)):
+            resp = await client.get("/api/metrics")
+            self.assertEqual(resp.status, 200)
+            for query in ("?limit=99999", "?limit=0", "?limit=abc"):
                 resp = await client.get("/api/metrics" + query)
-                self.assertEqual(resp.status, 200)
-            self.assertEqual(daemon.metrics_limits, [100, 1000, 1, 100])
+                self.assertEqual(resp.status, 400, query)
+            self.assertEqual(daemon.metrics_limits, [100])
 
     async def test_payload_shape(self):
         client, _app = await self._client()
@@ -919,6 +1003,17 @@ class TestGroupsEndpoints(PortalApiTest, unittest.IsolatedAsyncioTestCase):
                 resp = await client.post("/api/groups", json=payload)
                 self.assertEqual(resp.status, 400, payload)
                 self.assertEqual(await resp.json(), {"error": "name required (max 100 chars)"})
+
+    async def test_create_group_sanitize_rejects(self):
+        # Null-байты и эмодзи-спам в именах — 400 через shield.sanitize.
+        client, _app = await self._client()
+        async with client:
+            await self._login(client)
+            nul = await client.post("/api/groups", json={"name": "ab\x00cd"})
+            self.assertEqual(nul.status, 400)
+            self.assertIn("bad input", (await nul.json())["error"])
+            spam = await client.post("/api/groups", json={"name": "🚀" * 20})
+            self.assertEqual(spam.status, 400)
 
     async def test_delete_group(self):
         client, _app = await self._client()
@@ -1026,6 +1121,9 @@ class TestSchedulerEndpoints(PortalApiTest, unittest.IsolatedAsyncioTestCase):
                 resp = await client.post("/api/scheduler/tasks", json={"task_id": "t", "cycles": cycles})
                 self.assertEqual(resp.status, 400, cycles)
                 self.assertEqual(await resp.json(), {"error": "cycles must be 1-1000"})
+            nul = await client.post("/api/scheduler/tasks", json={"task_id": "t", "name": "x\x00y"})
+            self.assertEqual(nul.status, 400)
+            self.assertIn("bad input", (await nul.json())["error"])
 
     async def test_update_task_validation(self):
         client, _app = await self._client()
@@ -1097,6 +1195,27 @@ class TestBalanceAlertsAndRpc(PortalApiTest, unittest.IsolatedAsyncioTestCase):
             body = await (await client.get("/api/rpc-health")).json()
             self.assertEqual(body, await app[api.KEY_DAEMON].rpc_health())
             self.assertTrue(body["nodes"][0]["healthy"])
+
+    async def test_faucet_endpoint(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.get("/api/faucet")).status, 401)
+            await self._login(client)
+            body = await (await client.get("/api/faucet")).json()
+            self.assertEqual(body["live"], 1)
+            self.assertEqual(body["strategies"][0]["type"], "chainstack")
+            self.assertIn("reason", body["strategies"][0])
+            self.assertIn("drip", body)
+
+    async def test_faucet_drip(self):
+        client, _app = await self._client()
+        async with client:
+            self.assertEqual((await client.post("/api/faucet/drip")).status, 401)
+            await self._login(client)
+            resp = await client.post("/api/faucet/drip")
+            self.assertEqual(resp.status, 202)
+            body = await resp.json()
+            self.assertTrue(body["started"])
 
 
 if __name__ == "__main__":

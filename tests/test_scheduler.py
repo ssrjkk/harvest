@@ -170,6 +170,20 @@ class TestScheduler(unittest.TestCase):
         task = self.scheduler.tasks["t1"]
         self.assertIsNone(task.next_run)
 
+    def test_compute_next_run_month_boundary(self):
+        # Край месяца: 31-е, время уже прошло → +1 день через timedelta,
+        # а не replace(day+1) (давал ValueError 32). Мокаем now на 31-е.
+        from datetime import datetime as _dt
+        from unittest import mock as _mock
+
+        with _mock.patch("core.scheduler.datetime") as _mdt:
+            _mdt.now.return_value = _dt(2026, 1, 31, 23, 0, 0)
+            _mdt.fromisoformat = _dt.fromisoformat
+            self.scheduler.add_task("t1", run_at_time="09:00")
+        task = self.scheduler.tasks["t1"]
+        self.assertIsNotNone(task.next_run)
+        self.assertTrue(task.next_run.startswith("2026-02-01"))
+
     def test_compute_next_run_no_interval(self):
         self.scheduler.add_task("t1", interval_hours=0, interval_minutes=0)
         task = self.scheduler.tasks["t1"]

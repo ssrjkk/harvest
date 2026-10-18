@@ -162,4 +162,17 @@ def resolve_bundled(rel: str) -> Path:
         cand = Path(sys.executable).resolve().parent / rel
         if cand.exists():
             return cand
+    # Docker: WORKDIR /app/data (volume прячет симлинк /app/data/abi),
+    # а код лежит в /app. Ищем и рядом с родителем CWD, и в /app.
+    try:
+        cwd = Path.cwd()
+        for base in (cwd.parent, Path("/app")):
+            cand = base / rel
+            try:
+                if cand.exists():
+                    return cand
+            except OSError:
+                pass
+    except Exception:  # noqa: BLE001
+        pass
     return Path(rel)

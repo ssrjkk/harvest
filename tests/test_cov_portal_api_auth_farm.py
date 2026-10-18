@@ -39,24 +39,29 @@ def _make_cfg(
 ) -> PortalConfig:
     prev = {
         k: os.environ.get(k)
-        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "PORTAL_COOKIE_SECURE", "PORTAL_TRUST_PROXY")
+        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "PORTAL_COOKIE_SECURE", "PORTAL_TRUST_PROXY",
+                  "TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET")
     }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
     os.environ.pop("PORTAL_COOKIE_SECURE", None)
     os.environ.pop("PORTAL_TRUST_PROXY", None)
-    cfg = PortalConfig()
-    cfg.public_base_url = public_base_url
-    cfg.allow_insecure_password = allow_insecure
-    cfg.cookie_secure = cookie_secure
-    cfg.password_login = password
-    cfg.trust_proxy = trust_proxy
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.public_base_url = public_base_url
+        cfg.allow_insecure_password = allow_insecure
+        cfg.cookie_secure = cookie_secure
+        cfg.password_login = password
+        cfg.trust_proxy = trust_proxy
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class _StubDaemon:
@@ -396,13 +401,13 @@ class TestApiClientBranches(_PortalApiBase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resp.status, 302)
             self.assertIn("error=bad_state", resp.headers["Location"])
 
-    async def test_farm_unknown_action_404(self):
+    async def test_farm_unknown_action_400(self):
         client, _app = await self._client()
         async with client:
             await client.post("/api/login/password", json={"password": "k" * 64})
             resp = await client.post("/api/farm/bogus")
-            self.assertEqual(resp.status, 404)
-            self.assertEqual(await resp.json(), {"error": "unknown"})
+            self.assertEqual(resp.status, 400)
+            self.assertEqual(await resp.json(), {"error": "unknown action"})
 
     async def test_cycle_history_and_top_wallets_authed(self):
         client, _app = await self._client()
@@ -453,13 +458,15 @@ class TestApiClientBranches(_PortalApiBase, unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resp.status, 401)
 
     async def test_tg_init_denied_for_unknown_id(self):
+        # Uniform-401: «плохая подпись / не в списке» неразличимы (anti-oracle).
         client, _app = await self._client()
         cfg = _app[api.KEY_CFG]
         cfg.telegram_token = "123:abc"
         cfg.telegram_allow_ids = [999]
         async with client:
             resp = await client.post("/api/tg/init", json={"init_data": _tg_init_data("123:abc", user_id=1)})
-            self.assertEqual(resp.status, 403)
+            self.assertEqual(resp.status, 401)
+            self.assertEqual(await resp.json(), {"error": "unauthorized"})
 
 
 class TestGoogleCallbackFlow(_PortalApiBase, unittest.IsolatedAsyncioTestCase):
@@ -675,7 +682,7 @@ class _FakePool:
         self.network = mock.Mock()
         self.network.concurrency_factor.return_value = 0.75
 
-    async def run_forever(self, stop_event) -> None:
+    async def run_forever(self, stop_event, max_cycles: int = 0) -> None:
         await stop_event.wait()
 
     async def close(self) -> None:
@@ -809,7 +816,7 @@ class TestFarmStartStop(FarmDaemonTestBase, unittest.IsolatedAsyncioTestCase):
 
     async def test_run_exception(self):
         class _BoomPool:
-            async def run_forever(self, stop_event):
+            async def run_forever(self, stop_event, max_cycles: int = 0):
                 raise RuntimeError("погнал")
 
             async def close(self) -> None:

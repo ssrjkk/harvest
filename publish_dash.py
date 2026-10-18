@@ -30,12 +30,19 @@ DOCS = ROOT / "docs"
 DASH_BRANCH = "gh-pages"
 SITE_DIR = ROOT / ".dash-site"
 # Файлы сайта в ветке gh-pages (корень): лендинг + ассеты. state.json дописывается рядом.
-SITE_FILES = ("index.html", "terminal.html", ".nojekyll", "robots.txt")
+SITE_FILES = ("index.html", "terminal.html", "offline.html", "manifest.webmanifest", "sw.js", ".nojekyll", "robots.txt")
 SITE_DIRS = ("assets",)
 DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 
 
 _CELLS_MAX = 400  # максимум клеток сетки; остальные — подписью «+N»
+
+
+def _scrub_addrs(text: str) -> str:
+    """Вычищает 0x-адреса из details перед публикацией (анти-сибил)."""
+    import re
+
+    return re.sub(r"0x[0-9a-fA-F]{40}", "0x…", text or "")[:120]
 
 
 def _plural_files(n: int) -> str:
@@ -116,40 +123,79 @@ def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None
 
 
 async def collect() -> dict:
-    async with aiosqlite.connect(DB) as db:
-        async with db.execute(
-            "SELECT id, actions_ok, errors, duration_s, wallets FROM cycle_history ORDER BY id DESC LIMIT 20"
-        ) as cur:
-            history = [
-                {"id": r[0], "actions_ok": r[1], "errors": r[2], "duration_s": r[3], "wallets": r[4]}
-                for r in await cur.fetchall()
-            ]
-        latest = history[0]["id"] if history else None
-        async with db.execute("SELECT COUNT(*) FROM wallets") as cur:
-            wallet_count = (await cur.fetchone())[0]
-        # Топ — только порядковые номера и счётчики: адреса в публичную
-        # ветку не публикуем (анти-сибил: не связывать кошельки между собой).
-        async with db.execute(
-            "SELECT total_actions FROM wallets ORDER BY total_actions DESC LIMIT 10"
-        ) as cur:
-            top = [{"n": i + 1, "actions": (r[0] or 0)} for i, r in enumerate(await cur.fetchall())]
-        try:
-            async with db.execute(
-                "SELECT total_actions, total_attempts, last_cycle FROM wallets "
-                "ORDER BY rowid LIMIT ?",
-                (_CELLS_MAX,),
-            ) as cur:
-                sample = await cur.fetchall()
-            cells = build_cells(
-                [(a or 0, t or 0, c) for a, t, c in sample], latest
-            )
-        except Exception:  # noqa: BLE001 — старая схема без колонок: все idle
-            cells = ""
-        async with db.execute(
-            "SELECT COALESCE(SUM(actions_ok),0), COALESCE(SUM(errors),0), COUNT(*), "
-            "COALESCE(SUM(wallets_ok),0) FROM cycle_history"
-        ) as cur:
-            r = await cur.fetchone()
+    try:
+        async with aiosqlite.connect(DB) as db:
+            try:
+                async with db.execute(
+                    "SELECT id, actions_ok, errors, duration_s, wallets FROM cycle_history ORDER BY id DESC LIMIT 20"
+                ) as cur:
+                    history = [
+                        {"id": r[0], "actions_ok": r[1], "errors": r[2], "duration_s": r[3], "wallets": r[4]}
+                        for r in await cur.fetchall()
+                    ]
+            except Exception:  # noqa: BLE001 — пустая БД / нет таблицы
+                history = []
+            latest = history[0]["id"] if history else None
+            try:
+                async with db.execute("SELECT COUNT(*) FROM wallets") as cur:
+                    row = await cur.fetchone()
+                    wallet_count = row[0] if row else 0
+            except Exception:  # noqa: BLE001
+                wallet_count = 0
+            # Топ — только порядковые номера и счётчики: адреса в публичную
+            # ветку не публикуем (анти-сибил: не связывать кошельки между собой).
+            try:
+                async with db.execute(
+                    "SELECT total_actions FROM wallets ORDER BY total_actions DESC LIMIT 10"
+                ) as cur:
+                    top = [{"n": i + 1, "actions": (r[0] or 0)} for i, r in enumerate(await cur.fetchall())]
+            except Exception:  # noqa: BLE001
+                top = []
+            try:
+                async with db.execute(
+                    "SELECT total_actions, total_attempts, last_cycle FROM wallets "
+                    "ORDER BY rowid LIMIT ?",
+                    (_CELLS_MAX,),
+                ) as cur:
+                    sample = await cur.fetchall()
+                triples = [(a or 0, t or 0, c) for a, t, c in sample]
+                cells = build_cells(triples, latest)
+                # Детальный инспектор (без адресов/ключей): порядковый номер,
+                # число действий/попыток, последний цикл и последняя ошибка —
+                # для клика по клетке. Время следующего пробуждения
+                # опубликовать нельзя: задержки разыгрываются случайно
+                # на каждом цикле и нигде не хранятся.
+                try:
+                    async with db.execute(
+                        "SELECT (SELECT substr(a.details, 1, 120) "
+                        "FROM actions_log a WHERE a.address = w.address "
+                        "AND a.success = 0 ORDER BY a.id DESC LIMIT 1) "
+                        "FROM wallets w ORDER BY w.rowid LIMIT ?",
+                        (_CELLS_MAX,),
+                    ) as cur:
+                        errs = [(r[0] or "") for r in await cur.fetchall()]
+                except Exception:  # noqa: BLE001 — нет actions_log: без ошибок
+                    errs = []
+                # Анти-сибил: адреса из details вычищаем (to=0x… — это наши же
+                # кошельки; публичная ветка не должна их связывать).
+                details = [
+                    {"n": i + 1, "a": a, "t": t, "c": c if c is not None else -1,
+                     "e": _scrub_addrs(errs[i]) if i < len(errs) else ""}
+                    for i, (a, t, c) in enumerate(triples)
+                ]
+            except Exception:  # noqa: BLE001 — старая схема без колонок: все idle
+                cells = ""
+                details = []
+            try:
+                async with db.execute(
+                    "SELECT COALESCE(SUM(actions_ok),0), COALESCE(SUM(errors),0), COUNT(*), "
+                    "COALESCE(SUM(wallets_ok),0) FROM cycle_history"
+                ) as cur:
+                    r = await cur.fetchone()
+            except Exception:  # noqa: BLE001
+                r = (0, 0, 0, 0)
+    except Exception as e:  # noqa: BLE001 — locked/corrupt: пустой state вместо краха
+        raise RuntimeError(f"db read failed: {e}") from e
 
     return {
         "running": False,
@@ -176,7 +222,7 @@ async def collect() -> dict:
         "wallet_count": wallet_count,
         "db": {"cycles": r[2], "actions": r[0], "errors": r[1]},
         "top_wallets": top,
-        "wallet_cells": {"v": 1, "n": wallet_count, "cells": cells},
+        "wallet_cells": {"v": 2, "n": wallet_count, "cells": cells, "details": details},
         "history": history,
         "chart": {"actions": [], "errors": [], "processed": []},
         "updated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
@@ -193,7 +239,15 @@ def git(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.C
 def site_worktree() -> Path:
     """Рабочее дерево сайта: ветка gh-pages, полностью отделённая от master."""
     if (SITE_DIR / ".git").exists():
+        # Долгоживущий воркер: подтягиваем свежий gh-pages, иначе amend поверх stale.
+        git("fetch", "origin", f"+refs/heads/{DASH_BRANCH}:refs/heads/{DASH_BRANCH}", check=False)
         return SITE_DIR
+    try:
+        git("worktree", "prune", check=False)
+    except Exception:  # noqa: BLE001
+        pass
+    # locked-файл НЕ сносим: это штатная защита git от concurrent-использования.
+    # Stale-лок после краха чистит сам `git worktree prune` выше.
     git("fetch", "origin", f"+refs/heads/{DASH_BRANCH}:refs/heads/{DASH_BRANCH}", check=False)
     if git("rev-parse", "--verify", "--quiet", f"refs/heads/{DASH_BRANCH}", check=False).returncode:
         git("worktree", "add", "--orphan", "-b", DASH_BRANCH, str(SITE_DIR))
@@ -202,14 +256,76 @@ def site_worktree() -> Path:
     return SITE_DIR
 
 
+def _publish_lock_path() -> Path:
+    return ROOT / ".dash-site.lock"
+
+
+def _acquire_publish_lock():
+    """Межпроцессный лок publish (flock/msvcrt). None — публикуем без лока."""
+    try:
+        import fcntl as _fcntl  # POSIX
+    except ImportError:
+        _fcntl = None  # Windows: ниже msvcrt
+    try:
+        fh = open(_publish_lock_path(), "w")
+    except OSError as e:
+        print(f"warn: лок publish не создан ({e}) — иду без лока")
+        return None
+    try:
+        if _fcntl is not None:
+            _fcntl.flock(fh.fileno(), _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+        else:
+            import msvcrt as _msvcrt
+
+            _msvcrt.locking(fh.fileno(), _msvcrt.LK_NBLCK, 1)
+        return fh
+    except (OSError, IOError) as e:
+        print(f"publish уже идёт в другом процессе — пропуск ({e})")
+        try:
+            fh.close()
+        except Exception:  # noqa: BLE001
+            pass
+        return "busy"
+
+
 def publish(state: dict) -> None:
+    # Межпроцессный лок: два overlapping-запуска (таск 30 мин + collect до 180с)
+    # иначе мутят одно worktree и ловят index.lock / проигранный lease.
+    lock_fh = _acquire_publish_lock()
+    if lock_fh == "busy":
+        return
+    try:
+        _publish_inner(state)
+    finally:
+        try:
+            if lock_fh is not None:
+                lock_fh.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _publish_inner(state: dict) -> None:
     # git уже авторизован (gh credential helper): push идёт в gh-pages.
     wt = site_worktree()
     for name in SITE_FILES:
-        shutil.copyfile(DOCS / name, wt / name)
+        src = DOCS / name
+        if not src.exists():
+            print(f"warn: {name} нет в docs/ — пропускаю")
+            continue
+        try:
+            shutil.copyfile(src, wt / name)
+        except OSError as e:
+            print(f"warn: не скопирован {name}: {e}")
     for d in SITE_DIRS:
+        src = DOCS / d
+        if not src.exists():
+            print(f"warn: {d}/ нет в docs/ — пропускаю")
+            continue
         shutil.rmtree(wt / d, ignore_errors=True)
-        shutil.copytree(DOCS / d, wt / d)
+        try:
+            shutil.copytree(src, wt / d)
+        except OSError as e:
+            print(f"warn: не скопирован {d}/: {e}")
     # Счётчики тестов — генерацией при публикации (не руками): gh-pages копии
     # получают свежие числа, master остаётся fallback-снапшотом.
     counted = collect_test_counts()
@@ -227,7 +343,13 @@ def publish(state: dict) -> None:
         git("commit", "-m", "dash: publish state.json", cwd=wt)
     else:
         git("commit", "--amend", "--no-edit", cwd=wt)
-    git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
+    # force-with-lease может проиграть гонку с параллельным publish;
+    # один retry с fetch перед второй попыткой.
+    try:
+        git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
+    except subprocess.CalledProcessError:
+        git("fetch", "origin", DASH_BRANCH, cwd=wt, check=False)
+        git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
     print(f"опубликовано в GitHub Pages: {DASH_BRANCH}")
 
 
@@ -235,20 +357,36 @@ async def main() -> int:
     if not Path(DB).exists():
         print(f"БД не найдена: {DB} (путь к БД через PORTAL_DB или дефолт farming_vibevibe.db)")
         return 1
-    state = await collect()
+    try:
+        state = await collect()
+    except Exception as e:  # noqa: BLE001 — нет таблиц/БД locked: понятный exit, а не трейс
+        print(f"collect не удался ({DB}): {e}")
+        return 1
     try:
         publish(state)
     except Exception as e:  # noqa: BLE001
         print(f"git push не удался: {e}")
         return 1
     try:
-        from sync_motherduck import sync
-
-        await sync()
-        print("синхронизировано в MotherDuck")
+        from tools.sync_motherduck import sync  # type: ignore
+    except ImportError:
+        try:
+            from sync_motherduck import sync  # type: ignore  # legacy рядом с publish
+        except ImportError as e:
+            # Exit 2 = sync пропущен (отличимо от успеха в мониторинге таска).
+            print(f"MotherDuck sync пропущен (нет модуля sync_motherduck): {e}")
+            return 2
+    try:
+        res = await sync()
     except Exception as e:  # noqa: BLE001
         print(f"MotherDuck sync пропущен: {e}")
-    return 0
+        return 2
+    if isinstance(res, dict) and res.get("ok"):
+        print(f"синхронизировано в MotherDuck: {res.get('upserted')} кошельков")
+        return 0
+    reason = res.get("reason") if isinstance(res, dict) else res
+    print(f"MotherDuck sync пропущен: {reason}")
+    return 2
 
 
 if __name__ == "__main__":

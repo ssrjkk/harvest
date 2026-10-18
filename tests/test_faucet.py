@@ -57,5 +57,39 @@ class TestFaucetConcurrency(unittest.TestCase):
         self.assertEqual(f.max_concurrent, 8)
 
 
+class TestValidateReport(unittest.TestCase):
+    def test_no_key_chainstack_reports_reason(self):
+        import os
+        from unittest import mock
+
+        f = Faucet(
+            {"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.chainstack.com/mcp"}]},
+             "proxy": {}}
+        )
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("CHAINSTACK_API_KEY", None)
+            self.assertEqual(asyncio.run(f.validate()), 0)
+        report = f.probe_report()
+        self.assertEqual(len(report), 1)
+        self.assertFalse(report[0]["alive"])
+        self.assertIn("CHAINSTACK_API_KEY", report[0]["reason"])
+
+    def test_probe_report_is_a_copy(self):
+        f = Faucet({"faucet": {"strategies": []}, "proxy": {}})
+        self.assertEqual(f.probe_report(), [])
+        f._last_probe.append({"type": "x", "url": "", "alive": True, "reason": "ok"})
+        rep = f.probe_report()
+        rep.clear()
+        self.assertEqual(len(f.probe_report()), 1)
+
+    def test_zero_live_logs_error(self):
+        f = Faucet(
+            {"faucet": {"strategies": [{"type": "direct", "url": ""}]}, "proxy": {}}
+        )
+        with self.assertLogs("core.faucet", level="ERROR") as cm:
+            self.assertEqual(asyncio.run(f.validate()), 0)
+        self.assertTrue(any("0 живых стратегий" in line for line in cm.output))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

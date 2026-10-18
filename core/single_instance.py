@@ -71,6 +71,10 @@ class SingleInstance:
             elif fcntl is not None:
                 fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
             else:
+                # Нет бэкенда блокировок: fail-closed ПО ОТНОШЕНИЮ К ДАННЫМ —
+                # лучше пропустить цикл, чем гонять два пула на одной БД.
+                # (Платформы без msvcrt/fcntl — экзотика; молча стартовать нельзя.)
+                logger.warning("Нет msvcrt/fcntl — single-instance недоступен, пропуск")
                 os.close(fd)
                 return False
         except OSError:
@@ -80,6 +84,12 @@ class SingleInstance:
         self._acquired = True
         self._pid = str(os.getpid())
         try:
+            # truncate до записи: короткий PID поверх длинного иначе оставит хвост.
+            os.lseek(fd, 0, os.SEEK_SET)
+            try:
+                os.ftruncate(fd, 0)
+            except OSError:
+                pass
             os.write(fd, f"{self._pid}\n".encode())
             os.lseek(fd, 0, os.SEEK_SET)
         except OSError:

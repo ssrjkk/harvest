@@ -175,6 +175,28 @@ class HomeDaemon:
         self.paused = False
         return True
 
+    async def wallet_balances(self):
+        return [{"address": w["address"], "balance": 1.0} for w in self._wallets]
+
+    async def rpc_health(self):
+        return {"nodes": [{"url": "https://rpc.test", "ok": True, "latency_ms": 12}]}
+
+    def scheduler_state(self):
+        return {"running": False, "tasks": []}
+
+    def balance_alerts_state(self):
+        return {"enabled": False, "threshold": 0.001}
+
+    async def set_balance_alerts(self, enabled, threshold):
+        return {"enabled": bool(enabled), "threshold": float(threshold)}
+
+    async def _check_faucet_once(self):
+        return 1
+
+    async def faucet_report(self):
+        return [{"type": "chainstack", "url": "https://mcp.chainstack.com/mcp",
+                 "alive": True, "reason": "MCP handshake ok"}]
+
 
 def _cfg():
     cfg = PortalConfig()
@@ -963,6 +985,64 @@ class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
         msg = _M(uid=123, text="/diag")
         await dp.message.handlers[1].callback(msg, _State())
         self.assertTrue(any("bot:" in a[0][0] for a in msg.answers))
+
+    async def test_menu_text_command(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        msg = _M(uid=123, text="/menu")
+        await dp.message.handlers[1].callback(msg, _State())
+        self.assertIn("МЕНЮ", msg.answers[0][0][0])
+        kb = msg.answers[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("v1:danger:show", payloads)
+        self.assertIn("v1:profiles:show", payloads)
+
+    async def test_pause_resume_stop_commands(self):
+        daemon = HomeDaemon()
+        dp = build_dispatcher(_cfg(), daemon)
+        for cmd, expect in (("/pause", "пауз"), ("/resume", "продолж"), ("/stop", "стоп")):
+            msg = _M(uid=123, text=cmd)
+            await dp.message.handlers[1].callback(msg, _State())
+            self.assertIn(expect, msg.answers[-1][0][0].lower())
+
+    async def test_faucet_rpc_scheduler_alerts_commands(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        for cmd, expect in (
+            ("/faucet", "Кран"),
+            ("/rpc", "RPC"),
+            ("/scheduler", "PLAN"),
+            ("/schedule", "PLAN"),
+            ("/alerts", "Алерты"),
+            ("/alerts 0.01", "Алерты"),
+            ("/alerts off", "Алерты"),
+            ("/cancel", "ОТМЕНА"),
+        ):
+            msg = _M(uid=123, text=cmd)
+            await dp.message.handlers[1].callback(msg, _State())
+            self.assertTrue(msg.answers, cmd)
+            # сброс антифлуда между командами
+            import portal.bot_telegram as _bt
+
+            _bt._flood_last.clear()
+
+    async def test_balance_flood_and_empty_profiles(self):
+        dp = build_dispatcher(_cfg(), HomeDaemon())
+        msg = _M(uid=123, text="/balance")
+        await dp.message.handlers[1].callback(msg, _State())
+        self.assertTrue(msg.answers)
+        # второй сразу — антифлуд
+        msg2 = _M(uid=123, text="/balance")
+        await dp.message.handlers[1].callback(msg2, _State())
+        self.assertIn("жди", msg2.answers[0][0][0])
+        import portal.bot_telegram as _bt
+
+        _bt._flood_last.clear()
+        # пустой флот — объяснение вместо нулей
+        daemon = HomeDaemon()
+        daemon._wallets = []
+        dp2 = build_dispatcher(_cfg(), daemon)
+        msg3 = _M(uid=123, text="/profiles")
+        await dp2.message.handlers[1].callback(msg3, _State())
+        self.assertIn("пуст", msg3.answers[0][0][0])
 
 
 if __name__ == "__main__":

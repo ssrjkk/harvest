@@ -309,10 +309,16 @@ class TestConfigHelpers(unittest.TestCase):
 
     def test_csrf_state_strict(self):
         state = auth.csrf_state("sec")
+        self.assertIn("~", state)
         self.assertTrue(auth.verify_csrf_state("sec", state))
+        self.assertFalse(auth.verify_csrf_state("other", state))
         self.assertFalse(auth.verify_csrf_state("sec", ""))
         self.assertFalse(auth.verify_csrf_state("sec", "short"))
         self.assertFalse(auth.verify_csrf_state("sec", "a b c d"))
+        self.assertFalse(auth.verify_csrf_state("sec", state + "X"))
+        # legacy без подписи — принимаем, но чужой формат с точкой — нет
+        self.assertTrue(auth.verify_csrf_state("sec", "abcdefghijklmnop"))
+        self.assertFalse(auth.verify_csrf_state("sec", "abc.def"))
 
     def test_links_sanitized(self):
         import json

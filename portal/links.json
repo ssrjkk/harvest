@@ -4,7 +4,8 @@
     { "label": "vibe/vibe Testnet", "url": "https://testnet.vibevibe.fun" },
     { "label": "vibe/vibe на X", "url": "https://x.com/vibevibefun" },
     { "label": "Robinhood Chain Explorer", "url": "https://explorer.testnet.chain.robinhood.com" },
-    { "label": "Robinhood Chain Faucet", "url": "https://faucet.testnet.chain.robinhood.com" },
+    { "label": "Chainstack Console Faucet (auto-claim)", "url": "https://console.chainstack.com/faucet" },
+    { "label": "Robinhood Chain Faucet (official)", "url": "https://faucet.testnet.chain.robinhood.com" },
     { "label": "Robinhood Chain Docs", "url": "https://docs.robinhood.com/chain/" }
   ]
 }

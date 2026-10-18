@@ -30,14 +30,17 @@ LABELS = {
     "sep": "────────────────────────",
 }
 
-# Токен бота в URL запросов: bot123456:ABC-DEF1234ghI... (п.8 ТЗ).
+# Токен бота в URL запросов: bot123456:ABC-DEF1234ghI... (п.8 ТЗ),
+# плюс голый вид 123456:ABC... (env-дампы, трейсбэки без префикса bot).
 _TOKEN_RE = re.compile(r"bot\d+:[A-Za-z0-9_-]+")
+_BARE_TOKEN_RE = re.compile(r"(?<!\w)\d{5,}:[A-Za-z0-9_-]{20,}")
 _TOKEN_STUB = "bot<TOKEN>"  # nosec B105 — не пароль, а метка-заглушка для редакции
 
 
 def redact_token(text: object) -> str:
-    """Вычищает шаблон bot<id>:<secret> из любого текста (логи, трейсбэки)."""
-    return _TOKEN_RE.sub(_TOKEN_STUB, str(text))
+    """Вычищает токен из любого текста (логи, трейсбэки): с префиксом и голый."""
+    s = _TOKEN_RE.sub(_TOKEN_STUB, str(text))
+    return _BARE_TOKEN_RE.sub(_TOKEN_STUB, s)
 
 
 def esc(value: object) -> str:
@@ -189,8 +192,8 @@ def render_home(
         err_n = int((state.get("pool") or {}).get("errors", state.get("errors", 0)) or 0)
     except (TypeError, ValueError):
         err_n = 0
-    def f(n: object) -> str:
-        return f"{int(n):,}".replace(",", " " if not en else ",")
+    def f(n: int) -> str:
+        return f"{n:,}".replace(",", " " if not en else ",")
 
     up = fmt_uptime(state.get("uptime_s"))
     if en:
@@ -223,6 +226,8 @@ def render_home(
 
 def fmt_uptime(seconds: object) -> str:
     """Аптайм демона человеческим языком: 4ч 12м / 12м / 3д 2ч. Нет данных — «—»."""
+    if not isinstance(seconds, (str, int, float)):
+        return "—"
     try:
         s = int(float(seconds or 0))
     except (TypeError, ValueError):

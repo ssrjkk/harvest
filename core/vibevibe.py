@@ -318,7 +318,7 @@ class VibeVibeInterface:
                 authorization_epoch=epoch,
             )
             if action == _TRADE_ACTION_BUY:
-                args = (lounge_id, limit, deadline, request_id, authorization)
+                args: tuple = (lounge_id, limit, deadline, request_id, authorization)
                 value = int(amount_wei)
             else:
                 args = (lounge_id, limit, from_addr, deadline, request_id, authorization)

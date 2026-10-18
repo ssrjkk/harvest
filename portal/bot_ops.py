@@ -28,7 +28,7 @@ _FOOT = "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
 _CHECK_MAX_BYTES = 16 * 1024
 
 # Слаг -> shipped config. `simple` нет в portal.networks — пресет трансферов.
-_CMD_NETS: dict[str, str] = {n["slug"]: n["config"] for n in NETWORKS}
+_CMD_NETS: dict[str, str] = {str(n["slug"]): str(n["config"]) for n in NETWORKS}
 _CMD_NETS["simple"] = "config.simple.yaml"
 
 

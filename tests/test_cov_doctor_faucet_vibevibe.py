@@ -691,6 +691,8 @@ class _McpServer:
         no_sid=False,
         tool_status=200,
         reject_key=False,
+        gate_text="",
+        jsonrpc_text="boom",
     ):
         self.tool_error = tool_error
         self.jsonrpc_error = jsonrpc_error
@@ -698,6 +700,8 @@ class _McpServer:
         self.no_sid = no_sid
         self.tool_status = tool_status
         self.reject_key = reject_key
+        self.gate_text = gate_text
+        self.jsonrpc_text = jsonrpc_text
         self.handshakes = 0
         self.tool_calls = []
         self.sessions = set()
@@ -731,11 +735,17 @@ class _McpServer:
         if self.tool_status != 200:
             return _McpResp(self.tool_status, sse=False)
         if self.jsonrpc_error:
-            return _McpResp(200, {"error": {"code": -32603, "message": "boom"}}, sid=sid)
+            return _McpResp(200, {"error": {"code": -32603, "message": self.jsonrpc_text}}, sid=sid)
         if self.tool_error:
             return _McpResp(
                 200,
                 {"result": {"content": [{"type": "text", "text": "No API key provided"}], "isError": True}},
+                sid=sid,
+            )
+        if self.gate_text:
+            return _McpResp(
+                200,
+                {"result": {"content": [{"type": "text", "text": self.gate_text}], "isError": True}},
                 sid=sid,
             )
         text = f"Topped up {args['address']} on {args['network']} up to the maximum"
@@ -823,6 +833,123 @@ class TestFaucetChainstackMcp(unittest.TestCase):
     def test_tool_is_error_is_failure(self):
         self.assertEqual(self._run_requests(_McpServer(tool_error=True), [_ADDR])[0], [False])
 
+    def test_spam_gate_markers(self):
+        from core.faucet import _is_spam_gate
+        self.assertTrue(_is_spam_gate("Insufficient current balance: need 0.08 ETH on mainnet"))
+        self.assertTrue(_is_spam_gate("spam-protection triggered"))
+        self.assertFalse(_is_spam_gate("No API key provided"))
+        self.assertFalse(_is_spam_gate(""))
+
+    def test_spam_gate_aborts_retries(self):
+        from core.faucet import Faucet
+        gate = ("Insufficient current balance: "
+                "You need at least 0.08 ETH on mainnet to call the faucet.")
+        server = _McpServer(gate_text=gate)
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY)]}, "proxy": {}})
+        session = _McpSession(server)
+        with _chainstack_key("cs-key-1"):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                with patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
+                    self.assertFalse(_run(f.request_tokens(_ADDR, retries=3)))
+        # Гейт детерминирован для адреса: один вызов вместо трёх попыток.
+        self.assertEqual(len(server.tool_calls), 1)
+
+    def test_jsonrpc_gate_text_aborts_retries(self):
+        from core.faucet import Faucet
+        gate = ("Insufficient current balance: "
+                "You need at least 0.08 ETH on mainnet to call the faucet.")
+        server = _McpServer(jsonrpc_error=True, jsonrpc_text=gate)
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY)]}, "proxy": {}})
+        session = _McpSession(server)
+        with _chainstack_key("cs-key-1"):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                with patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
+                    self.assertFalse(_run(f.request_tokens(_ADDR, retries=3)))
+        self.assertEqual(len(server.tool_calls), 1)
+
+    def test_gate_falls_through_to_next_strategy(self):
+        from core.faucet import Faucet, _SpamGateError
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY), {"type": "web", "url": "http://w"}]},
+                    "proxy": {}})
+        session = AsyncMock()
+        calls = []
+
+        async def _fake(session_, strategy, proxy, address):
+            calls.append(strategy.get("type"))
+            if strategy.get("type") == "chainstack":
+                raise _SpamGateError("gate")
+            return True
+
+        with patch.object(f, "_request_strategy", side_effect=_fake):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                with patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
+                    self.assertTrue(_run(f.request_tokens(_ADDR, retries=3)))
+        # Гейт chainstack не отменяет fallback: вторая стратегия тоже попробована.
+        self.assertEqual(calls, ["chainstack", "web"])
+
+    def test_all_gated_no_repeat_calls(self):
+        from core.faucet import Faucet, _SpamGateError
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY), {"type": "web", "url": "http://w"}]},
+                    "proxy": {}})
+        session = AsyncMock()
+        calls = []
+
+        async def _fake(session_, strategy, proxy, address):
+            calls.append(strategy.get("type"))
+            raise _SpamGateError("gate")
+
+        with patch.object(f, "_request_strategy", side_effect=_fake):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                with patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
+                    self.assertFalse(_run(f.request_tokens(_ADDR, retries=3)))
+        # Каждая gated-стратегия вызывается ровно один раз, без повторов по ретраям.
+        self.assertEqual(calls, ["chainstack", "web"])
+
+    def test_gated_strategy_skipped_on_next_attempt(self):
+        from core.faucet import Faucet, _SpamGateError
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY), {"type": "web", "url": "http://w"}]},
+                    "proxy": {}})
+        session = AsyncMock()
+        calls = []
+
+        async def _fake(session_, strategy, proxy, address):
+            calls.append(strategy.get("type"))
+            if strategy.get("type") == "chainstack":
+                raise _SpamGateError("gate")
+            return False
+
+        with patch.object(f, "_request_strategy", side_effect=_fake):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                with patch("core.faucet.asyncio.sleep", new_callable=AsyncMock):
+                    self.assertFalse(_run(f.request_tokens(_ADDR, retries=2)))
+        self.assertEqual(calls, ["chainstack", "web", "web"])
+
+    def test_chainstack_no_url_is_failure(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {}, "proxy": {}})
+        session = AsyncMock()
+        with _chainstack_key("cs-key-1"):
+            self.assertFalse(_run(f._chainstack_request(session, {"type": "chainstack"}, None, _ADDR)))
+
+    def test_chainstack_probe_no_url_is_failure(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack"}]}, "proxy": {}})
+        session = AsyncMock()
+        with _chainstack_key("cs-key-1"):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                self.assertEqual(_run(f.validate()), 0)
+            # Прямой вызов тоже стоек (defense in depth).
+            self.assertFalse(_run(f._chainstack_probe(session, None)))
+
+    def test_request_strategy_skips_donor(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {}, "proxy": {}})
+        session = AsyncMock()
+        # без сети донор в слепом request_tokens не работает — честный False
+        self.assertFalse(_run(f._request_strategy(
+            session, {"type": "donor", "private_key_env": "FAUCET_DONOR_KEY"}, None, _ADDR)))
+        session.post.assert_not_called()
+
     def test_jsonrpc_error_is_failure(self):
         self.assertEqual(self._run_requests(_McpServer(jsonrpc_error=True), [_ADDR])[0], [False])
 
@@ -867,6 +994,148 @@ class TestFaucetChainstackMcp(unittest.TestCase):
         results, _ = self._run_requests(server, [_ADDR], strategy={"type": "chainstack"})
         self.assertEqual(results, [False])
         self.assertEqual(server.handshakes, 0)
+
+
+def _donor_faucet(strategies):
+    from core.faucet import Faucet
+    return Faucet({"faucet": {"min_balance": 0.005, "target_balance": 0.05,
+                              "strategies": strategies}, "proxy": {}})
+
+
+def _donor_net(balance=0.0, send_result="0xhash"):
+    net = AsyncMock()
+    net.get_balance = AsyncMock(return_value=balance)
+    net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
+    net.send_transfer = AsyncMock(return_value=send_result)
+    return net
+
+
+@contextlib.contextmanager
+def _donor_key(value):
+    """FAUCET_DONOR_KEY в нужном состоянии (env восстанавливается на выходе)."""
+    with patch.dict(os.environ, {}, clear=False):
+        if value is None:
+            os.environ.pop("FAUCET_DONOR_KEY", None)
+        else:
+            os.environ["FAUCET_DONOR_KEY"] = value
+        yield
+
+
+class TestFaucetDonor(unittest.TestCase):
+
+    _STRATEGY = {"type": "donor", "private_key_env": "FAUCET_DONOR_KEY", "topup_amount": 0.01}
+
+    def test_key_from_env_and_inline(self):
+        from core.faucet import Faucet
+        with _donor_key("0x" + "ab" * 32):
+            self.assertEqual(Faucet._donor_key(dict(self._STRATEGY)), "0x" + "ab" * 32)
+        with _donor_key(None):
+            self.assertEqual(Faucet._donor_key({"type": "donor", "private_key": "0xkey"}), "0xkey")
+            self.assertEqual(Faucet._donor_key({"type": "donor"}), "")
+            self.assertEqual(Faucet._donor_key({"type": "donor", "private_key_env": 123}), "")
+            self.assertEqual(Faucet._donor_key({"type": "donor", "private_key": 123}), "")
+
+    def test_topup_success(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = _donor_net()
+        with _donor_key("0x" + "ab" * 32):
+            self.assertTrue(_run(f._donor_topup(net, _ADDR)))
+        net.send_transfer.assert_awaited_once()
+        args = net.send_transfer.await_args[0]
+        self.assertEqual(args[1], _ADDR)
+        self.assertAlmostEqual(args[2], 0.01)
+
+    def test_topup_default_amount(self):
+        f = _donor_faucet([{"type": "donor"}])
+        net = _donor_net()
+        with _donor_key("0x" + "ab" * 32):
+            self.assertTrue(_run(f._donor_topup(net, _ADDR)))
+        # topup_amount не задан → цель из конфига (target 0.05)
+        self.assertAlmostEqual(net.send_transfer.await_args[0][2], 0.05)
+
+    def test_topup_no_key(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = _donor_net()
+        with _donor_key(None):
+            self.assertFalse(_run(f._donor_topup(net, _ADDR)))
+        net.send_transfer.assert_not_awaited()
+
+    def test_topup_bad_amount_falls_back(self):
+        f = _donor_faucet([{"type": "donor", "topup_amount": "lots"}])
+        net = _donor_net()
+        with _donor_key("0x" + "ab" * 32):
+            self.assertTrue(_run(f._donor_topup(net, _ADDR)))
+        self.assertAlmostEqual(net.send_transfer.await_args[0][2], 0.05)
+
+    def test_topup_bad_key(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = _donor_net()
+        net.get_account = MagicMock(side_effect=RuntimeError("bad key"))
+        with _donor_key("0x" + "ab" * 32):
+            self.assertFalse(_run(f._donor_topup(net, _ADDR)))
+        net.send_transfer.assert_not_awaited()
+
+    def test_topup_send_raises(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = _donor_net()
+        net.send_transfer = AsyncMock(side_effect=RuntimeError("rpc down"))
+        with _donor_key("0x" + "ab" * 32):
+            self.assertFalse(_run(f._donor_topup(net, _ADDR)))
+
+    def test_topup_unconfirmed(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = _donor_net(send_result=None)
+        with _donor_key("0x" + "ab" * 32):
+            self.assertFalse(_run(f._donor_topup(net, _ADDR)))
+
+    def test_topup_no_strategies(self):
+        f = _donor_faucet([])
+        net = _donor_net()
+        self.assertFalse(_run(f._donor_topup(net, _ADDR)))
+
+    def test_request_strategy_skips_donor(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {}, "proxy": {}})
+        session = AsyncMock()
+        # без сети донор в слепом request_tokens не работает — честный False
+        self.assertFalse(_run(f._request_strategy(session, dict(self._STRATEGY), None, _ADDR)))
+        session.post.assert_not_called()
+
+    def test_validate_donor_probe(self):
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [dict(self._STRATEGY)]}, "proxy": {}})
+        session = AsyncMock()
+        with _donor_key("0x" + "ab" * 32):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                self.assertEqual(_run(f.validate()), 1)
+        session.get.assert_not_called()
+        with _donor_key(None):
+            with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
+                self.assertEqual(_run(f.validate()), 0)
+
+    def test_ensure_balance_donor_first(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = AsyncMock()
+        net.get_balance = AsyncMock(side_effect=[0.0, 0.05])
+        net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
+        net.send_transfer = AsyncMock(return_value="0xhash")
+        with _donor_key("0x" + "ab" * 32):
+            with patch.object(f, "request_tokens", new_callable=AsyncMock) as rt:
+                self.assertTrue(_run(f.ensure_balance(net, _ADDR)))
+                rt.assert_not_awaited()  # внешние краны не понадобились
+        self.assertEqual(net.get_balance.await_count, 2)
+
+    def test_ensure_balance_donor_partial_falls_back(self):
+        f = _donor_faucet([dict(self._STRATEGY)])
+        net = AsyncMock()
+        # донор долил до 0.01 (< target 0.05) — дальше внешний кран
+        net.get_balance = AsyncMock(side_effect=[0.0, 0.01, 0.05])
+        net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
+        net.send_transfer = AsyncMock(return_value="0xhash")
+        with _donor_key("0x" + "ab" * 32):
+            with patch.object(f, "request_tokens", new_callable=AsyncMock, return_value=True) as rt:
+                self.assertTrue(_run(f.ensure_balance(net, _ADDR)))
+                rt.assert_awaited()
 
 
 class TestMcpHelpers(unittest.TestCase):
@@ -1010,13 +1279,15 @@ class TestFaucetEnsureBalance(unittest.TestCase):
         with patch.object(f, "request_tokens", new_callable=AsyncMock, return_value=False):
             self.assertFalse(_run(f.ensure_balance(net, _ADDR)))
 
-    def test_target_balance_geq_min_after_loop(self):
+    def test_target_balance_partial_fill_is_failure(self):
+        # Частичный долив (0.01 при target 1.0) — НЕ успех: раньше считался
+        # успехом по min_balance и дальше min_gas_for_action резал молча.
         from core.faucet import Faucet
         f = Faucet({"faucet": {"target_balance": 1.0, "retries": 2, "min_balance": 0.005}, "proxy": {}})
         net = AsyncMock()
         net.get_balance = AsyncMock(return_value=0.01)
         with patch.object(f, "request_tokens", new_callable=AsyncMock, return_value=True):
-            self.assertTrue(_run(f.ensure_balance(net, _ADDR)))
+            self.assertFalse(_run(f.ensure_balance(net, _ADDR)))
 
 
 class TestFaucetConcurrentBatch(unittest.TestCase):

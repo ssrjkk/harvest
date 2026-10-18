@@ -1,8 +1,9 @@
 """Тесты PostgreSQL-бэкенда БД: _translate_pg, _PgAdapter, Database с DSN.
 
 Не требуют живого PostgreSQL: asyncpg мокается. Проверяем:
-  * _translate_pg — placeholder ?→$N, datetime('now')→now(), AUTOINCREMENT,
-    INSERT OR REPLACE/IGNORE → ON CONFLICT DO NOTHING, PRAGMA/VACUUM → no-op;
+  * _translate_pg — placeholder ?→$N (вне литералов), datetime('now')→now(),
+    AUTOINCREMENT, INSERT OR IGNORE → ON CONFLICT DO NOTHING,
+    INSERT OR REPLACE → ON CONFLICT(pk) DO UPDATE, PRAGMA/VACUUM → no-op;
   * _PgAdapter.execute — SELECT → ленивый курсор, DML → немедленный, no-op;
   * Database(path=postgres://...) — is_postgres=True, connect через asyncpg,
     SQLite-специфичные шаги (бэкап/vacuum/права) пропускаются.
@@ -52,8 +53,18 @@ class TestTranslatePg(unittest.TestCase):
             "INSERT OR REPLACE INTO nonces (address, current_nonce) VALUES (?, ?)", ("a", 1)
         )
         self.assertIn("INSERT INTO nonces", sql)
-        self.assertIn("ON CONFLICT DO NOTHING", sql)
+        # REPLACE — это upsert: nonce обязан обновляться, а не игнорироваться.
+        self.assertIn("ON CONFLICT(address) DO UPDATE", sql)
+        self.assertIn("current_nonce = excluded.current_nonce", sql)
         self.assertIn("$1", sql)
+
+    def test_insert_or_replace_literal_question_kept(self):
+        sql, _ = _translate_pg(
+            "SELECT * FROM actions_log WHERE details LIKE '%?%' AND address = ?", ("a",)
+        )
+        self.assertIn("'%?%'", sql)
+        self.assertIn("$1", sql)
+        self.assertNotIn("$2", sql)
 
     def test_insert_or_ignore(self):
         sql, _ = _translate_pg(

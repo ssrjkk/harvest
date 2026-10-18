@@ -31,11 +31,58 @@ class _FakePool:
     _closed = False
     paused = False
 
-    async def run_forever(self, stop_event) -> None:
+    async def run_forever(self, stop_event, max_cycles: int = 0) -> None:
         return
 
     async def close(self) -> None:
         self._closed = True
+
+
+class TestFarmDaemonCycles(unittest.TestCase):
+    """Лимит циклов доходит от планировщика до пула (регрессия: задача N циклов
+    раньше игнорировала cycles и фармила бесконечно через run_forever)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.db_path = str(Path(self._tmp.name) / "farm.sqlite")
+
+    def _run_start(self, daemon, **kwargs):
+        async def scenario():
+            ok = await daemon.start(**kwargs)
+            assert ok
+            if daemon._task is not None and not daemon._task.done():
+                await daemon._task
+            for attr in ("_cycle_watch_task", "_faucet_check_task"):
+                task = getattr(daemon, attr, None)
+                if task is not None and not task.done():
+                    task.cancel()
+
+        asyncio.run(scenario())
+
+    def test_start_cycles_forwarded_to_pool(self):
+        seen = {}
+
+        class _RecPool(_FakePool):
+            async def run_forever(self, stop_event, max_cycles: int = 0):
+                seen["max_cycles"] = max_cycles
+
+        daemon = FarmDaemon("config.yaml", self.db_path)
+        daemon.pool = _RecPool()  # type: ignore[assignment]
+        self._run_start(daemon, cycles=3)
+        self.assertEqual(seen.get("max_cycles"), 3)
+
+    def test_start_default_is_unbounded(self):
+        seen = {}
+
+        class _RecPool(_FakePool):
+            async def run_forever(self, stop_event, max_cycles: int = 0):
+                seen["max_cycles"] = max_cycles
+
+        daemon = FarmDaemon("config.yaml", self.db_path)
+        daemon.pool = _RecPool()  # type: ignore[assignment]
+        self._run_start(daemon)
+        self.assertEqual(seen.get("max_cycles"), 0)
 
 
 class TestFarmDaemonSingleInstance(unittest.TestCase):
@@ -89,7 +136,7 @@ class _RaisingPool:
     _closed = False
     paused = False
 
-    async def run_forever(self, stop_event) -> None:
+    async def run_forever(self, stop_event, max_cycles: int = 0) -> None:
         raise RuntimeError("rpc exploded")
 
     async def close(self) -> None:
@@ -216,6 +263,14 @@ class TestCycleWatchAlerts(unittest.IsolatedAsyncioTestCase):
         except asyncio.CancelledError:
             pass
         self.assertEqual(await daemon._check_faucet_once(), 0)
+
+    async def test_drip_no_db_raises(self):
+        daemon = FarmDaemon("config.yaml", ":memory:", alert=None)
+        daemon.db = None  # type: ignore[assignment]
+        with self.assertRaises(RuntimeError):
+            await daemon.drip_faucet()
+        st = daemon.drip_state()
+        self.assertFalse(st["running"])
 
 
 class TestDbMasterKey(unittest.TestCase):
@@ -477,7 +532,7 @@ class TestSchedulerProxies(FarmProxyTestBase):
     async def test_scheduled_farm_starts_daemon_when_idle(self):
         with mock.patch.object(FarmDaemon, "start", new_callable=mock.AsyncMock) as start:
             await self.daemon._scheduled_farm(3)
-            start.assert_awaited_once()
+            start.assert_awaited_once_with(cycles=3)
 
     async def test_scheduled_farm_skipped_while_running(self):
         self.daemon._task = asyncio.create_task(asyncio.sleep(30))
@@ -558,6 +613,24 @@ class TestBalanceAlerts(FarmProxyTestBase):
             await self.daemon.set_balance_alerts(False, 0.001)
         self.assertTrue(any("первые 100 из 101" in line for line in cm.output))
         self.assertEqual(len(net.balance_calls), 100)
+
+    async def test_addrs_prefers_addresses_without_decrypt(self):
+        class _AddrDb:
+            def __init__(self):
+                self.wallets_called = 0
+
+            async def get_all_addresses(self, limit=0):
+                addrs = ["0xaaa", "0xbbb"]
+                return addrs[:limit] if limit else addrs
+
+            async def get_all_wallets(self):
+                self.wallets_called += 1
+                return [{"address": "SHOULD-NOT-BE-USED"}]
+
+        self.daemon.db = _AddrDb()
+        out = await self.daemon._addrs_for_balances()
+        self.assertEqual(out, ["0xaaa", "0xbbb"])
+        self.assertEqual(self.daemon.db.wallets_called, 0)
 
 
 class TestWalletCells(FarmProxyTestBase):

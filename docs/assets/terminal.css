@@ -59,8 +59,6 @@ a{color:var(--cyan)}
 .hero h1{margin:10px 0 8px; font-family:"Arial Black",Impact,sans-serif; font-size:clamp(28px,5vw,54px); line-height:1.02; text-transform:uppercase; border-left:8px solid var(--acid); padding-left:14px; text-shadow:4px 4px 0 #000}
 .hero h1 .a{color:var(--acid)}
 .kicker{display:inline-block; background:#020306; border:2px solid var(--cyan); color:var(--cyan); font-size:12px; font-weight:900; padding:4px 10px}
-.grid2{display:grid; grid-template-columns:1fr; gap:16px}
-@media(min-width:1000px){.grid2{grid-template-columns:7fr 5fr}}
 .pane{padding:14px}
 .pane h2{margin:0 0 10px; font-size:13px}
 table.t{width:100%; border-collapse:collapse; font-size:12px}
@@ -86,8 +84,8 @@ table.t td{padding:7px 10px; border-top:1px solid #252b3f; vertical-align:top}
 .secttl{font-size:12px; color:var(--cyan); font-weight:900; margin:0 0 8px; text-transform:uppercase}
 pre.yaml{font-size:11px; color:var(--acid); padding:10px 12px; overflow-x:auto; max-height:220px}
 footer{color:var(--dim); font-size:11px; text-align:center; padding:18px}
-canvas.chart{width:100%; height:120px; background:#020306; border:2px solid #1e293b}
-@media(max-width:640px){.hero{padding:18px 14px} table.t td:nth-child(3){display:none} table.t th:nth-child(3){display:none}}
+canvas.chart{width:100%;height:auto;background:#020306;border:2px solid #1e293b}
+@media(max-width:640px){.hero{padding:18px 14px}}
 
 /* ---- unified site: Y2K skin over site.css components (terminal.css loads last) ---- */
 body{font-family:"Courier New",ui-monospace,Menlo,Consolas,monospace;background-color:#05060a;background-image:none}

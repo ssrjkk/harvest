@@ -81,6 +81,27 @@ class TestRiskMath(unittest.IsolatedAsyncioTestCase):
         eng._states["old"].last_ts -= 5000.0
         self.assertEqual(await eng.evict(older_than_s=60.0), 1)
 
+    async def test_state_cap_evicts_oldest(self):
+        from portal.shield.risk import SubjectState
+
+        eng = RiskEngine(_cfg())
+        now = __import__("time").monotonic()
+        # Забиваем под завязку старыми субъектами + один свежий.
+        for i in range(20_000):
+            eng._states[f"s{i}"] = SubjectState(score=0.0, last_ts=now - 9999.0)
+        eng._states["fresh"] = SubjectState(score=0.0, last_ts=now)
+        await eng.observe("newcomer")
+        self.assertLessEqual(len(eng._states), 20_001)
+        self.assertIn("newcomer", eng._states)
+        self.assertIn("fresh", eng._states)
+        # Флуд свежими: первая чистка ничего не снимает — срабатывает срез старейших.
+        eng2 = RiskEngine(_cfg())
+        for i in range(20_000):
+            eng2._states[f"f{i}"] = SubjectState(score=0.0, last_ts=now)
+        await eng2.observe("late")
+        self.assertLessEqual(len(eng2._states), 20_001)
+        self.assertIn("late", eng2._states)
+
     async def test_payload_hash_stable(self):
         a = RiskEngine.payload_hash_of("u", "act", "body")
         b = RiskEngine.payload_hash_of("u", "act", "body")

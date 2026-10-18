@@ -133,7 +133,7 @@ core/          — ядро: config, network (мульти-RPC/EMA/1559-фолл
                  pool/farmer/workpool, vibevibe (ABI), crypto, database,
                  web_gui (локальная FastAPI-панель)
 portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
-tests/         — pytest-набор (56 файлов; test_load_opt.py — нагрузка, opt-in)
+tests/         — pytest-набор (57 файлов; test_load_opt.py — нагрузка, opt-in)
 docs/          — сайт (ssrjkk.github.io/harvest) + screenshots/
 tools/         — verify_site.py (проверка сайта), shoot_site.py (скриншоты)
 abi/           — ABI-контракты (vibevibe.json, flop.json, arc.json)
@@ -155,9 +155,10 @@ portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](D
 python -m pytest tests -q
 ```
 
-1422 теста, 56 файлов — полный зелёный прогон (включая контуры `wait_for_receipt`:
+1554 теста, 62 файла — полный зелёный прогон (включая контуры `wait_for_receipt`:
 EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
 `None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
+CI-гейты: 100% portal, 100% core.
 
 Нагрузка — opt-in, в обычном CI пропускается:
 

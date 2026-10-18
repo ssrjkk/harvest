@@ -34,17 +34,25 @@ from portal.config import PortalConfig
 
 
 def _cfg():
-    prev = {k: os.environ.get(k) for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY")}
+    prev = {
+        k: os.environ.get(k)
+        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID",
+                  "GOOGLE_CLIENT_SECRET")
+    }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
-    cfg = PortalConfig()
-    cfg.telegram_allow_ids = [123]
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.telegram_allow_ids = [123]
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")

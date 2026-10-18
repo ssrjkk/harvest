@@ -105,6 +105,13 @@ class TestNeutralProfile(unittest.TestCase):
     def test_time_of_day_neutral_zero(self):
         self.assertEqual(time_of_day_factor(0.0), 1.0)
 
+    def test_time_of_day_night_boost(self):
+        import time as _time
+
+        night = _time.struct_time((2026, 10, 16, 3, 0, 0, 3, 289, -1))
+        with mock.patch("time.localtime", return_value=night):
+            self.assertAlmostEqual(time_of_day_factor(1.0), 2.5)
+
 
 class TestActionMultipliers(unittest.TestCase):
     def test_multipliers_cover_known_types(self):

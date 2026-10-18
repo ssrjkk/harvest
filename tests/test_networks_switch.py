@@ -25,18 +25,26 @@ from portal.networks import NETWORKS, network_by_slug
 
 
 def _cfg():
-    prev = {k: os.environ.get(k) for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY")}
+    prev = {
+        k: os.environ.get(k)
+        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID",
+                  "GOOGLE_CLIENT_SECRET")
+    }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
-    cfg = PortalConfig()
-    cfg.allow_insecure_password = True
-    cfg.password_login = True
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.allow_insecure_password = True
+        cfg.password_login = True
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class _NetDaemon:
@@ -145,7 +153,7 @@ class TestNetworksApi(_ApiBase, unittest.IsolatedAsyncioTestCase):
         client, _app = await self._client()
         async with client:
             r = await client.post("/api/farm/network/vibevibe/bogus")
-            self.assertEqual(r.status, 404)
+            self.assertEqual(r.status, 400)
 
 
 class TestNetworksCatalog(unittest.TestCase):
@@ -188,7 +196,7 @@ class _FakePool:
         self.network = mock.Mock()
         self.network.concurrency_factor.return_value = 0.9
 
-    async def run_forever(self, stop_event):
+    async def run_forever(self, stop_event, max_cycles: int = 0):
         await stop_event.wait()
 
     async def close(self):

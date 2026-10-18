@@ -239,6 +239,49 @@ class TestConfigValidate(unittest.TestCase):
         ]
         validate_config(cfg)
 
+    def test_faucet_strategy_unknown_type_rejected(self):
+        cfg = good_config()
+        cfg["faucet"]["strategies"] = [{"type": "chainstak", "url": "https://faucet.example/claim"}]
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
+    def test_faucet_chainstack_requires_network_param(self):
+        cfg = good_config()
+        cfg["faucet"]["strategies"] = [{"type": "chainstack", "url": "https://mcp.chainstack.com/mcp"}]
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
+    def test_faucet_chainstack_requires_mcp_path(self):
+        cfg = good_config()
+        cfg["faucet"]["strategies"] = [
+            {"type": "chainstack", "url": "https://x.test/request_testnet_funds", "network_param": "robinhood"}
+        ]
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
+    def test_faucet_chainstack_valid(self):
+        cfg = good_config()
+        cfg["faucet"]["strategies"] = [
+            {"type": "chainstack", "url": "https://mcp.chainstack.com/mcp", "network_param": "robinhood"}
+        ]
+        validate_config(cfg)
+
+    def test_faucet_donor_valid(self):
+        cfg = good_config()
+        cfg["faucet"]["strategies"] = [
+            {"type": "donor", "private_key_env": "FAUCET_DONOR_KEY", "topup_amount": 0.01},
+            {"type": "donor"},
+            {"type": "donor", "topup_amount": None},
+        ]
+        validate_config(cfg)
+
+    def test_faucet_donor_bad_amount_rejected(self):
+        for bad in ("lots", -1.0):
+            cfg = good_config()
+            cfg["faucet"]["strategies"] = [{"type": "donor", "topup_amount": bad}]
+            with self.assertRaises(ConfigError):
+                validate_config(cfg)
+
 
 class TestMoreBranches(unittest.TestCase):
     def _bad(self, mutate):

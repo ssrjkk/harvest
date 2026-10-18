@@ -19,7 +19,7 @@ from core.network import NetworkManager
 logger = logging.getLogger(__name__)
 
 # общий таймаут на один запрос крана (короткий, чтобы не висеть)
-_REQUEST_TIMEOUT = 8
+_REQUEST_TIMEOUT = 12
 
 # Chainstack MCP (streamable-HTTP JSON-RPC). Имя инструмента — request_testnet_funds,
 # путь запроса — /mcp: POST на /request_testnet_funds отвечает 404 и не пополняет
@@ -60,6 +60,27 @@ def _mcp_text(result: dict) -> str:
     return " ".join(parts)[:400]
 
 
+class _SpamGateError(Exception):
+    """Отказ крана по spam-защите (0.08 ETH mainnet): ретраи по адресу бессмысленны."""
+
+
+# Маркеры отказа spam-защиты Chainstack: адрес без баланса/истории на mainnet.
+# Такой отказ детерминирован для адреса — повторные запросы не помогут.
+_SPAM_GATE_MARKERS = ("insufficient", "0.08", "spam", "mainnet")
+
+
+def _is_spam_gate(text: str) -> bool:
+    """Распознаёт гейт «0.08 ETH on mainnet» в тексте отказа крана."""
+    t = (text or "").lower()
+    return any(m in t for m in _SPAM_GATE_MARKERS)
+
+
+# Env-переменная с ключом донор-кошелька по умолчанию (переопределяется
+# полем private_key_env стратегии). Сырой ключ в config.yaml не кладём —
+# конфиги коммитятся, а ключ обязан жить только в окружении.
+_DONOR_KEY_ENV_DEFAULT = "FAUCET_DONOR_KEY"
+
+
 class Faucet:
     def __init__(self, config: dict) -> None:
         # Принимает как полный конфиг (с секцией faucet/proxy), так и
@@ -91,6 +112,9 @@ class Faucet:
             logger.warning("faucet.max_concurrent некорректен — использую 8")
             self.max_concurrent = 8
         self._reachable: list[bool] | None = None
+        # Последний разбор pre-flight: [{type, url, alive, reason}] — для громкой
+        # диагностики (auto.py печатает, бот /faucet показывает, doctor читает).
+        self._last_probe: list[dict] = []
         self._session: aiohttp.ClientSession | None = None
         self._connector: aiohttp.TCPConnector | None = None
         # MCP session id по URL: handshake один раз на пачку кошельков
@@ -131,7 +155,6 @@ class Faucet:
             self._connector = aiohttp.TCPConnector(
                 limit=20,  # максимум одновременных коннектов
                 ttl_dns_cache=300,  # DNS кэш 5 мин
-                enable_cleanup_closed=True,
             )
             self._session = aiohttp.ClientSession(connector=self._connector)
         return self._session
@@ -270,6 +293,8 @@ class Faucet:
         """
         url = strategy.get("url")
         key = self._api_key()
+        if not isinstance(url, str) or not url:
+            return False
         if not key:
             logger.warning(
                 f"Кран chainstack: {_CHAINSTACK_KEY_ENV} не задан — пропускаю "
@@ -305,11 +330,24 @@ class Faucet:
         if status != 200 or not isinstance(msg, dict):
             return False
         if "error" in msg:
-            logger.debug(f"Кран chainstack JSON-RPC ошибка: {str(msg['error'])[:160]}")
+            err_text = str(msg["error"])[:160]
+            if _is_spam_gate(err_text):
+                logger.warning(
+                    f"Кран chainstack: spam-защита для {address[:10]} ({err_text[:120]}). "
+                    "Автоматический клейм: https://console.chainstack.com/faucet"
+                )
+                raise _SpamGateError(err_text)
+            logger.debug(f"Кран chainstack JSON-RPC ошибка: {err_text}")
             return False
         result = msg.get("result") or {}
         text = _mcp_text(result)
         if result.get("isError"):
+            if _is_spam_gate(text):
+                logger.warning(
+                    f"Кран chainstack: spam-защита для {address[:10]} ({text[:120]}). "
+                    "Автоматический клейм: https://console.chainstack.com/faucet"
+                )
+                raise _SpamGateError(text[:200])
             logger.warning(f"Кран chainstack отказ для {address[:10]}: {text[:200]}")
             return False
         logger.info(f"Faucet OK (chainstack) for {address[:10]}: {text[:120]}")
@@ -332,8 +370,65 @@ class Faucet:
                 "(ключ: https://console.chainstack.com/user/settings/api-keys)"
             )
             return False
+        if not isinstance(url, str) or not url:
+            return False
         auth = {"Authorization": f"Bearer {self._api_key()}"}
         return bool(await self._mcp_session(session, url, None, auth))
+
+    def _donor_strategies(self) -> list[dict]:
+        """Стратегии авто-донора (Hub & Spoke): раздача с мастер-кошелька."""
+        return [s for s in self.strategies if s.get("type") == "donor"]
+
+    @staticmethod
+    def _donor_key(strategy: dict) -> str:
+        """Приватный ключ донора: env (рекомендуется) либо inline-поле конфига."""
+        env_name = strategy.get("private_key_env", _DONOR_KEY_ENV_DEFAULT)
+        if isinstance(env_name, str) and env_name:
+            key = os.environ.get(env_name, "").strip()
+            if key:
+                return key
+        inline = strategy.get("private_key", "")
+        return inline.strip() if isinstance(inline, str) else ""
+
+    async def _donor_topup(self, network: NetworkManager, address: str) -> bool:
+        """Долив с донор-кошелька нативным трансфером внутри тестнета.
+
+        Без mainnet-гейтов, квот и капч: донор платит газ тестнета сам.
+        Возвращает True, если хотя бы один донор отправил трансфер.
+        """
+        for strategy in self._donor_strategies():
+            key = self._donor_key(strategy)
+            if not key:
+                logger.warning(
+                    "Кран donor: нет ключа — задайте private_key_env "
+                    f"({strategy.get('private_key_env', _DONOR_KEY_ENV_DEFAULT)}) — пропуск"
+                )
+                continue
+            try:
+                amount = float(strategy.get("topup_amount", 0) or 0)
+            except (TypeError, ValueError):
+                amount = 0.0
+            if amount <= 0:
+                amount = self.target_balance if self.target_balance > 0 else self.min_balance
+            try:
+                donor = network.get_account(key)
+            except Exception as e:
+                logger.warning(f"Кран donor: неверный ключ ({e}) — пропуск")
+                continue
+            try:
+                tx_hash = await network.send_transfer(key, address, amount)
+            except Exception as e:
+                logger.warning(f"Кран donor: трансфер не удался для {address[:10]}: {e}")
+                continue
+            if not tx_hash:
+                logger.warning(f"Кран donor: трансфер не подтверждён для {address[:10]}")
+                continue
+            logger.info(
+                f"Кран donor: {donor.address[:10]} -> {address[:10]} "
+                f"{amount:.6f} (tx {str(tx_hash)[:12]})"
+            )
+            return True
+        return False
 
     async def validate(self) -> int:
         """Проверяет доступность стратегий крана. Возвращает число живых.
@@ -342,19 +437,38 @@ class Faucet:
         пополнении не выполняется (кроме chainstack, где handshake с ключом —
         единственная осмысленная проба), квота крана не тратится.
         404/410 означают, что эндпоинта запроса нет, — стратегия исключается.
+        Разбор по стратегиям — в self._last_probe (type/url/alive/reason).
         """
         if not self.enabled or not self.strategies:
             self._reachable = []
+            self._last_probe = []
             return 0
         self._reachable = []
+        self._last_probe = []
         session = await self._get_session()
 
-        async def _probe(strategy: dict) -> bool:
+        async def _probe(strategy: dict) -> tuple[bool, str]:
             url = strategy.get("url")
+            stype = strategy.get("type") or "direct"
+            if stype == "donor":
+                # Локальный трансфер: pre-flight без сети — проверяем только ключ.
+                if self._donor_key(strategy):
+                    return True, "донор-ключ задан, трансфер по сети"
+                return False, (
+                    "нет ключа донора — задайте private_key_env "
+                    f"({_DONOR_KEY_ENV_DEFAULT}) в окружении"
+                )
             if not url:
-                return False
-            if strategy.get("type") == "chainstack":
-                return await self._chainstack_probe(session, url)
+                return False, "no url in strategy"
+            if stype == "chainstack":
+                if not self._api_key():
+                    return False, (
+                        f"{_CHAINSTACK_KEY_ENV} не задан — экспортируйте ключ "
+                        "в окружение фарм-машины и перезапустите задачу/сервис "
+                        "(https://console.chainstack.com/user/settings/api-keys)"
+                    )
+                ok = await self._chainstack_probe(session, url)
+                return ok, "MCP handshake ok" if ok else "MCP handshake failed (ключ? сеть?)"
             try:
                 # GET-проба обычно дешевле POST и не тратит лимиты пополнений.
                 # 405 (GET не поддерживается) — тоже ответ живого эндпоинта.
@@ -364,25 +478,51 @@ class Faucet:
                     timeout=aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT),
                 ) as resp:
                     if resp.status in _DEAD_PROBE_STATUSES:
-                        logger.warning(f"Кран: {url} отвечает HTTP {resp.status} — эндпоинта нет")
-                        return False
-                    logger.info(f"Кран стратегия доступна (HTTP {resp.status})")
-                    return True
-            except Exception:
-                return False
+                        return False, f"HTTP {resp.status} — эндпоинта заявки нет"
+                    return True, f"HTTP {resp.status}"
+            except (TimeoutError, aiohttp.ClientError) as e:
+                return False, f"timeout/unreachable: {type(e).__name__}"
+            except Exception as e:  # noqa: BLE001
+                return False, f"probe error: {type(e).__name__}"
 
         # Пробы всех стратегий идут ПАРАЛЛЕЛЬНО — при большом списке кранов
         # валидация не растягивается на сумму таймаутов (8с * N).
         probes = await asyncio.gather(*[_probe(s) for s in self.strategies], return_exceptions=True)
-        for strategy, ok in zip(self.strategies, probes, strict=True):
-            alive = bool(ok) and not isinstance(ok, BaseException)
+        for strategy, res in zip(self.strategies, probes, strict=True):
+            if isinstance(res, BaseException):
+                alive, reason = False, f"probe crashed: {type(res).__name__}"
+            else:
+                alive, reason = res
             self._reachable.append(alive)
+            self._last_probe.append(
+                {
+                    "type": strategy.get("type") or "direct",
+                    # URL без query-токенов: разбор уходит в логи/бота/doctor.
+                    "url": _redact_rpc_url(strategy.get("url") or "") or "",
+                    "alive": alive,
+                    "reason": reason,
+                }
+            )
             if not alive:
-                disp = strategy.get("type")
-                if not disp:
-                    disp = _redact_rpc_url(strategy.get("url")) or strategy.get("url") or "?"
-                logger.warning(f"Кран стратегия {disp} недоступна — пропуск")
-        return sum(self._reachable)
+                disp = strategy.get("type") or strategy.get("url") or "?"
+                logger.warning(f"Кран стратегия {disp} недоступна ({reason}) — пропуск")
+        live = sum(self._reachable)
+        if live <= 0:
+            # Ноль живых — это не штатно, а авария снабжения: фарм пойдёт
+            # сухим и будет жечь RPC штормом have-0. ERROR, а не warning.
+            dead = "; ".join(
+                f"{p['type']} [{p['reason']}]" for p in self._last_probe
+            )
+            logger.error(
+                "Кран: 0 живых стратегий (%s). Проверьте URL стратегий и "
+                f"{_CHAINSTACK_KEY_ENV} в окружении фарм-машины.",
+                dead,
+            )
+        return live
+
+    def probe_report(self) -> list[dict]:
+        """Копия последнего разбора pre-flight (для auto.py / бота / doctor)."""
+        return [dict(p) for p in self._last_probe]
 
     def _live_strategies(self) -> list[dict]:
         if self._reachable is None:
@@ -396,6 +536,11 @@ class Faucet:
         proxy: str | None,
         address: str,
     ) -> bool:
+        if strategy.get("type") == "donor":
+            # Донор требует сеть (нативный трансфер) — работает только
+            # через ensure_balance; здесь пропускаем без ретраев.
+            logger.debug("Кран donor: пропуск в request_tokens (нужен ensure_balance с сетью)")
+            return False
         url = strategy.get("url")
         if not url:
             return False
@@ -438,10 +583,26 @@ class Faucet:
             return False
         session = await self._get_session()
         attempts = max(1, retries if retries is not None else self.retries)
+        # Стратегии с детерминированным отказом (spam-gate) пропускаем в
+        # следующих попытках, но остальные стратегии пробуем — гейт одного
+        # крана не отменяет fallback на другие.
+        gated: set[int] = set()
         for attempt in range(attempts):
+            if len(gated) >= len(live):
+                break
             for idx, strategy in enumerate(live):
-                if await self._request_strategy(session, strategy, proxy, address):
-                    return True
+                if idx in gated:
+                    continue
+                try:
+                    if await self._request_strategy(session, strategy, proxy, address):
+                        return True
+                except _SpamGateError:
+                    gated.add(idx)
+                    logger.info(
+                        f"Кран: spam-gate {strategy.get('type')} для {address[:10]} — "
+                        "стратегия пропущена, пробую следующую"
+                    )
+                    continue
                 # Exponential backoff между стратегиями (только если есть следующий запрос)
                 has_next_strategy = idx < len(live) - 1
                 has_next_cycle = attempt < attempts - 1
@@ -461,6 +622,12 @@ class Faucet:
         if balance >= goal:
             return True
         logger.info(f"Баланс {balance:.6f} < цель {goal}, запрашиваю кран для {address[:10]}")
+        # 1. Сначала донор (Hub & Spoke): бесплатно, без гейтов и квот.
+        # Внешние краны — только fallback, если донора нет или не хватило.
+        if await self._donor_topup(network, address):
+            balance = await network.get_balance(address, refresh=True)
+            if balance >= goal:
+                return True
         if self.target_balance > 0:
             for _ in range(self.retries):
                 # Один проход по стратегиям на итерацию (retries=1), цикл по балансу
@@ -469,7 +636,10 @@ class Faucet:
                 balance = await network.get_balance(address, refresh=True)
                 if balance >= self.target_balance:
                     break
-            return balance >= self.min_balance
+            # Честный итог — по цели, а не по минимуму: частичный долив
+            # (0.006 при target 0.05) раньше считался успехом и дальше
+            # min_gas_for_action резал действия молча.
+            return balance >= self.target_balance
         # target_balance не задан — судим по min_balance. HTTP 200/201/202 НЕ
         # равен зачислению: кран отвечает успехом, но токены могут не прийти
         # (rate-limit, капча, заглушка). Истинный успех — свежий баланс >= min,

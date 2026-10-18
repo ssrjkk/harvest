@@ -264,6 +264,24 @@ class TestPoolControl(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(pool.cycle_count, 1)
         await db.close()
 
+    async def test_run_forever_max_cycles_bounds_loop(self):
+        from unittest.mock import AsyncMock, patch
+
+        wallets = [{"address": f"0x{i + 1:040x}"} for i in range(3)]
+        db, pool = await self._pool_db()
+        try:
+            pool.config["farming"]["delay_between_cycles"] = [0.01, 0.01]
+            run_once_mock = AsyncMock(return_value=[])
+            with patch.object(db, "get_all_wallets", new=AsyncMock(return_value=wallets)), patch.object(
+                pool, "run_once", new=run_once_mock
+            ):
+                await asyncio.wait_for(pool.run_forever(asyncio.Event(), max_cycles=2), timeout=10)
+            self.assertEqual(pool.cycle_count, 2)
+            self.assertEqual(run_once_mock.await_count, 2)
+        finally:
+            await pool.close()
+            await db.close()
+
 
 if __name__ == "__main__":
     unittest.main()

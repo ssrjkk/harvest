@@ -303,6 +303,8 @@ async def init_system(_: None = Depends(_verify_request_auth)):
             return {"ok": True, "message": "Already initialized"}
 
         config = load_config()
+        if config is None:
+            return {"ok": False, "message": "Config not found or invalid"}
         _state["config"] = config
         await enforce_license_async(config)
 
@@ -320,11 +322,10 @@ async def init_system(_: None = Depends(_verify_request_auth)):
         gm.set_db(conn)
         _state["group_manager"] = gm
 
-        network = NetworkManager(config)
-        await network.init()
+        network = NetworkManager(config, db)
         _state["network"] = network
 
-        _state["wallet_manager"] = WalletManager(config, db, network)
+        _state["wallet_manager"] = WalletManager(config, db)
 
         if config.get("faucet", {}).get("enabled", False):
             _state["faucet"] = Faucet(config)

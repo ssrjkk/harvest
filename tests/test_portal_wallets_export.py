@@ -43,20 +43,28 @@ def _make_cfg(
     allow_insecure: bool = True,
     cookie_secure: bool = False,
 ) -> PortalConfig:
-    prev = {k: os.environ.get(k) for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY")}
+    prev = {
+        k: os.environ.get(k)
+        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID",
+                  "GOOGLE_CLIENT_SECRET")
+    }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
-    cfg = PortalConfig()
-    cfg.public_base_url = public_base_url
-    cfg.allow_insecure_password = allow_insecure
-    cfg.cookie_secure = cookie_secure
-    cfg.password_login = True
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.public_base_url = public_base_url
+        cfg.allow_insecure_password = allow_insecure
+        cfg.cookie_secure = cookie_secure
+        cfg.password_login = True
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class _ExportDaemon:
@@ -204,13 +212,15 @@ class TestWalletsExportApi(PortalExportTestBase, unittest.IsolatedAsyncioTestCas
     async def test_export_requires_auth(self):
         client, _app = await self._client()
         async with client:
-            self.assertEqual((await client.get("/api/wallets/export")).status, 401)
+            self.assertEqual((await client.post("/api/wallets/export")).status, 401)
+            # GET-метод удалён: только POST (защита от drive-by download).
+            self.assertEqual((await client.get("/api/wallets/export")).status, 405)
 
     async def test_export_csv_over_http_blocked_by_default(self):
         client, _app = await self._client(allow_insecure=False)
         async with client:
             _authed(client, _app)
-            resp = await client.get("/api/wallets/export?format=csv")
+            resp = await client.post("/api/wallets/export?format=csv")
             self.assertEqual(resp.status, 403)
 
     async def test_export_csv_over_https_allowed(self):
@@ -219,7 +229,7 @@ class TestWalletsExportApi(PortalExportTestBase, unittest.IsolatedAsyncioTestCas
             _authed(client, _app)
             cfg = _app[api.KEY_CFG]
             cfg.trust_proxy = True
-            resp = await client.get("/api/wallets/export?format=csv", headers={"X-Forwarded-Proto": "https"})
+            resp = await client.post("/api/wallets/export?format=csv", headers={"X-Forwarded-Proto": "https"})
             self.assertEqual(resp.status, 200)
             self.assertEqual(resp.headers["Content-Type"], "text/csv; charset=utf-8")
             self.assertIn("attachment", resp.headers["Content-Disposition"])
@@ -231,7 +241,7 @@ class TestWalletsExportApi(PortalExportTestBase, unittest.IsolatedAsyncioTestCas
         client, _app = await self._client()
         async with client:
             _authed(client, _app)
-            resp = await client.get("/api/wallets/export?format=json")
+            resp = await client.post("/api/wallets/export?format=json")
             self.assertEqual(resp.status, 200)
             self.assertTrue(resp.headers["Content-Type"].startswith("application/json"))
             data = await resp.json()
@@ -241,14 +251,14 @@ class TestWalletsExportApi(PortalExportTestBase, unittest.IsolatedAsyncioTestCas
         client, _app = await self._client()
         async with client:
             _authed(client, _app)
-            resp = await client.get("/api/wallets/export?format=xml")
+            resp = await client.post("/api/wallets/export?format=xml")
             self.assertEqual(resp.status, 400)
 
     async def test_export_without_db_returns_503(self):
         client, _app = await self._client(daemon=_RaiseDaemon())
         async with client:
             _authed(client, _app)
-            resp = await client.get("/api/wallets/export?format=csv")
+            resp = await client.post("/api/wallets/export?format=csv")
             self.assertEqual(resp.status, 503)
 
 
@@ -327,17 +337,25 @@ class TestBotDispatchExport(unittest.IsolatedAsyncioTestCase):
         bt._flood_last.clear()
 
     def _cfg(self):
-        prev = {k: os.environ.get(k) for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY")}
+        prev = {
+            k: os.environ.get(k)
+            for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID",
+                      "GOOGLE_CLIENT_SECRET")
+        }
         os.environ["PORTAL_SECRET"] = "s" * 32
         os.environ["FARMER_MASTER_KEY"] = "k" * 64
-        cfg = PortalConfig()
-        cfg.telegram_allow_ids = [123]
-        for k, v in prev.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
-                os.environ[k] = v
-        return cfg
+        for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+            os.environ.pop(_k, None)
+        try:
+            cfg = PortalConfig()
+            cfg.telegram_allow_ids = [123]
+            return cfg
+        finally:
+            for k, v in prev.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
 
     def _dispatch(self):
         try:

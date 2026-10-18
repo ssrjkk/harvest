@@ -35,13 +35,21 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def main() -> int:
     for p in (HTML, JS, CSS, os.path.join(DOCS, ".nojekyll"), os.path.join(DOCS, "robots.txt"),
-              os.path.join(DOCS, "assets", "og.png")):
+              os.path.join(DOCS, "assets", "og.png"),
+              os.path.join(DOCS, "manifest.webmanifest"), os.path.join(DOCS, "sw.js"),
+              os.path.join(DOCS, "offline.html")):
         check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
     html = open(HTML, encoding="utf-8").read()
     js = open(JS, encoding="utf-8").read()
 
     r = subprocess.run(["node", "--check", JS], capture_output=True, text=True)
     check("node --check site.js", r.returncode == 0, (r.stderr or "")[-200:])
+    sw = os.path.join(DOCS, "sw.js")
+    if os.path.exists(sw):
+        r = subprocess.run(["node", "--check", sw], capture_output=True, text=True)
+        check("node --check sw.js", r.returncode == 0, (r.stderr or "")[-200:])
+    check("pwa manifest linked", 'rel="manifest"' in html)
+    check("pwa sw registered", "serviceWorker" in html)
 
     # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
     # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).
@@ -64,8 +72,14 @@ def main() -> int:
     ids = re.findall(r'id="([A-Za-z0-9_-]+)"', html)
     check("no duplicate ids", len(ids) == len(set(ids)))
     used = set(re.findall(r'\$\("#([A-Za-z0-9_-]+)"\)', js))
-    missing = sorted(u for u in used if u not in set(ids))
+    used |= set(re.findall(r'getElementById\("([A-Za-z0-9_-]+)"\)', html + js))
+    # Динамические id из innerHTML (retry-кнопки) — не обязаны быть в статике.
+    dynamic = {"liveRetry"}
+    missing = sorted(u for u in used if u not in set(ids) and u not in dynamic)
     check("all JS id-refs exist in HTML", not missing, str(missing))
+    # Wizard-шаги w1..w3/st1..st3 обязаны существовать статически.
+    for wid in ("w1", "w2", "w3", "st1", "st2", "st3"):
+        check(f"wizard step #{wid}", f'id="{wid}"' in html)
 
     m = re.search(r"const EN=\{(.*?)\n\};", js, re.S)
     en_keys = set(re.findall(r"(?:[{,]\s*)([a-z][a-z0-9_]*):", "{" + m.group(1))) if m else set()
@@ -119,8 +133,11 @@ def main() -> int:
 
     # Бургер, статусы, сетка: обязательные id/классы на месте.
     for el in ["navToggle", "mainNav", "fieldGrid", "fieldEmpty", "fieldLegend",
-               "fieldMore", "lastCycle", "cellTip"]:
+               "fieldMore", "lastCycle", "cellTip", "fxFilters", "fxZoom", "fxQ",
+               "fxInspector", "cfgPreset", "cmdPreset"]:
         check(f"html has #{el}", f'id="{el}"' in html)
+    for sec in ['id="faucet"', 'id="bot"', 'id="specs"']:
+        check(f"html has section {sec}", sec in html)
     css = open(os.path.join(DOCS, "assets", "site.css"), encoding="utf-8").read()
     for cls in [".field-grid", ".cell.c-o", ".cell-tip", ".dot.mut",
                 ".termline.live", ".is-loading", ".nav-toggle", "nav.main.open"]:

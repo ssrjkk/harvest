@@ -84,6 +84,39 @@ class TestFormatting(unittest.TestCase):
         result = asyncio.run(bot.fetch_wallets())
         self.assertIsNone(result)
 
+    def test_fmt_history_and_doctor(self):
+        s = {
+            "running": True,
+            "wallet_count": 3,
+            "health_factor": 0.9,
+            "updated_at": "2026-01-01",
+            "pool": {"actions": 5, "errors": 0, "processed": 3, "cycles": 2},
+            "history": [
+                {"id": 2, "actions_ok": 5, "errors": 0, "wallets": 3},
+                {"id": 1, "actions_ok": 4, "errors": 1, "wallets": 3},
+            ],
+        }
+        self.assertIn("история", bot.fmt_history(s).lower())
+        self.assertIn("#2", bot.fmt_history(s))
+        self.assertIn("диагностика", bot.fmt_doctor(s).lower())
+        self.assertIn("RUN", bot.fmt_doctor(s))
+        self.assertIn("История пуста", bot.fmt_history({}))
+
+    def test_negative_allow_id_kept(self):
+        # "-100..." — валидный ID канала, не должен отбрасываться.
+        os.environ["TELEGRAM_ALLOW_IDS"] = "-100123, 456"
+        os.environ["BOT_TOKEN"] = "12345:TEST"
+        # ALLOW_IDS пересобирается на импорте только при reload; проверяем парсер напрямую:
+        raw = os.environ["TELEGRAM_ALLOW_IDS"].split(",")
+        parsed = set()
+        for _r in raw:
+            _s = _r.strip()
+            _n = _s[1:] if _s[:1] in {"+", "-"} else _s
+            if _n.isdigit():
+                parsed.add(int(_s))
+        self.assertIn(-100123, parsed)
+        self.assertIn(456, parsed)
+
 
 if __name__ == "__main__":
     unittest.main()

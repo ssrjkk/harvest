@@ -79,6 +79,11 @@ hiddenimports = [
     'yaml',
     'eth_keys',
     'rlp',
+    # Локальная GUI (cli/screens/gui.py -> core.web_gui, lazy import):
+    # без них кнопка G в exe падает на импорте.
+    'fastapi',
+    'uvicorn',
+    'pydantic',
 ]
 
 # Исключаем тяжёлые/ненужные модули

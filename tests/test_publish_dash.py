@@ -58,7 +58,7 @@ class TestPublishDash(unittest.TestCase):
             _make_db(db, wallets=5)
             state = self._collect(db)
         wc = state["wallet_cells"]
-        self.assertEqual(wc["v"], 1)
+        self.assertEqual(wc["v"], 2)
         self.assertEqual(wc["n"], 5)
         self.assertEqual(len(wc["cells"]), 5)
         self.assertTrue(set(wc["cells"]) <= set("iwoer"), wc["cells"])
@@ -127,6 +127,69 @@ class TestPublishDash(unittest.TestCase):
             self.assertIn("explorer", net)
             self.assertNotIn("config", net)
             self.assertNotIn("db", net)
+
+    def test_collect_details_no_secrets(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=5)
+            state = self._collect(db)
+        wc = state["wallet_cells"]
+        self.assertEqual(wc["v"], 2)
+        self.assertEqual(len(wc["details"]), 5)
+        blob = json.dumps(state)
+        self.assertNotIn("0x0000", blob)
+        self.assertNotIn("enc:pk", blob)
+        d0 = wc["details"][0]
+        self.assertEqual(d0, {"n": 1, "a": 0, "t": 0, "c": 1, "e": ""})
+
+    def test_details_scrub_addresses(self):
+        import publish_dash as _pd
+
+        self.assertEqual(_pd._scrub_addrs("to=0x" + "ab" * 20 + ", amount=0.1"), "to=0x…, amount=0.1")
+        self.assertEqual(_pd._scrub_addrs(""), "")
+        self.assertEqual(_pd._scrub_addrs("plain error"), "plain error")
+
+    def test_collect_details_last_error_scrubbed(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=2)
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE actions_log (id INTEGER PRIMARY KEY AUTOINCREMENT, address TEXT, "
+                "action_type TEXT, tx_hash TEXT, success INTEGER, timestamp TEXT, details TEXT)"
+            )
+            addr = "0x%s" % ("11" * 20)
+            con.execute(
+                "INSERT INTO actions_log (address, action_type, success, details) VALUES (?, ?, ?, ?)",
+                (f"0x{'00' * 20}", "transfer", 0, "to=%s, amount=0.5" % addr),
+            )
+            con.commit()
+            con.close()
+            state = self._collect(db)
+        d = state["wallet_cells"]["details"][0]
+        self.assertIn("0x…", d["e"])
+        self.assertNotIn(addr, json.dumps(state))
+
+
+class TestSyncMotherduck(unittest.TestCase):
+    def test_no_token_skips(self):
+        from tools import sync_motherduck as sm
+
+        old = os.environ.pop("MOTHERDUCK_TOKEN", None)
+        try:
+            res = asyncio.run(sm.sync(db_path="whatever.db", token=""))
+            self.assertFalse(res["ok"])
+            self.assertIn("MOTHERDUCK_TOKEN", res["reason"])
+        finally:
+            if old is not None:
+                os.environ["MOTHERDUCK_TOKEN"] = old
+
+    def test_missing_db(self):
+        from tools import sync_motherduck as sm
+
+        res = asyncio.run(sm.sync(db_path="no-such.db", token="x" * 8))
+        self.assertFalse(res["ok"])
+        self.assertIn("не найдена", res["reason"])
 
 
 if __name__ == "__main__":

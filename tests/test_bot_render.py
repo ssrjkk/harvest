@@ -131,6 +131,12 @@ class TestTokenRedaction(unittest.TestCase):
         self.assertNotIn("ABC-DEF1234", clean)
         self.assertIn("bot<TOKEN>", clean)
 
+    def test_bare_token_redacted(self):
+        # Голый вид из env-дампов (без префикса bot) — тоже чистим.
+        evil = "TELEGRAM_BOT_TOKEN=123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11"
+        clean = R.redact_token(evil)
+        self.assertNotIn("ABC-DEF1234", clean)
+
     def test_traceback_text(self):
         tb = 'File "x.py", line 1\nTelegramAPIError: https://api.telegram.org/bot999:secret-token_here/x'
         self.assertNotIn("secret-token_here", R.redact_token(tb))

@@ -113,6 +113,17 @@ class Farmer:
                         logger.warning(f"{address[:10]} не удалось пополнить, пропуск")
                         return 0
 
+        # Gate от RPC-шторма: с нулевым балансом ни одна транзакция не пройдёт
+        # (have 0 want ...), даже с force_farm — пропускаем цикл, а не жжём квоту.
+        if force:
+            try:
+                _bal_now = await self.network.get_balance(address)
+            except Exception:  # noqa: BLE001
+                _bal_now = balance
+            if _bal_now <= 0:
+                logger.warning(f"{address[:10]} баланс 0, force_farm — пропуск (нет газа)")
+                return 0
+
         num_actions = self._actions_count()
         min_d, max_d = self._action_delay_bounds()
         success_count = 0
@@ -130,20 +141,33 @@ class Farmer:
                 if bal < min_gas:
                     logger.warning(f"{address[:10]} баланс {bal:.6f} < {min_gas}, скип действия")
                     break
-            elif force and not _force_balance_logged:
-                logger.debug(f"{address[:10]} force_farm — баланс-чек пропущен")
-                _force_balance_logged = True
+            elif force:
+                # force_farm пропускает порог min_gas, но не нулевой баланс:
+                # одна проверка на цикл, дальше — без RPC на каждую итерацию.
+                if not _force_balance_logged:
+                    logger.debug(f"{address[:10]} force_farm — баланс-чек пропущен (кроме 0)")
+                    _force_balance_logged = True
 
+            tf = getattr(self.network, "transport_failures", None)
+            tf_before = tf() if callable(tf) else 0
             if self.profile.neutral:
                 ok = await self.executor.execute_action(self.wallet, self.all_addresses)
             else:
                 ok = await self.executor.execute_action(self.wallet, self.all_addresses, profile=self.profile)
             if not ok and self.advanced.get("auto_replay", True):
-                logger.debug(f"{address[:10]} auto-replay: retrying with RPC rotation")
-                try:
-                    await self.network._switch_rpc()
-                except Exception:
-                    pass
+                # Ротация RPC — только при транспортной проблеме: breaker считает
+                # лишь retryable-ошибки сети, логический фейл (revert/конфиг)
+                # ротацией не лечится — повторяем на той же ноде с новыми
+                # случайными параметрами действия.
+                tf_after = tf() if callable(tf) else tf_before
+                if tf_after > tf_before:
+                    logger.debug(f"{address[:10]} auto-replay: transport trouble, retrying with RPC rotation")
+                    try:
+                        await self.network._switch_rpc()
+                    except Exception:
+                        pass
+                else:
+                    logger.debug(f"{address[:10]} auto-replay: logic failure, retrying on same node")
                 if self.profile.neutral:
                     ok = await self.executor.execute_action(self.wallet, self.all_addresses)
                 else:

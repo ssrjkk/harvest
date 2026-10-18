@@ -78,7 +78,9 @@ NETWORK_REGISTRY: tuple[NetworkCandidate, ...] = (
                 "url": "https://mcp.chainstack.com/mcp",
                 "network_param": "robinhood",
             },
-            {"type": "direct", "url": "https://faucet.testnet.chain.robinhood.com/claim"},
+            # Мёртвый direct-кран убран: эндпоинт отвечает 404/429 либо
+            # требует 0.08 ETH mainnet. Массовое пополнение — через
+            # donor-стратегию (см. config.example.yaml), точечное — chainstack.
         ),
         notes="Rewards-программа VibeVibe",
     ),
@@ -208,31 +210,46 @@ class DiscoverReport:
 # ---------------------------------------------------------------------------
 
 
-async def _rpc(method_name: str, url: str, params: list | None = None) -> Any:
-    """Лёгкий JSON-RPC запрос (без key, без web3-обвязки)."""
+async def _rpc(
+    method_name: str,
+    url: str,
+    params: list | None = None,
+    session: aiohttp.ClientSession | None = None,
+) -> Any:
+    """Лёгкий JSON-RPC запрос (без key, без web3-обвязки).
+
+    session передаёт вызывающий (пул на серию проб); без неё — короткая
+    одноразовая сессия для одиночных вызовов.
+    """
     payload = {"jsonrpc": "2.0", "id": 987, "method": method_name, "params": params or []}
     timeout = aiohttp.ClientTimeout(total=_PROBE_TIMEOUT)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(url, json=payload, headers={"Content-Type": "application/json"}) as resp:
-            if resp.status != 200:
-                raise RuntimeError(f"HTTP {resp.status}")
-            data = await resp.json(content_type=None)
+    if session is None:
+        async with aiohttp.ClientSession(timeout=timeout) as own:
+            return await _rpc(method_name, url, params, own)
+    async with session.post(url, json=payload, headers={"Content-Type": "application/json"}) as resp:
+        if resp.status != 200:
+            raise RuntimeError(f"HTTP {resp.status}")
+        data = await resp.json(content_type=None)
     if data.get("error") is not None:
         raise RuntimeError(f"RPC error: {data['error']}")
     return data.get("result")
 
 
-async def rpc_probe(url: str, expected_chain_id: int | None = None) -> ProbeResult | None:
+async def rpc_probe(
+    url: str,
+    expected_chain_id: int | None = None,
+    session: aiohttp.ClientSession | None = None,
+) -> ProbeResult | None:
     """Проба одного RPC. Возвращает None, если эндпоинт мёртв/не JSON-RPC."""
     t0 = time.monotonic()
     try:
-        chain_id = int(await _rpc("eth_chainId", url), 16)
+        chain_id = int(await _rpc("eth_chainId", url, session=session), 16)
         if expected_chain_id is not None and chain_id != expected_chain_id:
             return None
-        block = int(await _rpc("eth_blockNumber", url), 16)
+        block = int(await _rpc("eth_blockNumber", url, session=session), 16)
         gas_price: int | None = None
         try:
-            gas_price = int(await _rpc("eth_gasPrice", url), 16)
+            gas_price = int(await _rpc("eth_gasPrice", url, session=session), 16)
         except Exception:
             pass  # gasPrice опционален (не все L2 его отдают)
         return ProbeResult(
@@ -269,13 +286,17 @@ async def scan_networks(
 ) -> list[ProbeResult]:
     """Проба всех RPC реестра параллельно. Живые — отсортированы по latency."""
     sem = asyncio.Semaphore(max(1, concurrency))
+    timeout = aiohttp.ClientTimeout(total=_PROBE_TIMEOUT)
 
-    async def _guarded(url: str) -> ProbeResult | None:
+    async def _guarded(
+        url: str, expected: int | None, session: aiohttp.ClientSession
+    ) -> ProbeResult | None:
         async with sem:
-            return await rpc_probe(url)
+            return await rpc_probe(url, expected, session)
 
-    jobs = [url for c in registry for url in c.rpc_urls]
-    results = await asyncio.gather(*(_guarded(u) for u in jobs))
+    jobs = [(url, c.chain_id) for c in registry for url in c.rpc_urls]
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        results = await asyncio.gather(*(_guarded(u, e, session) for u, e in jobs))
     live = [r for r in results if r is not None and r.chain_ok]
     live.sort(key=lambda r: r.latency_ms)
     return live
@@ -325,18 +346,20 @@ async def hunt_contracts(
     top: int = HUNT_TOP,
 ) -> list[ContractHint]:
     """Сканирование последних N блоков и ТОП вызываемых контрактов."""
-    latest = int(await _rpc("eth_blockNumber", rpc_url), 16)
+    timeout = aiohttp.ClientTimeout(total=_PROBE_TIMEOUT)
     sem = asyncio.Semaphore(max(1, min(_MAX_CONCURRENCY, max_blocks)))
 
-    async def _block(number: int) -> dict | None:
+    async def _block(number: int, session: aiohttp.ClientSession) -> dict | None:
         async with sem:
             try:
-                return await _rpc("eth_getBlockByNumber", rpc_url, [hex(number), True])
+                return await _rpc("eth_getBlockByNumber", rpc_url, [hex(number), True], session)
             except Exception:
                 return None
 
-    window = range(max(0, latest - max_blocks), latest + 1)
-    blocks = await asyncio.gather(*(_block(n) for n in window))
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        latest = int(await _rpc("eth_blockNumber", rpc_url, session=session), 16)
+        window = range(max(0, latest - max_blocks), latest + 1)
+        blocks = await asyncio.gather(*(_block(n, session) for n in window))
     return aggregate_contracts(list(blocks))[:top]
 
 

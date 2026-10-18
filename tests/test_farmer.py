@@ -139,6 +139,12 @@ class TestRunCycleSuccess(unittest.TestCase):
         self.assertEqual(res, 3)
         self.assertEqual(executor.calls, 3)
 
+    def test_force_farm_zero_balance_skips(self):
+        # Gate от шторма have 0: даже force не фармит без газа.
+        res, executor = asyncio_run(lambda: self._run(balance=0.0, force_farm=True))
+        self.assertEqual(res, 0)
+        self.assertEqual(executor.calls, 0)
+
     def test_consecutive_failures_break_early(self):
         async def main():
             cfg = {
@@ -177,9 +183,13 @@ class FakeNetworkWithSwitch:
     def __init__(self, balance: float = 1.0):
         self.balance = balance
         self.switch_calls = 0
+        self.transport_errors = 0
 
     async def get_balance(self, address, refresh=False):
         return self.balance
+
+    def transport_failures(self) -> int:
+        return self.transport_errors
 
     async def _switch_rpc(self):
         self.switch_calls += 1
@@ -187,13 +197,19 @@ class FakeNetworkWithSwitch:
 
 class FakeExecutorVariable:
     """Executor that fails first N calls, then succeeds."""
-    def __init__(self, fail_count: int = 0):
+    def __init__(self, fail_count: int = 0, transport: bool = False, network=None):
         self.fail_count = fail_count
         self.calls = 0
+        # transport=True: failing calls bump the network breaker counter,
+        # simulating retryable RPC trouble (vs logic failures like revert).
+        self.transport = transport
+        self.network = network
 
     async def execute_action(self, wallet, all_addresses, profile=None):
         self.calls += 1
         if self.calls <= self.fail_count:
+            if self.transport and self.network is not None:
+                self.network.transport_errors += 1
             return False
         return True
 
@@ -217,7 +233,7 @@ class TestAutoReplay(unittest.TestCase):
             wallet = {"address": "0x" + "4" * 40}
             network = FakeNetworkWithSwitch(1.0)
             faucet = FakeFaucet(min_balance=1.0)
-            executor = FakeExecutorVariable(fail_count=1)
+            executor = FakeExecutorVariable(fail_count=1, transport=True, network=network)
             farmer = Farmer(
                 wallet,
                 cfg,
@@ -230,6 +246,42 @@ class TestAutoReplay(unittest.TestCase):
             self.assertEqual(res, 1)
             self.assertEqual(executor.calls, 2)
             self.assertEqual(network.switch_calls, 1)
+
+        asyncio_run(main)
+
+    def test_auto_replay_logic_failure_no_rotation(self):
+        # Логический фейл (revert/конфиг, breaker не вырос): повторяем на той
+        # же ноде, RPC не дёргаем.
+        async def main():
+            cfg = {
+                "farming": {
+                    "actions_per_cycle": [1, 1],
+                    "delay_between_actions": 0,
+                    "skip_cycle_probability": 0.0,
+                },
+                "advanced": {
+                    "force_farm": False,
+                    "max_consecutive_failures": 5,
+                    "check_balance_before_action": False,
+                    "auto_replay": True,
+                },
+            }
+            wallet = {"address": "0x" + "7" * 40}
+            network = FakeNetworkWithSwitch(1.0)
+            faucet = FakeFaucet(min_balance=1.0)
+            executor = FakeExecutorVariable(fail_count=1)
+            farmer = Farmer(
+                wallet,
+                cfg,
+                cast(NetworkManager, network),
+                cast(ActionExecutor, executor),
+                cast(Faucet, faucet),
+                [wallet["address"]],
+            )
+            res = await farmer.run_cycle()
+            self.assertEqual(res, 1)
+            self.assertEqual(executor.calls, 2)
+            self.assertEqual(network.switch_calls, 0)
 
         asyncio_run(main)
 

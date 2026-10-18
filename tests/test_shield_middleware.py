@@ -128,6 +128,24 @@ class TestMiddleware(unittest.IsolatedAsyncioTestCase):
             resp = await mw(Req(method="POST", path="/api/x", app={"shield": sh}), handler)
             self.assertEqual(resp.status, 200)
 
+    async def test_client_ip_spoofing_blocked_without_trust(self):
+        from portal.shield.middleware import _client_ip
+
+        # Без trust_proxy заголовок игнорируется — IP из remote.
+        req = Req(ip="1.2.3.4", headers={"X-Forwarded-For": "9.9.9.9"}, app={})
+        self.assertEqual(_client_ip(req), "1.2.3.4")
+
+    async def test_client_ip_trusted_with_proxy_flag(self):
+        from portal.shield.middleware import _client_ip
+
+        class _Cfg:
+            trust_proxy = True
+
+        # middleware ищет trust_proxy в любом значении app.
+        req = Req(ip="1.2.3.4", headers={"X-Forwarded-For": "9.9.9.9, 8.8.8.8"},
+                  app={"cfg": _Cfg()})
+        self.assertEqual(_client_ip(req), "9.9.9.9")
+
 
 class TestIdempotentDecorator(unittest.IsolatedAsyncioTestCase):
     async def test_replay_returns_identical_bytes(self):

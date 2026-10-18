@@ -381,10 +381,13 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 - **Ретраи**: `run_retry(fn, *args)` — `_RPC_RETRIES = 3` с классификацией
   `_is_retryable_error` (`_RETRY_HINTS`/`_NEVER_RETRY_HINTS` по тексту ошибки);
   между попытками `_switch_rpc()`; провал пишется в EMA-статистику ноды.
-- **Circuit breaker**: `_CircuitBreaker(failure_threshold=5,
-  recovery_timeout=30)` — OPEN блокирует вызовы до таймаута (metrics в
-  `diagnostics()`); `reset()` обнуляет окно ошибок — вызывается при
-  `_switch_to`, чтобы счётчик ошибок старого эндпоинта не блокировал свежий.
+- **Circuit breaker — на ноду**: `_breakers: dict[url, _CircuitBreaker]` с
+  ленивым созданием (`_breaker()`); ошибки ноды A больше не блокируют
+  здоровую ноду B — у каждой своё окно (`failure_threshold=5`,
+  `recovery_timeout=30`). `reset()` при `_switch_to` не нужен и убран
+  (состояние старой ноды честно досиживает таймаут). Для совместимости
+  `_circuit_breaker` — property на breaker активной ноды;
+  `transport_failures()` отдаёт счётчик текущего окна (нужен auto-replay).
   `diagnostics()` отдаёт все URL redacted (credentials/query-token наружу
   не уходят).
 - **Rate-limiter**: `_RPCRateLimiter(rate=50)` — token-bucket; адаптивная
@@ -490,11 +493,14 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 - `_actions_count()` — из коридора профиля (`actions_lo/width`),
   с `burst_prob/burst_mult` («всплеск» в 1.6 раза больше действий);
 - `_action_delay_bounds()` — `delay_between_actions` × `delay_actions_scale`;
-- `run_cycle() -> int` — проверка баланса (`force_farm` при нуле),
+- `run_cycle() -> int` — проверка баланса (`force_farm` при нуле — пропуск,
+  иначе RPC-шторм `have 0`),
   кран при необходимости (`ensure_balance`, профильный `faucet_skip_prob`),
   затем N действий через `executor.execute_action` (передача, контракт);
-  кап подряд идущих провалов (`max_consecutive_failures`); возвращает число
-  выполненных действий.
+  кап подряд идущих провалов (`max_consecutive_failures`); **auto-replay**:
+  повтор только при росте `network.transport_failures()` — с ротацией RPC;
+  логический фейл (revert/конфиг) повторяется на той же ноде без ротации;
+  возвращает число выполненных действий.
 
 ### 3.16. `actions.py` — исполнение действий
 
@@ -543,20 +549,38 @@ daily_window_strength, burst_prob/burst_mult, start_delay, neutral).
 
 ### 3.19. `faucet.py` — кран
 
-`Faucet(config)`: `strategies` — список dict (`type: chainstack|direct|web`,
-`url`, `network_param`); `_REQUEST_TIMEOUT = 8`.
+`Faucet(config)`: `strategies` — список dict (`type: chainstack|direct|web|donor`,
+`url`, `network_param`); `_REQUEST_TIMEOUT = 12`.
 - `validate() -> int` — pre-flight: сколько стратегий живы. Для `chainstack` —
   реальный MCP handshake (`initialize` → `mcp-session-id` → кэш на пачку).
+  Для `donor` — проверка ключа без сети (трансфер пойдёт через `ensure_balance`).
   Для остальных — HTTP-проба (404/410 = мертва, остальные статусы = жива).
+  Разбор — в `self._last_probe` (`[{type, url(redacted), alive, reason}]`),
+  копия — `probe_report()` (auto.py печатает, `/faucet` показывает).
+  Ноль живых — `logger.error` с причинами (авария снабжения, не штатно).
+  Без `CHAINSTACK_API_KEY` в окружении chainstack-стратегия исключается
+  с явной причиной «экспортируйте ключ и перезапустите задачу».
 - `_chainstack_request` — Chainstack MCP: `tools/call request_testnet_funds`
   с `Authorization: Bearer <CHAINSTACK_API_KEY>` (env, не config). Ключ берётся
   из `CHAINSTACK_API_KEY` (https://console.chainstack.com/user/settings/api-keys).
   Без ключа стратегия исключается на pre-flight с предупреждением.
+- Spam-защита Chainstack (`0.08 ETH on mainnet`): отказ с таким текстом
+  детерминирован для адреса — ретраи по нему пропускаются (`_SpamGateError`),
+  gated-стратегия исключается из попыток, остальные пробуются (fallback).
+  В лог пишется подсказка про авто-клейм https://console.chainstack.com/faucet.
+- `donor` (Hub & Spoke): мастер-кошелёк раздаёт тестовый ETH нативным
+  трансфером — без mainnet-гейтов и квот. Ключ только через
+  `private_key_env` (по умолчанию `FAUCET_DONOR_KEY`), сам донор пополняется
+  авто-клеймом консоли (Saved Wallets + recurring auto-claim). В
+  `ensure_balance` донор идёт первым, внешние краны — fallback.
 - `request_tokens(address, retries)` — `_pick_proxy` (из `proxy.list`,
   `rotate: sequential|random`), `aiohttp` + random `delay_between_requests`,
   retries, `fake-useragent`;
-- `ensure_balance(network, address)` — добрать до `target_balance`
-  (не ниже `min_balance`);
+- `ensure_balance(network, address)` — честно до `target_balance`
+  (частичный долив ниже target — неуспех, а не «по min сойдёт»);
+- `concurrent_batch(workers)`, `request_batch(addresses, batch, network,
+  progress, pause, max_concurrent)` — семфорный массовый запрос, возвращает
+  `(ok, failed)`; `close()` — закрытие сессии и кэша MCP-сессий.
 - `concurrent_batch(workers)`, `request_batch(addresses, batch, network,
   progress, pause, max_concurrent)` — семфорный массовый запрос, возвращает
   `(ok, failed)`; `close()` — закрытие сессии и кэша MCP-сессий.
@@ -677,10 +701,23 @@ Rate-limit:
 Эндпоинты: `/`, `/login`, `/healthz`, `/api/me`, `/api/login/password`
 (только HTTPS), `/api/logout`, `/auth/google`, `/auth/google/callback`,
 `/api/links`, `/api/stats`, `/api/farm/{start|stop|pause|resume}`
-(stop не блокирует HTTP — задача в фоне), `/api/cycle-history`,
-`/api/top-wallets`, `/api/wallets/export?format=csv|json` (скачивание всех
-кошельков с ключами; auth + HTTPS), `/api/tg/init` (только POST, лимит 16 КБ),
+(неизвестное действие — 400, stop не блокирует HTTP — задача в фоне),
+`/api/cycle-history`, `/api/top-wallets`, `POST /api/wallets/export`
+(только POST: GET-роут удалён — top-level навигация несла бы SameSite=Lax
+куку; скачивание всех кошельков с ключами; auth + HTTPS + no-store),
+`POST /api/ws/token` (короткий WS-тикет 60с в query; сессия — только cookie),
+`/ws` (в query — только ws-тикеты, сессионные/confirm отклоняются; кап
+проверяется до `prepare` — 503 без траты FD; revoke перепроверяется в цикле,
+logout кикает живой сокет), `/api/tg/init` (только POST, лимит 16 КБ,
+uniform-401: неверная подпись и чужой allowlist неразличимы),
+`/api/faucet` (разбор pre-flight для виджета), `POST /api/faucet/drip`
+(ручной долив фоном, single-flight 202/409),
 `/app/` (Mini App), `/api/miniapp/*` (см. 4.6), `/static`.
+Свободный ввод (имена групп, задачи планировщика) идёт через
+`shield.sanitize` (`_guard_check` → 400 при отказе): хранимые строки больше
+не держатся только на `esc()` потребителей. Неизвестные
+`kind`/`action` и мусор в `limit` — 400, а не молчаливый фолбэк;
+`create_wallets` без БД — 503.
 
 ### 4.6. `miniapp.py` + `/app/` — Mini App (этап 3)
 
@@ -698,8 +735,17 @@ Rate-limit:
   `POST /api/miniapp/export/request` (одноразовый confirm-токен, кулдаун
   1/мин общий с ботом, аудит без ключей, файл — тем же
   `bot_telegram.send_wallets_file` в чат с protect + удаление 60с;
-  шифрованный вариант — только через бота: пароль в WebView не вводим),
-  `GET/POST /api/miniapp/settings` (общие с ботом `bot_settings`).
+  форматы `enc-csv`/`enc-json` — тот же `_send_encrypted`, что у EncWiz
+  бота: пароль только в памяти, в логи не пишется, min 4 символа),
+  `GET/POST /api/miniapp/settings` (общие с ботом `bot_settings`),
+  `GET /api/miniapp/alerts` + `POST /api/miniapp/alerts` (мониторинг балансов:
+  threshold 0..100, `enabled: false`/`"off"` — выкл), `GET /api/miniapp/rpc`
+  (здоровье нод), `GET /api/miniapp/faucet` (pre-flight, rate 15с),
+  `POST /api/miniapp/network/switch` (`{slug}` → `switch_to`, 404 только
+  на неизвестную сеть). WS: `POST /api/ws/token` (тикет 60с в query;
+  долгоживущая сессия — только в cookie), сокет `/ws` подтверждает revoke
+  в цикле (logout кикает) и проверяет кап до `prepare` (503, без FD).
+  Портал: `GET /api/faucet` — тот же разбор для виджета «Кран» в RPC Health.
 - Клиент (`portal/static/miniapp/`): без фреймворков, те же vars из
   `/static/app.css`, сетка iwoer теми же глифами, опрос state 5с + ETag,
   пауза при hidden, MainButton/BackButton/haptic/safe-area с проверкой
@@ -865,9 +911,11 @@ transfer); реальные адреса подставляются операт
 
 ## 7. Тесты
 
-`tests/` — 54 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
-1335 тест, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
-через `HARVEST_LOAD=1`, в обычном CI пропускается):
+`tests/` — 62 файла (`pytest`, `pyproject.toml: testpaths=tests, -q`),
+1554 теста, все зелёные (+ `test_load_opt.py` — нагрузка, opt-in
+через `HARVEST_LOAD=1`, в обычном CI пропускается).
+CI-гейты: 100% portal (`--cov=portal --cov-fail-under=100`),
+100% core (`--cov=core --cov-fail-under=100`):
 
 - ядро: `test_workpool`, `test_pool`, `test_farmer`, `test_actions`,
   `test_behavior`, `test_faucet`, `test_batchwriter`, `test_wallet`,
@@ -896,7 +944,9 @@ transfer); реальные адреса подставляются операт
   `test_shield_risk`, `test_shield_sanitize`;
 - покрытийные сквозные ветки: `test_cov_ui_actions_config`,
   `test_cov_portal_config_main_bot`, `test_cov_portal_api_auth_farm`,
-  `test_cov_doctor_faucet_vibevibe`.
+  `test_cov_doctor_faucet_vibevibe`, `test_cov_100` (shield/мелкие модули),
+  `test_cov_100_api` (portal/api), `test_cov_100_bot` (bot_telegram/render),
+  `test_cov_100_farm` (farm/miniapp).
 
 Запуск: `python -m pytest tests`. Линтеры: `ruff check` (E,F,W,I,B,UP,
 игнор E501), `ruff format --check` (line-length 120), `flake8` (120,

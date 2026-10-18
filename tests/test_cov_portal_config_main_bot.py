@@ -63,24 +63,45 @@ def _env(**kwargs):
 def _make_cfg() -> PortalConfig:
     prev = {
         k: os.environ.get(k)
-        for k in ("PORTAL_SECRET", "FARMER_MASTER_KEY", "PORTAL_COOKIE_SECURE", "PORTAL_TRUST_PROXY")
+        for k in (
+            "PORTAL_SECRET",
+            "FARMER_MASTER_KEY",
+            "PORTAL_COOKIE_SECURE",
+            "PORTAL_TRUST_PROXY",
+            "TELEGRAM_BOT_TOKEN",
+            "TELEGRAM_ALLOW_IDS",
+            "GOOGLE_CLIENT_ID",
+            "GOOGLE_CLIENT_SECRET",
+            "GOOGLE_ALLOW_EMAILS",
+            "GOOGLE_REDIRECT_URI",
+            "PORTAL_OPEN_ACCESS",
+            "PORTAL_PASSWORD_LOGIN",
+            "PORTAL_ALLOW_PASSWORD_HTTP",
+            "PORTAL_BASE_URL",
+        )
     }
     os.environ["PORTAL_SECRET"] = "s" * 32
     os.environ["FARMER_MASTER_KEY"] = "k" * 64
     os.environ.pop("PORTAL_COOKIE_SECURE", None)
     os.environ.pop("PORTAL_TRUST_PROXY", None)
-    cfg = PortalConfig()
-    cfg.public_base_url = ""
-    cfg.allow_insecure_password = False
-    cfg.cookie_secure = False
-    cfg.password_login = True
-    cfg.trust_proxy = False
-    for k, v in prev.items():
-        if v is None:
-            os.environ.pop(k, None)
-        else:
-            os.environ[k] = v
-    return cfg
+    # Изолируемся от реальных credentials в shell: иначе to_public() может
+    # случайно увидеть telegram/google включёнными и тест станет флапающим.
+    for _k in ("TELEGRAM_BOT_TOKEN", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"):
+        os.environ.pop(_k, None)
+    try:
+        cfg = PortalConfig()
+        cfg.public_base_url = ""
+        cfg.allow_insecure_password = False
+        cfg.cookie_secure = False
+        cfg.password_login = True
+        cfg.trust_proxy = False
+        return cfg
+    finally:
+        for k, v in prev.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class _ImmediateEvent:
@@ -101,6 +122,18 @@ class TestConfig(unittest.TestCase):
             self.assertTrue(config._env_flag("PORTAL_TRUST_PROXY"))
         with _env(PORTAL_TRUST_PROXY="off"):
             self.assertFalse(config._env_flag("PORTAL_TRUST_PROXY"))
+
+    def test_negative_telegram_ids_kept(self):
+        with _env(TELEGRAM_ALLOW_IDS="-100123, 456, junk, +789"):
+            cfg = config.PortalConfig()
+            self.assertIn(-100123, cfg.telegram_allow_ids)
+            self.assertIn(456, cfg.telegram_allow_ids)
+            self.assertIn(789, cfg.telegram_allow_ids)
+
+    def test_empty_telegram_id_entries_skipped(self):
+        with _env(TELEGRAM_ALLOW_IDS="123,, ,456,"):
+            cfg = config.PortalConfig()
+            self.assertEqual(cfg.telegram_allow_ids, [123, 456])
 
     def test_resolve_secret_prefers_existing_file(self):
         content = "this-is-a-long-enough-secret-value"

@@ -38,16 +38,66 @@ document.addEventListener("mousemove", e => {
 });
 
 /* ── NAV ────────────────────────────────────────────────────── */
+function _closeSidebar() {
+  const sb = $("sidebar"), burger = $("navBurger"), scrim = $("sidebarScrim");
+  if (sb) sb.classList.remove("open");
+  if (burger) burger.setAttribute("aria-expanded", "false");
+  if (scrim) scrim.hidden = true;
+}
+function _openSidebar() {
+  const sb = $("sidebar"), burger = $("navBurger"), scrim = $("sidebarScrim");
+  if (sb) sb.classList.add("open");
+  if (burger) burger.setAttribute("aria-expanded", "true");
+  if (scrim) scrim.hidden = false;
+}
 function nav(name) {
-  document.querySelectorAll(".nav-item[data-nav]").forEach(el =>
-    el.classList.toggle("active", el.getAttribute("data-nav") === name));
+  document.querySelectorAll(".nav-item[data-nav]").forEach(el => {
+    const on = el.getAttribute("data-nav") === name;
+    el.classList.toggle("active", on);
+    if (el.tagName === "BUTTON") {
+      if (on) el.setAttribute("aria-current", "page");
+      else el.removeAttribute("aria-current");
+    }
+  });
   document.querySelectorAll(".section").forEach(s =>
     s.classList.toggle("active", s.id === "sec-" + name));
+  _closeSidebar();
   if (name === "scheduler") loadScheduler();
   if (name === "groups") loadGroups();
   if (name === "rpc") loadRpcHealth();
   if (name === "alerts") loadBalanceAlerts();
 }
+document.addEventListener("DOMContentLoaded", () => {
+  const burger = $("navBurger");
+  if (burger) burger.addEventListener("click", () => {
+    const sb = $("sidebar");
+    if (sb && sb.classList.contains("open")) _closeSidebar();
+    else _openSidebar();
+  });
+  const scrim = $("sidebarScrim");
+  if (scrim) scrim.addEventListener("click", _closeSidebar);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") _closeSidebar();
+  });
+  document.querySelectorAll(".nav-item[data-nav]").forEach(el => {
+    el.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        nav(el.getAttribute("data-nav"));
+      }
+    });
+    el.addEventListener("click", () => nav(el.getAttribute("data-nav")));
+  });
+  window.addEventListener("offline", () => {
+    const b = $("offlineBanner");
+    if (b) b.hidden = false;
+  });
+  window.addEventListener("online", () => {
+    const b = $("offlineBanner");
+    if (b) b.hidden = true;
+    tick();
+  });
+});
 
 /* ── NETWORKS ───────────────────────────────────────────────── */
 function netMeta(n) {
@@ -277,7 +327,10 @@ async function loadHistory() {
       </tr>`;
     }).join("");
     $("tHistory").innerHTML = rows || '<tr><td colspan="7" style="color:var(--text-3)">циклов пока нет</td></tr>';
-  } catch {}
+  } catch (e) {
+    if (e.message === "unauth") return;
+    $("tHistory").innerHTML = '<tr><td colspan="7" style="color:var(--text-3)">не удалось загрузить историю — <button class="btn btn-ghost btn-sm" onclick="loadHistory()">повторить</button></td></tr>';
+  }
 }
 
 async function loadWallets() {
@@ -290,11 +343,28 @@ async function loadWallets() {
         <td class="num">${fmt(w.actions)}</td>
       </tr>`
     ).join("");
-    $("tWallets").innerHTML = rows || '<tr><td colspan="3" style="color:var(--text-3)">кошельков нет — создайте кнопкой «Создать» ниже</td></tr>';
+    $("tWallets").innerHTML = rows || '<tr><td colspan="3" style="color:var(--text-3)">кошельков нет — создайте кнопкой «Создать» ниже (до 50 за раз — защита HTTP/RPC)</td></tr>';
     document.querySelectorAll(".copyable").forEach(el =>
-      el.addEventListener("click", () =>
-        navigator.clipboard?.writeText(el.getAttribute("data-addr")).then(() => toast("Адрес скопирован"))));
-  } catch {}
+      el.addEventListener("click", () => {
+        const addr = el.getAttribute("data-addr") || "";
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(addr).then(() => toast("Адрес скопирован"), () => toast("Не скопировалось"));
+        } else {
+          try {
+            const ta = document.createElement("textarea");
+            ta.value = addr;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            ta.remove();
+            toast("Адрес скопирован");
+          } catch { toast("Не скопировалось"); }
+        }
+      }));
+  } catch (e) {
+    if (e.message === "unauth") return;
+    $("tWallets").innerHTML = '<tr><td colspan="3" style="color:var(--text-3)">не удалось загрузить — <button class="btn btn-ghost btn-sm" onclick="loadWallets()">повторить</button></td></tr>';
+  }
 }
 
 /* ── TICK ───────────────────────────────────────────────────── */
@@ -308,7 +378,12 @@ async function loadMetrics() {
     drawCharts();
     $("chartLegend1").textContent = "окно " + actionsSeries.length;
     $("chartLegend2").textContent = "окно " + procSeries.length;
-  } catch {}
+  } catch (e) {
+    if (e.message === "unauth") return;
+    // Графики оставляем как есть — не затираем stale молча, легенда честно пуста.
+    $("chartLegend1").textContent = "нет данных";
+    $("chartLegend2").textContent = "нет данных";
+  }
 }
 
 function pushSample(pool) {
@@ -345,13 +420,27 @@ let ws = null;
 let pollTimer = 0;
 let wsBackoff = 1000;
 
-function setFeed(mode) {
+function setFeed(mode, detail) {
   const dot = $("feedDot"), txt = $("feedText");
   if (!dot || !txt) return;
   const live = mode === "live";
-  dot.className = "feed-dot " + (live ? "on" : "off");
-  txt.textContent = live ? "live" : "poll";
-  txt.title = live ? "Обновления по WebSocket" : "Обновления HTTP-опросом";
+  const retry = mode === "retry";
+  dot.className = "feed-dot " + (live ? "on" : retry ? "warn" : "off");
+  txt.textContent = live ? "live" : retry ? "retry" : "poll";
+  txt.title = live ? "Обновления по WebSocket"
+    : retry ? ("Переподключение…" + (detail ? " " + detail : ""))
+    : "Обновления HTTP-опросом";
+  const banner = $("offlineBanner");
+  if (banner && !live) {
+    // Полный офлайн показывает баннер; retry — только точку, без спама.
+    banner.hidden = !navigator.onLine ? false : true;
+    if (!navigator.onLine) {
+      const r = $("offlineRetry");
+      if (r) r.textContent = detail || "…";
+    }
+  } else if (banner && live) {
+    banner.hidden = true;
+  }
 }
 
 function startPolling() {
@@ -366,10 +455,20 @@ function stopPolling() {
   pollTimer = 0;
 }
 
-function connectLive() {
+async function connectLive() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  // Короткий тикет в query (60с): долгоживущая сессия живёт только в cookie
+  // и никогда не оседает в логах через URL.
+  let url = proto + "//" + location.host + "/ws";
   try {
-    ws = new WebSocket(proto + "//" + location.host + "/ws");
+    const r = await fetch("/api/ws/token", { method: "POST", credentials: "same-origin" });
+    if (r.ok) {
+      const b = await r.json().catch(() => ({}));
+      if (b.token) url += "?token=" + encodeURIComponent(b.token);
+    }
+  } catch { /* cookie-auth fallback */ }
+  try {
+    ws = new WebSocket(url);
   } catch {
     startPolling();
     return;
@@ -385,6 +484,7 @@ function connectLive() {
   ws.onclose = () => {
     ws = null;
     startPolling();
+    setFeed("retry", Math.round(wsBackoff / 1000) + "с");
     setTimeout(connectLive, wsBackoff);
     wsBackoff = Math.min(wsBackoff * 2, 30000);
   };
@@ -395,6 +495,8 @@ function toast(msg) {
   const t = document.createElement("div");
   t.className = "toast";
   t.textContent = msg;
+  t.setAttribute("role", "status");
+  t.setAttribute("aria-live", "polite");
   Object.assign(t.style, {
     position: "fixed", bottom: "16px", left: "50%", transform: "translateX(-50%)",
     zIndex: "9999"
@@ -404,7 +506,30 @@ function toast(msg) {
 }
 
 /* ── EXPORT ─────────────────────────────────────────────────── */
-function exportWallets(fmt) { window.location.href = "/api/wallets/export?format=" + fmt; }
+async function exportWallets(fmt) {
+  // Только POST: GET-экспорт убран с сервера — top-level навигация
+  // несла бы SameSite=Lax куку (drive-by download ключей).
+  try {
+    const r = await fetch("/api/wallets/export?format=" + encodeURIComponent(fmt), {
+      method: "POST",
+      credentials: "same-origin",
+    });
+    if (!r.ok) {
+      const t = await r.text().catch(() => "");
+      throw new Error(t || ("HTTP " + r.status));
+    }
+    const blob = await r.blob();
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = fmt === "json" ? "wallets.json" : "wallets.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  } catch (e) {
+    toast("Экспорт: " + e.message);
+  }
+}
 
 async function createWallets() {
   const input = $("inWalletCount");
@@ -422,41 +547,59 @@ async function createWallets() {
 }
 
 /* ── SCHEDULER ──────────────────────────────────────────────── */
+function _schedInterval(t) {
+  if (t.run_at_time) return "в " + t.run_at_time;
+  const h = Number(t.interval_hours || 0), m = Number(t.interval_minutes || 0);
+  if (h || m) return "каждые " + (h ? h + "ч " : "") + (m ? m + "мин" : "").trim();
+  return "—";
+}
 async function loadScheduler() {
   try {
     const d = await j("/api/scheduler");
     const tasks = d.tasks || [];
     const rows = tasks.map(t => {
+      const tid = t.task_id || t.id || "";
       const status = t.enabled
         ? '<span class="badge badge-ok">активна</span>'
         : '<span class="badge badge-warn">выкл</span>';
       return `<tr>
-        <td class="mono" style="color:var(--text-3)">${esc(t.id)}</td>
-        <td>${esc(t.name)}</td>
-        <td class="mono">${esc(t.cron)}</td>
-        <td class="num">${esc(t.cycles)}</td>
+        <td class="mono" style="color:var(--text-3)">${esc(String(tid))}</td>
+        <td>${esc(t.name || "")}</td>
+        <td class="mono">${esc(_schedInterval(t))}</td>
+        <td class="num">${esc(t.cycles ?? "")}</td>
         <td class="mono" style="color:var(--text-2)">${esc(t.last_run || "—")}</td>
         <td class="mono" style="color:var(--text-2)">${esc(t.next_run || "—")}</td>
         <td>${status}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="deleteSchedulerTask(${t.id})"><i class="ti ti-trash"></i></button></td>
+        <td><button class="btn btn-ghost btn-sm" data-sched-del="${esc(String(tid))}"><i class="ti ti-trash"></i></button></td>
       </tr>`;
     }).join("");
     $("tScheduler").innerHTML = rows || '<tr><td colspan="8" style="color:var(--text-3)">задач нет</td></tr>';
+    document.querySelectorAll("[data-sched-del]").forEach(b => {
+      b.addEventListener("click", () => deleteSchedulerTask(b.getAttribute("data-sched-del")));
+    });
   } catch (e) { if (e.message !== "unauth") toast("Планировщик: " + e.message); }
 }
 
 async function addSchedulerTask() {
   const name = prompt("Имя задачи:");
   if (!name) return;
-  const cron = prompt("Cron-выражение (например, 0 */6 * * *):", "0 */6 * * *");
-  if (!cron) return;
+  const hoursRaw = prompt("Каждые N часов (0 — по времени суток):", "6");
+  if (hoursRaw === null) return;
+  const hours = parseFloat(hoursRaw);
+  if (isNaN(hours) || hours < 0 || hours > 720) { toast("Часы: 0..720"); return; }
+  let runAt = null;
+  if (!hours) {
+    runAt = prompt("Время суток HH:MM:", "09:00");
+    if (!runAt || !/^\d{1,2}:\d{2}$/.test(runAt)) { toast("Формат HH:MM"); return; }
+  }
   const cycles = parseInt(prompt("Количество циклов:", "10"), 10);
-  if (!cycles || isNaN(cycles)) return;
+  if (!cycles || isNaN(cycles) || cycles < 1 || cycles > 1000) { toast("Циклы: 1..1000"); return; }
+  const task_id = "task-" + Date.now().toString(36);
   try {
-    await j("/api/scheduler", {
+    await j("/api/scheduler/tasks", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, cron, cycles, enabled: true })
+      body: JSON.stringify({ task_id, name, interval_hours: hours, run_at_time: runAt, cycles, enabled: true })
     });
     toast("Задача добавлена");
     await loadScheduler();
@@ -464,9 +607,10 @@ async function addSchedulerTask() {
 }
 
 async function deleteSchedulerTask(id) {
+  if (!id) return;
   if (!confirm("Удалить задачу?")) return;
   try {
-    await j(`/api/scheduler/${id}`, { method: "DELETE" });
+    await j(`/api/scheduler/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
     toast("Задача удалена");
     await loadScheduler();
   } catch (e) { toast("Ошибка: " + e.message); }
@@ -487,21 +631,27 @@ async function stopScheduler() {
 }
 
 /* ── GROUPS ─────────────────────────────────────────────────── */
+function _safeColor(c) {
+  return /^#[0-9a-fA-F]{6}$/.test(String(c || "")) ? String(c) : "#a855f7";
+}
 async function loadGroups() {
   try {
     const d = await j("/api/groups");
     const groups = d.groups || [];
     const rows = groups.map(g => {
-      const color = g.color || "#a855f7";
+      const color = _safeColor(g.color);
       return `<tr>
-        <td><span style="display:inline-block;width:16px;height:16px;background:${esc(color)};border-radius:4px"></span></td>
+        <td><span style="display:inline-block;width:16px;height:16px;background:${color};border-radius:4px"></span></td>
         <td>${esc(g.name)}</td>
         <td class="num">${esc(g.wallet_count || 0)}</td>
         <td class="mono" style="color:var(--text-2)">${esc(String(g.created_at || "").slice(0, 10))}</td>
-        <td><button class="btn btn-ghost btn-sm" onclick="deleteGroup(${g.id})"><i class="ti ti-trash"></i></button></td>
+        <td><button class="btn btn-ghost btn-sm" data-group-del="${esc(String(g.id))}"><i class="ti ti-trash"></i></button></td>
       </tr>`;
     }).join("");
     $("tGroups").innerHTML = rows || '<tr><td colspan="5" style="color:var(--text-3)">групп нет</td></tr>';
+    document.querySelectorAll("[data-group-del]").forEach(b => {
+      b.addEventListener("click", () => deleteGroup(b.getAttribute("data-group-del")));
+    });
   } catch (e) { if (e.message !== "unauth") toast("Группы: " + e.message); }
 }
 
@@ -510,11 +660,12 @@ async function addGroup() {
   if (!name) return;
   const color = prompt("Цвет (hex, например #a855f7):", "#a855f7");
   if (!color) return;
+  if (!/^#[0-9a-fA-F]{6}$/.test(color.trim())) { toast("Цвет: #rrggbb"); return; }
   try {
     await j("/api/groups", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, color })
+      body: JSON.stringify({ name, color: color.trim() })
     });
     toast("Группа создана");
     await loadGroups();
@@ -524,7 +675,7 @@ async function addGroup() {
 async function deleteGroup(id) {
   if (!confirm("Удалить группу?")) return;
   try {
-    await j(`/api/groups/${id}`, { method: "DELETE" });
+    await j(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
     toast("Группа удалена");
     await loadGroups();
   } catch (e) { toast("Ошибка: " + e.message); }
@@ -591,15 +742,69 @@ async function loadRpcHealth() {
         </div>
       </div>
       <table>
-        <thead><tr><th>Нода</th><th>Задержка, мс</th><th>Скор</th><th>Ошибки</th><th>Статус</th></tr></thead>
+        <thead><tr><th scope="col">Нода</th><th scope="col">Задержка, мс</th><th scope="col">Скор</th><th scope="col">Ошибки</th><th scope="col">Статус</th></tr></thead>
         <tbody>${nodeRows}</tbody>
       </table>
       <div class="rpc-meta">
         <span>chain <b class="mono">${esc(d.chain_id ?? "—")}</b></span>
         <span>RPC/мин <b class="mono">${d.rpc_rate != null ? Number(d.rpc_rate).toFixed(2) : "—"}</b></span>
         <span>живых нод <b class="mono">${live.length}/${nodes.length}</b></span>
-      </div>`;
+      </div>
+      <div class="panel-header" style="margin-top:14px">
+        <span class="panel-title">Кран</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" id="btnFaucetProbe"><i class="ti ti-refresh"></i> Проверить</button>
+          <button class="btn btn-primary btn-sm" id="btnFaucetDrip"><i class="ti ti-droplet"></i> Пополнить</button>
+        </div>
+      </div>
+      <div id="faucetBox"><div style="color:var(--text-3)">нажми «Проверить» — проба без траты квоты; «Пополнить» доливает все кошельки фоном</div></div>`;
+    const fp = $("btnFaucetProbe");
+    if (fp) fp.onclick = loadFaucet;
+    const fd = $("btnFaucetDrip");
+    if (fd) fd.onclick = dripFaucet;
   } catch (e) { if (e.message !== "unauth") toast("RPC: " + e.message); }
+}
+
+async function dripFaucet() {
+  if (!confirm("Долить все кошельки с крана? Квота крана тратится по-настоящему.")) return;
+  try {
+    const r = await j("/api/faucet/drip", { method: "POST" });
+    toast(r.started ? "Долив запущен фоном" : "Долив уже идёт");
+    await loadFaucet();
+  } catch (e) { toast("Долив: " + e.message); }
+}
+
+async function loadFaucet() {
+  const box = $("faucetBox");
+  if (box) box.innerHTML = '<div style="color:var(--text-3)">проба…</div>';
+  try {
+    const d = await j("/api/faucet");
+    const rows = (d.strategies || []).map(p => {
+      const ok = !!p.alive;
+      return `<tr>
+        <td class="mono">${esc(p.type || "?")}</td>
+        <td>${ok ? '<span class="badge badge-ok">жив</span>' : '<span class="badge badge-err">мёртв</span>'}</td>
+        <td style="color:var(--text-2)">${esc(String(p.reason || "").slice(0, 160))}</td>
+      </tr>`;
+    }).join("");
+    const drip = d.drip || {};
+    const dripLine = drip.running
+      ? `<div style="color:var(--text-2)">долив идёт… начат ${esc(drip.at || "—")}</div>`
+      : (drip.at
+        ? `<div style="color:var(--text-2)">последний долив ${esc(drip.at)}: ok ${esc(drip.funded ?? 0)}, fail ${esc(drip.failed ?? 0)}${drip.error ? " (" + esc(drip.error) + ")" : ""}</div>`
+        : "");
+    if (box) box.innerHTML = `<table>
+        <thead><tr><th scope="col">Стратегия</th><th scope="col">Статус</th><th scope="col">Причина</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="3" style="color:var(--text-3)">стратегий нет</td></tr>'}</tbody>
+      </table>${dripLine}`;
+    const fp = $("btnFaucetProbe");
+    if (fp) fp.onclick = loadFaucet;
+    const fd = $("btnFaucetDrip");
+    if (fd) fd.onclick = dripFaucet;
+  } catch (e) {
+    if (e.message === "unauth") return;
+    if (box) box.innerHTML = `<div style="color:var(--red)">Не удалось проверить: ${esc(e.message)}</div>`;
+  }
 }
 
 /* ── BALANCE ALERTS ─────────────────────────────────────────── */
@@ -636,8 +841,7 @@ async function init() {
   const tg = window.Telegram?.WebApp;
   if (tg) { tg.ready(); tg.expand(); }
 
-  document.querySelectorAll(".nav-item[data-nav]").forEach(el =>
-    el.addEventListener("click", () => nav(el.getAttribute("data-nav"))));
+  // Навигация уже связана в DOMContentLoaded (клик + клавиатура + бургер).
 
   // Canvas'ы размерами в device pixels: без перерисовки после resize линии
   // растягиваются. Дебаунс, чтобы не рисовать на каждый пиксель перетаскивания.

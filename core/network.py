@@ -18,6 +18,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from decimal import Decimal
 from typing import Any, TypeVar
 from urllib.parse import urlsplit
 
@@ -386,6 +387,11 @@ class _CircuitBreaker:
             self._state = "CLOSED"
         self._failure_count = 0
 
+    @property
+    def failures(self) -> int:
+        """Число последовательных транспортных ошибок текущего окна."""
+        return self._failure_count
+
     def record_failure(self) -> None:
         self._failure_count += 1
         self._last_failure_time = time.monotonic()
@@ -502,6 +508,7 @@ class NetworkManager:
         self._accounts: dict[str, Account] = {}
         self._db = db
         self._nonce_locks: dict[str, asyncio.Lock] = {}
+        self._nonce_new_lock = asyncio.Lock()
         self._rpc_lock: asyncio.Lock | None = None  # ленивая инициализация
         # TTL-кэши: уменьшают число RPC-вызовов при масштабе
         cache_conf = config.get("cache", {})
@@ -526,13 +533,41 @@ class NetworkManager:
         self._rate_floor = config.get("cache", {}).get("rpc_rate_floor", 0.2)
         self._metrics = _RPCMetrics()
         cb_conf = config.get("cache", {})
-        self._circuit_breaker = _CircuitBreaker(
-            failure_threshold=cb_conf.get("cb_failure_threshold", 5),
-            recovery_timeout=cb_conf.get("cb_recovery_timeout", 30),
-        )
+        self._cb_failure_threshold = int(cb_conf.get("cb_failure_threshold", 5))
+        self._cb_recovery_timeout = float(cb_conf.get("cb_recovery_timeout", 30))
+        # Breaker — на КАЖДЫЙ RPC-эндпоинт, а не один глобальный: 5 подряд
+        # ошибок ноды A раньше блокировали и здоровую ноду B до recovery_timeout
+        # (все кошельки получали ConnectionError без единой попытки).
+        self._breakers: dict[str, _CircuitBreaker] = {}
         # Бюджет ожидания ресипта: воркер не должен висеть до 120с на медленной
         # сети/мёртвой трансляции — превышение = tx «в mempool», статус не сбой.
         self._receipt_timeout = float(config.get("advanced", {}).get("receipt_timeout", 30))
+
+    def _breaker(self) -> _CircuitBreaker:
+        """Breaker текущего эндпоинта (ленивое создание на ноду)."""
+        br = self._breakers.get(self.rpc_url)
+        if br is None:
+            br = self._breakers[self.rpc_url] = _CircuitBreaker(
+                failure_threshold=self._cb_failure_threshold,
+                recovery_timeout=self._cb_recovery_timeout,
+            )
+        return br
+
+    @property
+    def _circuit_breaker(self) -> _CircuitBreaker:
+        # Совместимость: тесты/диагностика обращаются к breaker'у активной ноды.
+        return self._breaker()
+
+    def transport_failures(self) -> int:
+        """Транспортные ошибки активной ноды в текущем окне (для auto-replay).
+
+        Логические фейлы (revert/нет средств) breaker не трогают: рост счётчика
+        за время действия = признак именно транспортной проблемы.
+        """
+        try:
+            return int(self._breaker().failures)
+        except Exception:  # noqa: BLE001
+            return 0
 
     def _connect_rpc(self, url: str) -> Web3:
         if url.startswith("http://"):
@@ -574,7 +609,15 @@ class NetworkManager:
     def log_diagnostics(self) -> None:
         """Логирует RPC-метрики и circuit breaker."""
         self._metrics.log_summary()
-        self._circuit_breaker.log_status()
+        # Нездоровые ноды — поименно, чтобы было видно виновника.
+        for url, br in self._breakers.items():
+            if getattr(br, "_state", "CLOSED") != "CLOSED":
+                logger.info(
+                    "Circuit breaker %s: state=%s, failures=%s",
+                    _redact_rpc_url(url) or url,
+                    br._state,
+                    br._failure_count,
+                )
 
     async def close(self) -> None:
         # Владельцев ресурса несколько (пул, экраны, doctor): close идемпотентен,
@@ -906,10 +949,9 @@ class NetworkManager:
                 self._rpc_index = self._rpc_urls.index(new_url)
             except ValueError:
                 pass
-            # Circuit breaker считает ошибки ТЕКУЩЕГО эндпоинта: новый узел
-            # стартует с чистого окна (иначе OPEN старого узла блокировал бы
-            # и здоровый новый до recovery_timeout).
-            self._circuit_breaker.reset()
+            # Breaker'ы — по нодам: новая нода стартует со своим чистым окном,
+            # сбрасывать нечего (состояние старой остаётся при ней — вернёмся
+            # к ней позже, её OPEN честно отлежится до recovery_timeout).
             await self._close_w3_provider(old_w3)
             self._nonce_cache = _TTLCache(self._nonce_ttl)
             self._balance_cache = _TTLCache(self._balance_ttl)
@@ -938,11 +980,12 @@ class NetworkManager:
         """
         last_err: BaseException | None = None
         for attempt in range(_RPC_RETRIES):
-            if not self._circuit_breaker.allow_request():
+            breaker = self._breaker()
+            if not breaker.allow_request():
                 # Breaker OPEN: текущая нода стабильно падает. Если есть запасной
                 # эндпоинт — сразу failover (а не стоим recovery_timeout впустую
                 # и не режем каждый кошелёк цикла до результата 0).
-                # _switch_to сбрасывает breaker — следующий круг потенциально
+                # У нового узла свой breaker — следующий круг потенциально
                 # разрешён. Гарантируем прогресс: только когда реально сменили
                 # эндпоинт (иначе best==current и крутимся бесконечно).
                 if len(self._rpc_urls) > 1:
@@ -951,10 +994,14 @@ class NetworkManager:
                         await self._switch_to(best)
                         continue
                 logger.warning("Circuit breaker OPEN, skipping RPC call")
-                raise last_err or ConnectionError("Circuit breaker OPEN")
+                if last_err is not None:
+                    raise ConnectionError(
+                        f"breaker OPEN (last: {type(last_err).__name__}: {last_err})"
+                    ) from last_err
+                raise ConnectionError("breaker OPEN (no attempt — failover exhausted)")
             try:
                 result = await self.run_in_executor(fn, *args)
-                self._circuit_breaker.record_success()
+                breaker.record_success()
                 return result
             except Exception as e:
                 last_err = e
@@ -963,7 +1010,7 @@ class NetworkManager:
                 # Реальная ошибка текущего эндпоинта: штрафуем EMA-оценку ноды,
                 # чтобы ротатор по здоровью увидел деградацию раньше следующего пинга.
                 self._record_latency(self.rpc_url, None)
-                self._circuit_breaker.record_failure()
+                breaker.record_failure()
                 await self._switch_rpc()
                 if attempt < _RPC_RETRIES - 1:
                     base = min(2**attempt, 10)
@@ -1000,9 +1047,12 @@ class NetworkManager:
 
     async def claim_nonce(self, address: str) -> int:
         address = Web3.to_checksum_address(address)
-        lock = self._nonce_locks.get(address)
-        if lock is None:
-            lock = self._nonce_locks[address] = asyncio.Lock()
+        # Создание лока — под общим гейтом: два claim_nonce одного адреса
+        # на холодном словаре иначе создают разные Lock и выдают один nonce.
+        async with self._nonce_new_lock:
+            lock = self._nonce_locks.get(address)
+            if lock is None:
+                lock = self._nonce_locks[address] = asyncio.Lock()
         async with lock:
             network_nonce: int | None = self._nonce_cache.get(f"nw:{address}")
             if network_nonce is None:
@@ -1291,7 +1341,8 @@ class NetworkManager:
             tx = {
                 "nonce": nonce,
                 "to": to_address,
-                "value": self.w3.to_wei(amount_eth, "ether"),
+                # Decimal(str()) вместо float: odd-суммы 8 знаков иначе теряют wei.
+                "value": self.w3.to_wei(Decimal(str(amount_eth)), "ether"),
                 "gas": gas_limit,
                 "chainId": self.chain_id,
                 **fee_fields,
@@ -1306,7 +1357,10 @@ class NetworkManager:
             if receipt is None:
                 # Не дождались ресипта в пределах бюджета: tx принят в mempool,
                 # nonce занят (не откатываем — он может уйти в сеть позже).
+                # Баланс инвалидируем: следующее чтение переспросит RPC,
+                # а не отдаст stale pre-tx из кэша.
                 logger.warning(f"Transfer unconfirmed: tx={tx_hash.hex()} (в mempool, нет ресипта)")
+                self.invalidate_balance(account.address)
                 return None
             # Дорогой исход: первичная нода говорит «реверт». Одно подозрительное
             # показание не должно решать судьбу заявки — пере-спрашиваем ресипт

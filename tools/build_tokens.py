@@ -21,12 +21,45 @@ ORDER = ("bg", "bg2", "ink", "ink2", "muted", "line", "line2", "dots",
          "ok", "warn", "err", "blue")
 
 
-def _block(selector: str, values: dict) -> str:
+def _block(selector: str, values: dict, tokens: dict) -> str:
     lines = [f"{selector}{{"]
     for key in ORDER:
         lines.append(f"  --{key}:{values[key]};")
+    # Шкала/шрифты — единый источник (раньше были мёртвыми в tokens.json).
+    scale = tokens.get("scale", {})
+    if isinstance(scale.get("space"), list) and scale["space"]:
+        lines.append(f"  --space:{'px '.join(str(x) for x in scale['space'])}px;".replace("px px", "px"))
+        for i, sp in enumerate(scale["space"]):
+            lines.append(f"  --sp-{i}:{sp}px;")
+    if "border" in scale:
+        lines.append(f"  --bd:{scale['border']}px;")
+    font = tokens.get("font", {})
+    for fk in ("display", "mono", "sans"):
+        if fk in font:
+            lines.append(f"  --font-{fk}:{font[fk]};")
     lines.append("}")
     return "\n".join(lines)
+
+
+def _lum(hex6: str) -> float:
+    h = hex6.strip().lstrip("#")
+    if len(h) != 6:
+        return 0.0
+    try:
+        r, g, b = (int(h[i : i + 2], 16) / 255.0 for i in (0, 2, 4))
+    except ValueError:
+        return 0.0
+
+    def _c(c: float) -> float:
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * _c(r) + 0.7152 * _c(g) + 0.0722 * _c(b)
+
+
+def _contrast(a: str, b: str) -> float:
+    la, lb = _lum(a), _lum(b)
+    hi, lo = max(la, lb), min(la, lb)
+    return (hi + 0.05) / (lo + 0.05)
 
 
 def main() -> int:
@@ -38,13 +71,17 @@ def main() -> int:
         if missing:
             print(f"FAIL: тема {name}: нет ключей {missing}")
             return 1
+        # Контраст muted/ink на bg — предупреждение, не fail (дизайн правит руками).
+        cr = _contrast(themes[name].get("muted", "#888"), themes[name].get("bg", "#000"))
+        if cr < 4.5:
+            print(f"WARN: тема {name}: muted/bg контраст {cr:.2f} < 4.5 (мелкий текст)")
     css = (
         "/* GENERATED from design/tokens.json by tools/build_tokens.py — не править руками. */\n"
-        + _block(":root", themes["paper"])
+        + _block(":root", themes["paper"], tokens)
         + "\n"
-        + _block('[data-theme="ink"]', themes["ink"])
+        + _block('[data-theme="ink"]', themes["ink"], tokens)
         + "\n"
-        + _block('[data-theme="moss"]', themes["moss"])
+        + _block('[data-theme="moss"]', themes["moss"], tokens)
         + "\n"
     )
     with open(OUT, "w", encoding="utf-8") as f:

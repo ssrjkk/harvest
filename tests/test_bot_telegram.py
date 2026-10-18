@@ -677,6 +677,16 @@ class _BalDead:
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")
 class TestBalanceCommand(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
+    def tearDown(self):
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+
     def test_fmt(self):
         from portal.bot_telegram import _fmt_balances
 

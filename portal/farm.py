@@ -80,7 +80,13 @@ class FarmDaemon:
         self.scheduler: Scheduler | None = None
         self._stop = asyncio.Event()
         self._task: asyncio.Task | None = None
+        self._faucet_check_task: asyncio.Task | None = None
+        self._last_faucet_report: list[dict] = []
+        self._drip_task: asyncio.Task | None = None
+        self._last_drip: dict = {"running": False, "at": None, "funded": 0, "failed": 0}
         self._cycle_watch_task: asyncio.Task | None = None
+        # Лимит циклов для запланированного прогона (0 = бесконечно).
+        self._cycles: int = 0
         self._started_at = time.monotonic()
         self._balance_alerts_task: asyncio.Task | None = None
         self._balance_alerts_enabled: bool = False
@@ -101,8 +107,8 @@ class FarmDaemon:
         # Текущая сеть: определяется по имени конфига (config_*.yaml).
         self.current = DEFAULT_NETWORK
         for n in NETWORKS:
-            if farm_config.endswith(n["config"]):
-                self.current = n["slug"]
+            if farm_config.endswith(str(n["config"])):
+                self.current = str(n["slug"])
                 break
 
     async def _alert(self, text: str) -> None:
@@ -181,7 +187,7 @@ class FarmDaemon:
             "paused": bool(self.pool and self.pool.paused),
         }
 
-    async def start(self) -> bool:
+    async def start(self, cycles: int = 0) -> bool:
         async with self._mgmt:
             if self.running:
                 return False
@@ -203,15 +209,16 @@ class FarmDaemon:
                 return False
             self._guard = guard
             self._stop = asyncio.Event()
+            self._cycles = max(0, int(cycles))
             self._task = asyncio.create_task(self._run())
             self._start_cycle_watch()
-            asyncio.get_running_loop().create_task(self._check_faucet_once())
+            self._faucet_check_task = asyncio.get_running_loop().create_task(self._check_faucet_once())
             return True
 
     async def _run(self) -> None:
         assert self.pool is not None
         try:
-            await self.pool.run_forever(self._stop)
+            await self.pool.run_forever(self._stop, max_cycles=self._cycles)
         except asyncio.CancelledError:
             logger.info("Демон фермы отменён — закрываю пул")
             await self._shutdown_pool()
@@ -236,6 +243,15 @@ class FarmDaemon:
             await self._task
             self._task = None
             await self._stop_cycle_watch()
+            if self._faucet_check_task is not None:
+                self._faucet_check_task.cancel()
+                try:
+                    await self._faucet_check_task
+                except asyncio.CancelledError:
+                    pass
+                except Exception:  # noqa: BLE001
+                    logger.warning("faucet-check task failed", exc_info=True)
+                self._faucet_check_task = None
             return True
 
     async def _shutdown_pool(self) -> None:
@@ -309,8 +325,8 @@ class FarmDaemon:
                 errs = int(cur.get("errors") or 0)
                 wals = int(cur.get("wallets") or 0)
 
-                def _f(n: object) -> str:
-                    return f"{int(n):,}".replace(",", " ")
+                def _f(n: int) -> str:
+                    return f"{n:,}".replace(",", " ")
 
                 await self._alert(
                     f"✅ Цикл #{cid} завершён: {_f(acts)} действий "
@@ -323,16 +339,18 @@ class FarmDaemon:
         """Quota-free pre-flight крана при старте фарма (роль уведомлялки).
 
         Возвращает число живых стратегий; 0 — пуш владельцу, что пополнения
-        не будет и фарм идёт без топлива.
+        не будет и фарм идёт без топлива. Разбор — в self._last_faucet_report.
         """
         try:
             from core.faucet import Faucet
 
             if not isinstance(self.config, dict):
+                self._last_faucet_report = []
                 return 0
             faucet = Faucet(self.config)
             try:
                 live = await faucet.validate()
+                self._last_faucet_report = faucet.probe_report()
             finally:
                 try:
                     await faucet.close()
@@ -340,13 +358,99 @@ class FarmDaemon:
                     pass
         except Exception as e:  # noqa: BLE001
             logger.warning("Pre-flight крана не удался: %s", e)
+            self._last_faucet_report = []
             return 0
         if live <= 0:
+            detail = "; ".join(
+                f"{p['type']}: {p['reason']}" for p in self._last_faucet_report
+            )
             await self._alert(
                 "🚨 Кран недоступен (0 живых стратегий): пополнения не будет, "
-                "фарм идёт без топлива."
+                f"фарм идёт без топлива. {detail}"
             )
         return live
+
+    async def faucet_report(self) -> list[dict]:
+        """Свежий разбор pre-flight крана (для /faucet и Mini App)."""
+        try:
+            from core.faucet import Faucet
+
+            if not isinstance(self.config, dict):
+                return list(getattr(self, "_last_faucet_report", []) or [])
+            faucet = Faucet(self.config)
+            try:
+                await faucet.validate()
+                self._last_faucet_report = faucet.probe_report()
+            finally:
+                try:
+                    await faucet.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001
+            logger.warning("faucet_report не удался", exc_info=True)
+        return list(getattr(self, "_last_faucet_report", []) or [])
+
+    def drip_state(self) -> dict:
+        """Состояние ручного долива (для UI-виджетов)."""
+        d = dict(self._last_drip)
+        d["running"] = bool(self._drip_task is not None and not self._drip_task.done())
+        return d
+
+    async def drip_faucet(self) -> dict:
+        """Ручной долив всех кошельков (кнопка портала/Mini App).
+
+        Single-flight: повторный запуск пока идёт — 409-style ответ
+        {"started": False, "running": True}. Использует transient
+        NetworkManager (пул не трогаем): faucet не занимает nonce.
+        """
+        if self.db is None or not isinstance(self.config, dict):
+            raise RuntimeError("БД фермы не подключена")
+        if self._drip_task is not None and not self._drip_task.done():
+            st = self.drip_state()
+            st["started"] = False
+            return st
+        self._last_drip = {"running": True, "at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+                           "funded": 0, "failed": 0}
+        self._drip_task = asyncio.get_running_loop().create_task(self._drip_run())
+        st = self.drip_state()
+        st["started"] = True
+        return st
+
+    async def _drip_run(self) -> None:
+        """Фоновая доливка: ensure_balance по всем адресам батчами."""
+        try:
+            from core.faucet import Faucet
+            from core.network import NetworkManager
+
+            assert self.db is not None and isinstance(self.config, dict)
+            faucet = Faucet(self.config)
+            network = NetworkManager(self.config, self.db)
+            try:
+                addrs = await self.db.get_all_addresses()
+                funded, failed = await faucet.request_batch(
+                    addrs, 50, network=network,
+                    max_concurrent=faucet.max_concurrent,
+                )
+            finally:
+                try:
+                    await faucet.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    await network.close()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._last_drip = {"running": False,
+                               "at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+                               "funded": funded, "failed": failed}
+            logger.info("[AUDIT] manual drip done funded=%s failed=%s", funded, failed)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:  # noqa: BLE001
+            logger.warning("manual drip упал: %s", e)
+            self._last_drip = {"running": False,
+                               "at": time.strftime("%Y-%m-%d %H:%M UTC", time.gmtime()),
+                               "funded": 0, "failed": 0, "error": str(e)[:160]}
 
     async def pause(self) -> bool:
         async with self._mgmt:
@@ -372,6 +476,13 @@ class FarmDaemon:
             except asyncio.CancelledError:
                 pass
             self._metrics_task = None
+        if self._drip_task is not None and not self._drip_task.done():
+            self._drip_task.cancel()
+            try:
+                await self._drip_task
+            except asyncio.CancelledError:
+                pass
+            self._drip_task = None
         await self._shutdown_pool()
         if self.db is not None:
             await self.db.close()
@@ -516,12 +627,12 @@ class FarmDaemon:
         await self.scheduler.start()
 
     async def _scheduled_farm(self, cycles: int) -> None:
-        """Callback для планировщика: запуск фарма на N циклов."""
+        """Callback для планировщика: запуск фарма на N циклов (0 = без лимита)."""
         if self.running:
             logger.info("Scheduled farm skipped: already running")
             return
         logger.info("Scheduled farm: starting %d cycles", cycles)
-        await self.start()
+        await self.start(cycles=cycles)
 
     def scheduler_state(self) -> dict:
         """Состояние планировщика для UI."""
@@ -591,28 +702,57 @@ class FarmDaemon:
             self._balance_alerts_task = None
         return {"enabled": self._balance_alerts_enabled, "threshold": self._balance_threshold}
 
+    async def _addrs_for_balances(self, limit: int = 0) -> list[str]:
+        """Адреса без дешифровки ключей; fallback на get_all_wallets для кастомных БД."""
+        assert self.db is not None
+        try:
+            meth = getattr(self.db, "get_all_addresses", None)
+            if callable(meth):
+                try:
+                    addrs = await meth(limit) if limit else await meth()
+                except TypeError:
+                    # Моки без limit-сигнатуры.
+                    addrs = await meth()
+                if isinstance(addrs, list):
+                    got = [a for a in addrs if isinstance(a, str)]
+                    return got[:limit] if limit else got
+        except Exception:  # noqa: BLE001
+            # get_all_addresses нет/упал — пробуем legacy get_all_wallets.
+            pass
+        wallets = await self.db.get_all_wallets()
+        # Пусть ошибка чтения всплывает в _balance_monitor_loop (лог + retry),
+        # а не превращается в молчаливый пустой список.
+        out: list[str] = []
+        for w in wallets if isinstance(wallets, list) else []:
+            a = w.get("address", "") if isinstance(w, dict) else ""
+            if a:
+                out.append(a)
+            if limit and len(out) >= limit:
+                break
+        return out
+
     async def _balance_monitor_loop(self) -> None:
         """Фоновый мониторинг балансов кошельков."""
         logger.info("Balance monitor started (threshold=%.6f)", self._balance_threshold)
         while self._balance_alerts_enabled:
             try:
                 if self.pool is not None and self.db is not None:
-                    wallets = await self.db.get_all_wallets()
-                    if len(wallets) > self._balance_check_limit:
+                    # Только адреса: не расшифровываем private_key/mnemonic ради баланса.
+                    addrs = await self._addrs_for_balances()
+                    if len(addrs) > self._balance_check_limit:
                         logger.warning(
                             "Balance monitor: проверяю первые %d из %d кошельков "
                             "(остаток без алертов)",
                             self._balance_check_limit,
-                            len(wallets),
+                            len(addrs),
                         )
                     low_balance = []
-                    for w in wallets[:self._balance_check_limit]:
-                        addr = w.get("address", "")
+                    for addr in addrs[: self._balance_check_limit]:
                         if not addr:
                             continue
                         try:
                             bal = await self.pool.network.get_balance(addr)
-                            if bal < self._balance_threshold:
+                            if bal is not None and bal < self._balance_threshold:
                                 low_balance.append({"address": addr, "balance": bal})
                         except Exception:
                             pass
@@ -680,10 +820,11 @@ class FarmDaemon:
         """Балансы первых N кошельков (для /balance). Ошибка RPC — balance None."""
         if self.db is None or self.pool is None:
             raise RuntimeError("Ферма не запущена")
-        wallets = await self.db.get_all_wallets()
+        addrs = await self._addrs_for_balances(max(1, min(int(limit), MAX_BALANCES_PER_REQUEST)))
+        # _addrs_for_balances(limit) уже усекает; на всякий случай режем ещё раз.
+        addrs = addrs[: max(1, min(int(limit), MAX_BALANCES_PER_REQUEST))]
         out = []
-        for w in wallets[: max(1, min(int(limit), MAX_BALANCES_PER_REQUEST))]:
-            addr = w.get("address", "")
+        for addr in addrs:
             if not addr:
                 continue
             try:

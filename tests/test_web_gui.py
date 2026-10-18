@@ -387,7 +387,6 @@ class TestWebGuiInit(unittest.TestCase):
         mock_db_cls.return_value = mock_db
 
         mock_network = AsyncMock()
-        mock_network.init = AsyncMock()
         mock_nm.return_value = mock_network
 
         mock_scheduler = AsyncMock()
@@ -399,6 +398,14 @@ class TestWebGuiInit(unittest.TestCase):
         resp = self.client.post("/api/init")
         data = resp.json()
         self.assertTrue(data["ok"])
+
+    @patch("core.web_gui.load_config")
+    def test_init_config_none(self, mock_load_config):
+        _state["config"] = None
+        mock_load_config.return_value = None
+        resp = self.client.post("/api/init")
+        data = resp.json()
+        self.assertFalse(data["ok"])
 
 
 class TestWebGuiFaucet(unittest.TestCase):

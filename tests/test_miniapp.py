@@ -90,6 +90,31 @@ class _Daemon:
     def scheduler_state(self):
         return {"running": False, "tasks": []}
 
+    def balance_alerts_state(self):
+        return {"enabled": False, "threshold": 0.001}
+
+    async def set_balance_alerts(self, enabled, threshold):
+        return {"enabled": bool(enabled), "threshold": float(threshold)}
+
+    async def rpc_health(self):
+        return {"nodes": []}
+
+    async def _check_faucet_once(self):
+        return 1
+
+    async def faucet_report(self):
+        return [{"type": "chainstack", "url": "https://mcp.chainstack.com/mcp",
+                 "alive": True, "reason": "MCP handshake ok"}]
+
+    def drip_state(self):
+        return {"running": False, "at": None, "funded": 0, "failed": 0}
+
+    async def drip_faucet(self):
+        return {"started": True, **self.drip_state()}
+
+    async def switch_to(self, slug):
+        return slug in {"vibevibe", "robinhood", "flop", "arc"}
+
 
 def _mcfg(**env):
     prev = {k: os.environ.get(k) for k in
@@ -147,6 +172,10 @@ class TestUniform401(MiniBase):
         for method, path in [
             ("GET", "/api/miniapp/state"), ("GET", "/api/miniapp/history"),
             ("GET", "/api/miniapp/networks"), ("GET", "/api/miniapp/scheduler"),
+            ("GET", "/api/miniapp/alerts"), ("POST", "/api/miniapp/alerts"),
+            ("GET", "/api/miniapp/rpc"), ("GET", "/api/miniapp/faucet"),
+            ("POST", "/api/miniapp/faucet/drip"),
+            ("POST", "/api/miniapp/network/switch"),
             ("POST", "/api/miniapp/farm"),
             ("POST", "/api/miniapp/command"), ("POST", "/api/miniapp/export/token"),
             ("POST", "/api/miniapp/export/request"), ("GET", "/api/miniapp/settings"),
@@ -240,7 +269,7 @@ class TestFarmCommand(MiniBase):
         self.assertTrue(daemon.running)
         resp = await client.post("/api/miniapp/farm", json={"action": "nope"},
                                  headers=self._h(_init()))
-        self.assertEqual(resp.status, 404)
+        self.assertEqual(resp.status, 400)
 
     async def test_command_shared_validator(self):
         from portal import bot_ops as _ops
@@ -280,6 +309,100 @@ class TestFarmCommand(MiniBase):
         body = await resp.json()
         self.assertIn("tasks", body)
         self.assertNotIn("0x", await resp.text())
+
+    async def test_alerts_rpc_faucet_net_switch(self):
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.get("/api/miniapp/alerts", headers=h)
+        self.assertEqual(resp.status, 200)
+        resp = await client.get("/api/miniapp/alerts", headers=h)
+        self.assertEqual(resp.status, 200)
+        resp = await client.post("/api/miniapp/alerts", json={"enabled": True, "threshold": 0.01}, headers=h)
+        self.assertEqual(resp.status, 200)
+        body = await resp.json()
+        self.assertTrue(body["ok"])
+        resp = await client.post("/api/miniapp/alerts", json={"enabled": True, "threshold": 999}, headers=h)
+        self.assertEqual(resp.status, 400)
+        resp = await client.get("/api/miniapp/rpc", headers=h)
+        self.assertEqual(resp.status, 200)
+        resp = await client.get("/api/miniapp/faucet", headers=h)
+        self.assertEqual(resp.status, 200)
+        body = await resp.json()
+        self.assertEqual(body["live"], 1)
+        self.assertIn("strategies", body)
+        resp = await client.post("/api/miniapp/network/switch", json={"slug": "vibevibe"}, headers=h)
+        self.assertEqual(resp.status, 200)
+        resp = await client.post("/api/miniapp/network/switch", json={"slug": "nope"}, headers=h)
+        self.assertEqual(resp.status, 404)
+
+    async def test_miniapp_faucet_drip(self):
+        client = await self._client()
+        h = self._h(_init())
+        resp = await client.post("/api/miniapp/faucet/drip", json={}, headers=h)
+        self.assertEqual(resp.status, 202)
+        body = await resp.json()
+        self.assertTrue(body["started"])
+        # Без заголовка — uniform-401.
+        resp = await client.post("/api/miniapp/faucet/drip", json={})
+        self.assertEqual(resp.status, 401)
+
+    async def test_alerts_rpc_faucet_switch_errors(self):
+        from portal import miniapp as _m
+
+        client = await self._client()
+        h = self._h(_init())
+        # bad threshold type + off-string + bad json shape
+        resp = await client.post("/api/miniapp/alerts", json={"enabled": True, "threshold": "abc"}, headers=h)
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/alerts", json={"enabled": "off", "threshold": 0.01}, headers=h)
+        self.assertEqual(resp.status, 200)
+        body = await resp.json()
+        self.assertFalse(body["enabled"])
+        resp = await client.post("/api/miniapp/alerts", json=[1, 2], headers=h)
+        self.assertEqual(resp.status, 400)
+        # daemon failure branches
+        class _Bad:
+            def run_state(self):
+                return {"running": False}
+
+            def balance_alerts_state(self):
+                raise RuntimeError("db down")
+
+            async def set_balance_alerts(self, *a, **k):
+                raise RuntimeError("db down")
+
+            async def rpc_health(self):
+                raise RuntimeError("rpc down")
+
+            async def _check_faucet_once(self):
+                raise RuntimeError("faucet down")
+
+            async def switch_to(self, slug):
+                raise RuntimeError("switch down")
+
+        bad = await self._client(daemon=_Bad())
+        resp = await bad.get("/api/miniapp/alerts", headers=h)
+        self.assertEqual(resp.status, 500)
+        resp = await bad.post("/api/miniapp/alerts", json={"enabled": True, "threshold": 0.01}, headers=h)
+        self.assertEqual(resp.status, 500)
+        resp = await bad.get("/api/miniapp/rpc", headers=h)
+        self.assertEqual(resp.status, 500)
+        resp = await bad.get("/api/miniapp/faucet", headers=h)
+        self.assertEqual(resp.status, 500)
+        resp = await bad.post("/api/miniapp/network/switch", json={"slug": "vibevibe"}, headers=h)
+        self.assertEqual(resp.status, 500)
+        # bad slug + bad json shape
+        resp = await client.post("/api/miniapp/network/switch", json={"slug": ""}, headers=h)
+        self.assertEqual(resp.status, 400)
+        resp = await client.post("/api/miniapp/network/switch", json=[1], headers=h)
+        self.assertEqual(resp.status, 400)
+        # rate branches (mut limit hit)
+        _m._mut.clear()
+        for _ in range(35):
+            _m._mut_ok(123, "alerts")
+        resp = await client.post("/api/miniapp/alerts", json={"enabled": True, "threshold": 0.01}, headers=h)
+        self.assertEqual(resp.status, 429)
+        _m._mut.clear()
 
 
 class TestMiniGaps(MiniBase):
@@ -424,6 +547,38 @@ class TestMiniGaps(MiniBase):
                                  json={"format": "xml", "confirm_token": "x"},
                                  headers=h)
         self.assertEqual(resp.status, 400)
+
+    async def test_export_enc_variants(self):
+        from portal import bot_telegram as _bt
+
+        client = await self._client()
+        h = self._h(_init())
+        tok = await (await client.post("/api/miniapp/export/token",
+                                       json={"format": "enc-csv"}, headers=h)).json()
+        # Слабый пароль — 400, токен при этом не съедается дважды одинаково:
+        # сначала плохой, потом хороший с новым токеном.
+        bad = await client.post("/api/miniapp/export/request",
+                                json={"format": "enc-csv", "confirm_token": tok["confirm_token"],
+                                      "password": "123"},
+                                headers=h)
+        self.assertEqual(bad.status, 400)
+        # Первый запрос съел flood-окно export (60с): чистим для второго.
+        _bt._flood_last.clear()
+        tok2 = await (await client.post("/api/miniapp/export/token",
+                                        json={"format": "enc-json"}, headers=h)).json()
+        with mock.patch.object(_bt, "_send_encrypted", new_callable=mock.AsyncMock) as se:
+            ok = await client.post("/api/miniapp/export/request",
+                                   json={"format": "enc-json",
+                                         "confirm_token": tok2["confirm_token"],
+                                         "password": "s3cr3t-pw"},
+                                   headers=h)
+            self.assertEqual(ok.status, 200)
+            self.assertTrue((await ok.json())["ok"])
+            self.assertEqual(se.await_count, 1)
+            sent_fmt = se.await_args[0][3]
+            self.assertEqual(sent_fmt, "json")
+            sent_pw = se.await_args[0][4]
+            self.assertEqual(sent_pw, "s3cr3t-pw")
 
     async def test_settings_failure(self):
         from portal import bot_settings as _bs
@@ -590,7 +745,7 @@ class TestMiniErrors(MiniBase):
         self.assertEqual(resp.status, 400)
         resp = await client.post("/api/miniapp/command", json={"kind": "nope"},
                                  headers=h)
-        self.assertEqual(resp.status, 404)
+        self.assertEqual(resp.status, 400)
         resp = await client.post("/api/miniapp/export/token",
                                  json={"format": "xml"}, headers=h)
         self.assertEqual(resp.status, 400)
@@ -619,7 +774,7 @@ class TestMiniErrors(MiniBase):
         await asyncio.sleep(0.05)
         resp = await client.get("/api/miniapp/history?limit=abc",
                                 headers=self._h(_init()))
-        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.status, 400)
 
     async def test_cfg_send_and_export_failure(self):
         from portal import bot_telegram as _bt

@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
@@ -27,15 +27,20 @@ jobs:
       - name: Security scan (bandit)
         run: python -m bandit -r core portal main.py auto.py -c .bandit -ll -q
 
-      - name: Tests (full suite + 95% portal coverage)
+      - name: Dependency audit (pip-audit)
+        # Информационный (non-blocking): диапазоны в requirements осознанно
+        # широкие, CVE-отчёт — сигнал, а не гейт.
+        run: python -m pip_audit -r requirements.txt -r requirements-portal.txt --disable-pip || echo "pip-audit found issues (non-blocking)"
+
+      - name: Tests (full suite + 100% portal coverage)
         run: >
           python -m pytest -q
           --cov=portal --cov-report=term
           --cov-config=.coveragerc
-          --cov-fail-under=95
+          --cov-fail-under=100
 
-      - name: Core coverage (80%)
+      - name: Core coverage (100%)
         run: >
           python -m pytest -q
           --cov=core --cov-report=term-missing
-          --cov-fail-under=80
+          --cov-fail-under=100

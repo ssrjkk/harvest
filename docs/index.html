@@ -10,11 +10,15 @@
 <meta property="og:title" content="harvest v2.3.0 — EVM testnet farmer">
 <meta property="og:description" content="Живое поле фермы, конструктор конфигов, симулятор и полный справочник. MIT, © 2026 ssrjkk.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
+<meta property="og:url" content="https://ssrjkk.github.io/harvest/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='3' y='3' width='26' height='26' fill='none' stroke='%2316150F' stroke-width='2'/%3E%3Cpath d='M8 22 L16 8 L24 22 Z' fill='%232E4A22'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
 <link rel="stylesheet" href="assets/terminal.css">
+<noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
 </head>
 <body class="is-loading">
 <a class="skip" href="#main" data-i18n="skip">Перейти к содержимому</a>
@@ -29,22 +33,23 @@
       <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
     </span>
   </div>
-  <nav class="main" id="mainNav" aria-label="Sections" style="padding:8px 12px;display:flex;flex-wrap:wrap;gap:6px">
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#field" data-i18n="nav_live">Поле</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#faucet" data-i18n="nav_faucet">Кран</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#bot" data-i18n="nav_bot">Бот</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#specs" data-i18n="nav_specs">Факты</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#overview" data-i18n="nav_overview">Обзор</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#quickstart" data-i18n="nav_start">Запуск</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#app" data-i18n="nav_app">Демо</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#arch" data-i18n="nav_arch">Устройство</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#portal" data-i18n="nav_portal">Портал</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#security" data-i18n="nav_sec">Безопасность</a>
-    <a class="btn" style="padding:4px 10px;text-decoration:none" href="#license" data-i18n="nav_license">Лицензия</a>
+  <nav class="main" id="mainNav" aria-label="Sections">
+    <a class="btn navlink" href="#field" data-i18n="nav_live">Поле</a>
+    <a class="btn navlink" href="#faucet" data-i18n="nav_faucet">Кран</a>
+    <a class="btn navlink" href="#bot" data-i18n="nav_bot">Бот</a>
+    <a class="btn navlink" href="#specs" data-i18n="nav_specs">Факты</a>
+    <a class="btn navlink" href="#overview" data-i18n="nav_overview">Обзор</a>
+    <a class="btn navlink" href="#quickstart" data-i18n="nav_start">Запуск</a>
+    <a class="btn navlink" href="#app" data-i18n="nav_app">Демо</a>
+    <a class="btn navlink" href="#arch" data-i18n="nav_arch">Устройство</a>
+    <a class="btn navlink" href="#portal" data-i18n="nav_portal">Портал</a>
+    <a class="btn navlink" href="#security" data-i18n="nav_sec">Безопасность</a>
+    <a class="btn navlink" href="#license" data-i18n="nav_license">Лицензия</a>
   </nav>
 </header>
+<div class="nav-scrim" id="navScrim" hidden></div>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1422 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- HERO -->
@@ -67,23 +72,24 @@
 <span id="live" aria-hidden="true"></span>
 <section class="block" id="field">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated">—</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated" aria-live="polite">—</span></div>
 
-    <div class="toolbar" id="fxFilters">
-      <button class="btn small on" data-f="all" type="button" data-i18n="f_all">ВСЕ</button>
-      <button class="btn small" data-f="i" type="button">i</button>
-      <button class="btn small" data-f="w" type="button">w</button>
-      <button class="btn small" data-f="o" type="button">o</button>
-      <button class="btn small" data-f="e" type="button">e</button>
-      <button class="btn small" data-f="r" type="button">r</button>
+    <div class="toolbar" id="fxFilters" role="toolbar" aria-label="Фильтры поля" style="overflow-x:auto">
+      <button class="btn small on" data-f="all" type="button" aria-pressed="true" aria-label="Все кошельки" data-i18n="f_all">ВСЕ</button>
+      <button class="btn small" data-f="i" type="button" aria-pressed="false" aria-label="Спящие">i</button>
+      <button class="btn small" data-f="w" type="button" aria-pressed="false" aria-label="Работающие">w</button>
+      <button class="btn small" data-f="o" type="button" aria-pressed="false" aria-label="Успешные">o</button>
+      <button class="btn small" data-f="e" type="button" aria-pressed="false" aria-label="С ошибками">e</button>
+      <button class="btn small" data-f="r" type="button" aria-pressed="false" aria-label="Отдыхающие">r</button>
       <button class="btn small" id="fxZoom" type="button">250</button>
-      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…">
+      <label class="visually-hidden" for="fxQ">Номер кошелька</label>
+      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…" aria-label="Номер кошелька">
     </div>
-    <div class="inset" id="fxInspector" style="padding:8px 12px;margin:8px 0"><span class="note">—</span></div>
+    <div class="inset" id="fxInspector" role="status" style="padding:8px 12px;margin:8px 0"><span class="note">—</span></div>
     <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Сайт перечитывает state.json раз в минуту (60 с); издатель работает по своему расписанию — по умолчанию каждые 30 минут (планировщик HarvestDashPublish, допустимо 15–60). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
-    <div id="liveAlert"></div>
-    <div class="termline" id="term">
-      <span class="tstat"><i class="dot mut" id="dot"></i><b id="status">—</b></span>
+    <div id="liveAlert" role="alert"></div>
+    <div class="termline" id="term" aria-live="polite">
+      <span class="tstat"><i class="dot mut" id="dot" aria-hidden="true"></i><b id="status">—</b></span>
       <span><span data-i18n="t_net">сеть</span> <b id="net">—</b></span>
       <span>health <b id="health">—</b></span>
       <span class="cursor" aria-hidden="true"></span>
@@ -92,9 +98,9 @@
     <div id="fieldEmpty" hidden>
       <p><span data-i18n="fe_t">Ферма остановлена. Запусти</span>
       <code id="feCmd">python auto.py --wallets 50 --cycles 5</code>
-      <button class="btn small" data-copy="feCmd" type="button">copy</button></p>
+      <button class="btn small" data-copy="feCmd" type="button" data-i18n="copy">копировать</button></p>
     </div>
-    <div class="field-grid" id="fieldGrid" role="img" aria-label="Сетка кошельков"></div>
+    <div class="field-grid" id="fieldGrid" role="grid" aria-label="Сетка кошельков" tabindex="0"></div>
     <div class="field-legend" id="fieldLegend">
       <span><i class="sw s-i"></i><span data-i18n="lg_i">спит</span></span>
       <span><i class="sw s-w"></i><span data-i18n="lg_w">работает</span></span>
@@ -112,8 +118,8 @@
       <div class="kpi"><div class="k" data-i18n="k_wal">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
     </div>
     <div class="grid2" style="margin-top:14px">
-      <div><div class="label" data-i18n="ch1">Действия / ошибки по истории</div><canvas class="chart" id="chartMain" width="600" height="150"></canvas></div>
-      <div><div class="label" data-i18n="ch2">Обработано кошельков</div><canvas class="chart" id="chartProc" width="600" height="150"></canvas></div>
+      <div><div class="label" data-i18n="ch1">Действия / ошибки по истории</div><canvas class="chart" id="chartMain" width="600" height="150" role="img" aria-label="Действия и ошибки"></canvas></div>
+      <div><div class="label" data-i18n="ch2">Обработано кошельков</div><canvas class="chart" id="chartProc" width="600" height="150" role="img" aria-label="Обработано"></canvas></div>
     </div>
     <div class="grid2" style="margin-top:14px">
       <div>
@@ -159,7 +165,7 @@
     <div class="table-wrap"><table class="t">
       <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
       <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1422 · 56 файлов · зелёный прогон</td></tr>
+      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1467 · 57 файлов · зелёный прогон</td></tr>
       <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
       <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
       <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
@@ -236,7 +242,7 @@ Unblock-File dist\harvest\harvest.exe
 pip install -r requirements-portal.txt
 python -m portal                # aiohttp + API + бот
 
-python -m pytest tests -q       # 1422 tests · 56 files
+python -m pytest tests -q       # 1467 tests · 57 files
 
 python publish_dash.py          # state.json → gh-pages → поле сайта<button class="btn small copy-btn" data-copy="codeExe" type="button">copy</button></pre>
         <div class="label" style="margin:14px 0 6px" data-i18n="menu_h">Меню main.py</div>
@@ -278,8 +284,8 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
 
       <div class="wstep" id="w2" hidden>
         <p class="wtitle" data-i18n="w_q2">Какой масштаб?</p>
-        <div class="field"><label><span data-i18n="w_wallets">Кошельков</span>: <b class="num" id="wWVal">10</b></label>
-          <input type="range" id="wW" min="1" max="200" value="10" step="1">
+        <div class="field"><label for="wW"><span data-i18n="w_wallets">Кошельков</span>: <b class="num" id="wWVal">10</b></label>
+          <input type="range" id="wW" min="1" max="200" value="10" step="1" aria-valuetext="10 wallets">
           <p class="note" data-i18n="w_wallets_s">Кошельки создаются сами. Для первой пробы хватит 5–10.</p></div>
         <div class="field"><label data-i18n="w_cycles">Сколько кругов работы?</label>
           <div class="seg" id="wC"><button data-c="2" class="on" type="button" data-i18n="w_c2">2 — проба</button><button data-c="5" type="button">5</button><button data-c="0" type="button" data-i18n="w_c0">∞ — без остановки</button></div>
@@ -316,19 +322,19 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
     </div>
 
     <div class="play" id="proView" hidden>
-      <div class="play-tabs" role="tablist">
-        <button class="on" data-tab="t-config" type="button" data-i18n="tab1">1 · Конфиг</button>
-        <button data-tab="t-cmd" type="button" data-i18n="tab2">2 · Команда</button>
-        <button data-tab="t-wallet" type="button" data-i18n="tab3">3 · Кошельки</button>
-        <button data-tab="t-sim" type="button" data-i18n="tab4">4 · Симулятор</button>
-        <button data-tab="t-check" type="button" data-i18n="tab5">5 · Проверка</button>
-        <button data-tab="t-ref" type="button" data-i18n="tab6">6 · Справочник</button>
+      <div class="play-tabs" role="tablist" aria-label="Pro tabs">
+        <button class="on" id="tabbtn-config" data-tab="t-config" type="button" role="tab" aria-selected="true" aria-controls="t-config" data-i18n="tab1">1 · Конфиг</button>
+        <button data-tab="t-cmd" id="tabbtn-cmd" type="button" role="tab" aria-selected="false" aria-controls="t-cmd" tabindex="-1" data-i18n="tab2">2 · Команда</button>
+        <button data-tab="t-wallet" id="tabbtn-wallet" type="button" role="tab" aria-selected="false" aria-controls="t-wallet" tabindex="-1" data-i18n="tab3">3 · Кошельки</button>
+        <button data-tab="t-sim" id="tabbtn-sim" type="button" role="tab" aria-selected="false" aria-controls="t-sim" tabindex="-1" data-i18n="tab4">4 · Симулятор</button>
+        <button data-tab="t-check" id="tabbtn-check" type="button" role="tab" aria-selected="false" aria-controls="t-check" tabindex="-1" data-i18n="tab5">5 · Проверка</button>
+        <button data-tab="t-ref" id="tabbtn-ref" type="button" role="tab" aria-selected="false" aria-controls="t-ref" tabindex="-1" data-i18n="tab6">6 · Справочник</button>
       </div>
       <div class="play-body">
 
-        <div id="t-config">
+        <div id="t-config" role="tabpanel" aria-labelledby="tabbtn-config">
           <div class="row3">
-            <div class="field"><label data-i18n="f_net">Сеть</label>
+            <div class="field"><label for="cfgNet" data-i18n="f_net_cfg">Сеть</label>
               <select id="cfgNet">
                 <option value="robinhood">Robinhood Chain · 46630 · ETH</option>
                 <option value="vibevibe" selected>vibe/vibe · 46630 · ETH</option>
@@ -336,47 +342,51 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
                 <option value="arc">Arc Minara · 5042002 · ARC</option>
                 <option value="simple">Simple transfers · 46630 · ETH</option>
               </select></div>
-            <div class="field"><label data-i18n="f_rpc">RPC URL</label><input type="text" id="cfgRpc" value="https://rpc.testnet.chain.robinhood.com"></div>
-            <div class="field"><label data-i18n="f_db">БД / master key file</label><input type="text" id="cfgDb" value="farming_state.db"></div>
+            <div class="field"><label for="cfgRpc" data-i18n="f_rpc_cfg">RPC URL</label><input type="text" id="cfgRpc" value="https://rpc.testnet.chain.robinhood.com"></div>
+            <div class="field"><label for="cfgDb" data-i18n="f_db">БД / master key file</label><input type="text" id="cfgDb" value="farming_state.db"></div>
           </div>
           <div class="row3">
-            <div class="field"><label data-i18n="f_wallets">Кошельков</label><input type="number" id="cfgWallets" value="50" min="1" max="5000"></div>
-            <div class="field"><label data-i18n="f_workers">Воркеры</label><input type="number" id="cfgWorkers" value="20" min="1" max="1000"></div>
-            <div class="field"><label data-i18n="f_target">Кран: min → target</label><input type="text" id="cfgFaucet" value="0.005 → 0.05"></div>
+            <div class="field"><label for="cfgWallets" data-i18n="f_wallets">Кошельков</label><input type="number" id="cfgWallets" value="50" min="1" max="5000"></div>
+            <div class="field"><label for="cfgWorkers" data-i18n="f_workers">Воркеры</label><input type="number" id="cfgWorkers" value="32" min="1" max="1000"></div>
+            <div class="field"><label for="cfgFaucet" data-i18n="f_target">Кран: min → target</label><input type="text" id="cfgFaucet" value="0.005 → 0.05"></div>
           </div>
           <div class="row">
-            <div class="field"><label data-i18n="f_actions">Действий за цикл [min, max]</label><input type="text" id="cfgActions" value="[3, 8]"></div>
-            <div class="field"><label data-i18n="f_gas">gas_limit / min_gas_for_action</label><input type="text" id="cfgGas" value="100000 / 0.003"></div>
+            <div class="field"><label for="cfgActions" data-i18n="f_actions">Действий за цикл [min, max]</label><input type="text" id="cfgActions" value="[3, 8]"></div>
+            <div class="field"><label for="cfgGas" data-i18n="f_gas">gas_limit / min_gas_for_action</label><input type="text" id="cfgGas" value="100000 / 0.003"></div>
           </div>
+          <div class="field"><label data-i18n="preset_h">Профиль человечности (секция behavior в YAML)</label>
+            <div class="seg" id="cfgPreset"><button data-p="stealth" class="on" type="button">Stealth</button><button data-p="balanced" type="button">Balanced</button><button data-p="degen" type="button">Degen</button></div></div>
           <div class="toolbar">
             <button class="btn accent" id="cfgGen" type="button" data-i18n="gen_cfg">Сгенерировать YAML</button>
             <button class="btn" id="cfgDl" type="button" data-i18n="dl">Скачать файл</button>
-            <button class="btn" id="cfgCopy" type="button">copy</button>
+            <button class="btn" id="cfgCopy" type="button" data-i18n="copy">копировать</button>
           </div>
 <pre class="code" id="cfgOut"># нажмите «Сгенерировать YAML»</pre>
         </div>
 
-        <div id="t-cmd" hidden>
+        <div id="t-cmd" hidden role="tabpanel" aria-labelledby="tabbtn-cmd">
           <div class="grid2">
             <div>
-              <div class="field"><label data-i18n="f_cfgfile">Конфиг-файл</label><input type="text" id="cmdCfg" value="config_vibevibe.yaml"></div>
+              <div class="field"><label for="cmdCfg" data-i18n="f_cfgfile">Конфиг-файл</label><input type="text" id="cmdCfg" value="config_vibevibe.yaml"></div>
               <div class="row">
-                <div class="field"><label>--wallets</label><input type="number" id="cmdW" value="50" min="0" max="5000"></div>
-                <div class="field"><label>--cycles (0 = ∞)</label><input type="number" id="cmdC" value="5" min="0" max="100000"></div>
+                <div class="field"><label for="cmdW">--wallets</label><input type="number" id="cmdW" value="50" min="0" max="5000"></div>
+                <div class="field"><label for="cmdC">--cycles (0 = ∞)</label><input type="number" id="cmdC" value="5" min="0" max="100000"></div>
               </div>
               <label class="check"><input type="checkbox" id="cmdSkipF"> <span><code class="inline">--skip-faucet</code> — <span data-i18n="o_sf">без крана (force_farm)</span></span></label>
               <label class="check"><input type="checkbox" id="cmdSkipFarm"> <span><code class="inline">--skip-farm</code> — <span data-i18n="o_sfarm">только кран+экспорт</span></span></label>
               <label class="check"><input type="checkbox" id="cmdFast"> <span><code class="inline">--fast</code> — <span data-i18n="o_fast">минимальные задержки</span></span></label>
               <label class="check"><input type="checkbox" id="cmdDry"> <span><code class="inline">--dry-run</code> — <span data-i18n="o_dry">холостой прогон</span></span></label>
               <label class="check"><input type="checkbox" id="cmdEnc"> <span><code class="inline">--encrypt</code> — <span data-i18n="o_enc">зашифровать экспорт</span></span></label>
-              <div class="field" style="margin-top:12px"><label>--schedule (часов, пусто — разовый прогон)</label><input type="text" id="cmdSched" value="" placeholder="6"></div>
+              <div class="field"><label data-i18n="preset_h">Профиль человечности (секция behavior в YAML)</label>
+                <div class="seg" id="cmdPreset"><button data-p="stealth" type="button">Stealth</button><button data-p="balanced" class="on" type="button">Balanced</button><button data-p="degen" type="button">Degen (= --fast)</button></div></div>
+              <div class="field" style="margin-top:12px"><label for="cmdSched">--schedule (часов, пусто — разовый прогон)</label><input type="text" id="cmdSched" value="" placeholder="6"></div>
             </div>
             <div>
               <div class="label" data-i18n="cmd_out">Готовая команда</div>
 <pre class="code" id="cmdOut">python auto.py --wallets 50 --cycles 5</pre>
               <div class="toolbar">
                 <button class="btn accent" id="cmdBuild" type="button" data-i18n="build">Собрать</button>
-                <button class="btn" id="cmdCopy" type="button">copy</button>
+                <button class="btn" id="cmdCopy" type="button" data-i18n="copy">копировать</button>
               </div>
               <div class="label" data-i18n="cmd_sim">Пояснение фаз</div>
               <p class="note" data-i18n="cmd_sim_p">Команда выполняет 4 фазы run_once: добор кошельков → pre-flight крана и request_batch → FarmerPool (чанки, воркеры, crash recovery) → export_csv/json. Повтор запуска продолжает state.json с места обрыва.</p>
@@ -384,11 +394,11 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
           </div>
         </div>
 
-        <div id="t-wallet" hidden>
+        <div id="t-wallet" hidden role="tabpanel" aria-labelledby="tabbtn-wallet">
           <p class="note" data-i18n="w_warn">Тестнеты only. Генерация — WebCrypto; адрес выводится из ключа локально (ethers через CDN, при офлайне — демо-режим с честной пометкой). Ничего не отправляется в сеть.</p>
           <div class="row">
-            <div class="field"><label data-i18n="w_n">Сколько сгенерировать</label><input type="number" id="wCount" value="5" min="1" max="200"></div>
-            <div class="field"><label>Engine</label><input type="text" id="wEngine" value="…" readonly></div>
+            <div class="field"><label for="wCount" data-i18n="w_n">Сколько сгенерировать</label><input type="number" id="wCount" value="5" min="1" max="200"></div>
+            <div class="field"><label for="wEngine">Engine</label><input type="text" id="wEngine" value="…" readonly></div>
           </div>
           <div class="toolbar">
             <button class="btn accent" id="wGen" type="button" data-i18n="w_gen">Сгенерировать</button>
@@ -400,16 +410,16 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
           <div class="table-wrap"><table class="t"><tr><th>#</th><th>address</th><th>private_key</th><th data-i18n="w_act">actions</th></tr><tbody id="wRows"><tr><td colspan="4" class="note">—</td></tr></tbody></table></div>
         </div>
 
-        <div id="t-sim" hidden>
+        <div id="t-sim" hidden role="tabpanel" aria-labelledby="tabbtn-sim">
           <div class="row3">
-            <div class="field"><label data-i18n="s_w">Кошельков</label><input type="number" id="simW" value="50" min="1" max="2000"></div>
-            <div class="field"><label data-i18n="s_c">Циклов</label><input type="number" id="simC" value="5" min="1" max="200"></div>
-            <div class="field"><label data-i18n="s_skip">skip_cycle_probability</label><input type="number" id="simSkip" value="0.05" step="0.01" min="0" max="1"></div>
+            <div class="field"><label for="simW" data-i18n="s_w">Кошельков</label><input type="number" id="simW" value="50" min="1" max="2000"></div>
+            <div class="field"><label for="simC" data-i18n="s_c">Циклов</label><input type="number" id="simC" value="5" min="1" max="200"></div>
+            <div class="field"><label for="simSkip" data-i18n="s_skip">skip_cycle_probability</label><input type="number" id="simSkip" value="0.05" step="0.01" min="0" max="1"></div>
           </div>
           <div class="row3">
-            <div class="field"><label data-i18n="s_a">Действий [min,max]</label><input type="text" id="simA" value="3,8"></div>
-            <div class="field"><label data-i18n="s_fail">Шанс падения действия</label><input type="number" id="simFail" value="0.08" step="0.01" min="0" max="1"></div>
-            <div class="field"><label data-i18n="s_speed">Скорость лога</label><select id="simSpeed"><option value="1">×1</option><option value="8" selected>×8</option><option value="60">×60</option></select></div>
+            <div class="field"><label for="simA" data-i18n="s_a">Действий [min,max]</label><input type="text" id="simA" value="3,8"></div>
+            <div class="field"><label for="simFail" data-i18n="s_fail">Шанс падения действия</label><input type="number" id="simFail" value="0.08" step="0.01" min="0" max="1"></div>
+            <div class="field"><label for="simSpeed" data-i18n="s_speed">Скорость лога</label><select id="simSpeed"><option value="1">×1</option><option value="8" selected>×8</option><option value="60">×60</option></select></div>
           </div>
           <div class="toolbar">
             <button class="btn accent" id="simRun" type="button" data-i18n="sim_run">Запустить симуляцию</button>
@@ -420,18 +430,18 @@ python publish_dash.py          # state.json → gh-pages → поле сайт�
           <div class="grid2">
             <div><div class="label" data-i18n="sim_log">Живой лог (как operator terminal)</div><div class="log" id="simLog">harvest-sim ready.
 </div></div>
-            <div><div class="label" data-i18n="sim_chart">Действия по циклам</div><canvas class="chart" id="simChart" width="600" height="220"></canvas>
+            <div><div class="label" data-i18n="sim_chart">Действия по циклам</div><canvas class="chart" id="simChart" width="600" height="220" role="img" aria-label="Симулятор: действия по циклам"></canvas>
               <dl class="kv" style="margin-top:10px"><dt>wallets_ok</dt><dd id="kW">—</dd><dt>actions_ok</dt><dd id="kA">—</dd><dt>errors</dt><dd id="kE">—</dd><dt>avg/cycle</dt><dd id="kAvg">—</dd></dl>
             </div>
           </div>
           <div class="table-wrap" style="margin-top:12px"><table class="t"><tr><th>cycle</th><th>mode</th><th>wallets</th><th>wallets_ok</th><th>actions_ok</th><th>errors</th><th>duration_s</th></tr><tbody id="simHist"><tr><td colspan="7" class="note">—</td></tr></tbody></table></div>
         </div>
 
-        <div id="t-check" hidden>
+        <div id="t-check" hidden role="tabpanel" aria-labelledby="tabbtn-check">
           <div class="grid2">
             <div>
               <div class="label" data-i18n="v_h">Вставьте YAML конфига — проверка как в config_validate.py</div>
-              <div class="field"><textarea id="vText" spellcheck="false">network:
+              <div class="field"><textarea id="vText" aria-label="YAML конфига для проверки" spellcheck="false">network:
   rpc_url: https://rpc.testnet.chain.robinhood.com
   chain_id: 46630
 wallets:
@@ -457,8 +467,8 @@ advanced:
             <div>
               <div class="label" data-i18n="p_h">Калькулятор параллелизма (core/performance.py)</div>
               <div class="row">
-                <div class="field"><label>CPU</label><input type="number" id="pCpu" value="8" min="1" max="256"></div>
-                <div class="field"><label data-i18n="p_w">max_workers (пусто — авто)</label><input type="text" id="pW" value="" placeholder="auto"></div>
+                <div class="field"><label for="pCpu">CPU</label><input type="number" id="pCpu" value="8" min="1" max="256"></div>
+                <div class="field"><label for="pW" data-i18n="p_w">max_workers (пусто — авто)</label><input type="text" id="pW" value="" placeholder="auto"></div>
               </div>
               <div class="toolbar"><button class="btn accent" id="pRun" type="button" data-i18n="p_run">Посчитать</button></div>
               <dl class="kv"><dt>auto_max_workers</dt><dd id="p1">—</dd><dt>auto_rpc_threads</dt><dd id="p2">—</dd><dt>auto_gen_workers</dt><dd id="p3">—</dd><dt>chunk_size</dt><dd id="p4">—</dd></dl>
@@ -467,7 +477,7 @@ advanced:
           </div>
         </div>
 
-        <div id="t-ref" hidden>
+        <div id="t-ref" hidden role="tabpanel" aria-labelledby="tabbtn-ref">
           <div class="label" data-i18n="r_cfg_h">Конфиг YAML — все поля с границами</div>
           <p class="note" data-i18n="r_cfg_s">Нарушение границ = отказ валидатора и SystemExit(1). Заглушки 0x0 и chain 99999 — не ошибки, а замечания: transfers работают, контрактное пропускается.</p>
           <div class="table-wrap"><table class="t">
@@ -609,7 +619,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
     <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
     <div class="grid2">
       <div>
-<pre class="code">python -m pytest tests -q   # 1422 tests · 56 files</pre>
+<pre class="code">python -m pytest tests -q   # 1467 tests · 57 files</pre>
         <ul class="tight note">
           <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
           <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>
@@ -662,7 +672,7 @@ SOFTWARE.</div>
     <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script>
 /* harvest: фильтры/зум/поиск/инспектор поля поверх site.js (только чтение DOM). */
 (function(){
@@ -684,11 +694,16 @@ function apply(){
       var cls=list[sel].className;
       var st=(cls.match(/c-([iwoer])/)||[])[1]||"i";
       var names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
-      box.innerHTML="<b>#"+(sel+1)+"</b> · "+names[st][L()];
+      var det="";
+      try{if(window.cellDetail)det=window.cellDetail(sel)||"";}catch(_){}
+      // textContent, а не innerHTML: детали уже содержат только числа.
+      box.textContent="";
+      var b=document.createElement("b");b.textContent="#"+(sel+1);box.appendChild(b);
+      box.appendChild(document.createTextNode(" · "+names[st][L()]+det));
     }else{box.innerHTML='<span class="note">—</span>';}
   }
   var z=document.getElementById("fxZoom");
-  if(z)z.textContent=zoom250?(L()==="en"?"250 DETAIL":"250 ДЕТАЛЬНО"):(L()==="en"?"PANORAMA":"ПАНОРАМА");
+  if(z){z.textContent=zoom250?(L()==="en"?"250 DETAIL":"250 ДЕТАЛЬНО"):(L()==="en"?"PANORAMA":"ПАНОРАМА");z.setAttribute("aria-label",L()==="en"?"Field zoom":"Масштаб поля");}
   var g=document.getElementById("fieldGrid");
   if(g){
     if(zoom250){g.classList.remove("zoom");list.forEach(function(el){el.textContent="";});}
@@ -700,8 +715,8 @@ function apply(){
 document.addEventListener("click",function(e){
   var b=e.target.closest?e.target.closest("#fxFilters [data-f]"):null;
   if(b){filter=b.dataset.f;sel=-1;
-    Array.prototype.forEach.call(document.querySelectorAll("#fxFilters [data-f]"),function(x){x.classList.remove("on");});
-    b.classList.add("on");apply();return;}
+    Array.prototype.forEach.call(document.querySelectorAll("#fxFilters [data-f]"),function(x){x.classList.remove("on");x.setAttribute("aria-pressed","false");});
+    b.classList.add("on");b.setAttribute("aria-pressed","true");apply();return;}
   if(e.target.closest&&e.target.closest("#fxZoom")){zoom250=!zoom250;apply();return;}
   var c=e.target.closest?e.target.closest("#fieldGrid .cell"):null;
   if(c){var list=cells();sel=list.indexOf(c);apply();}
@@ -709,10 +724,36 @@ document.addEventListener("click",function(e){
 document.addEventListener("input",function(e){
   if(e.target&&e.target.id==="fxQ"){query=e.target.value.replace(/\D/g,"");apply();}
 });
+// Клавиатура по сетке: стрелки двигают виртуальный курсор инспектора
+// (сами клетки tabindex=-1 — 400 таб-стопов не создаём).
+document.getElementById("fieldGrid").addEventListener("keydown",function(e){
+  var list=cells().filter(function(el){return el.style.display!=="none";});
+  if(!list.length)return;
+  var cols=1;
+  try{
+    var top=list[0].offsetTop;
+    for(var i=1;i<list.length;i++){if(list[i].offsetTop!==top)break;cols=i;}
+  }catch(_){cols=1;}
+  var cur=list.indexOf(cells()[sel]);
+  if(cur<0)cur=0;
+  var n=null;
+  if(e.key==="ArrowRight")n=Math.min(list.length-1,cur+1);
+  else if(e.key==="ArrowLeft")n=Math.max(0,cur-1);
+  else if(e.key==="ArrowDown")n=Math.min(list.length-1,cur+cols);
+  else if(e.key==="ArrowUp")n=Math.max(0,cur-cols);
+  else if(e.key==="Home")n=0;
+  else if(e.key==="End")n=list.length-1;
+  if(n!==null){e.preventDefault();sel=cells().indexOf(list[n]);apply();}
+});
 new MutationObserver(apply).observe(document.getElementById("fieldGrid"),{childList:true});
 apply();
 })();
 </script>
 <script src="assets/site.js" defer></script>
+<script>
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("./sw.js").catch(() => {}); });
+}
+</script>
 </body>
 </html>

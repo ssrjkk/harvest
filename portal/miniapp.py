@@ -70,6 +70,9 @@ def _choke_ok(bucket: str, ip: str) -> bool:
     if len(rec) >= _CHOKE_LIMIT:
         return False
     rec.append(now)
+    if len(_choke) > 20_000:
+        for kk in [kk for kk, v in _choke.items() if not any(now - t < _CHOKE_WINDOW for t in v)]:
+            _choke.pop(kk, None)
     return True
 
 
@@ -80,6 +83,9 @@ def _gchoke_ok(bucket: str) -> bool:
     if len(rec) >= _GCHOKE_LIMIT:
         return False
     rec.append(now)
+    if len(_gchoke) > 5_000:
+        for kk in [kk for kk, v in list(_gchoke.items()) if not any(now - t < _GCHOKE_WINDOW for t in v)]:
+            _gchoke.pop(kk, None)
     return True
 
 
@@ -131,7 +137,7 @@ def _deny() -> web.Response:
 # ---------- одноразовые токены подтверждения (п.1, п.5 ТЗ) ----------
 
 _CONFIRM_TTL = 300.0
-_confirm_used: set[str] = set()
+_confirm_used: dict[str, float] = {}
 
 
 def issue_confirm(secret: str, tg_id: int, action: str) -> str:
@@ -139,7 +145,19 @@ def issue_confirm(secret: str, tg_id: int, action: str) -> str:
     return auth.sign_token(secret, f"tma-confirm:{tg_id}:{action}", "", ttl=int(_CONFIRM_TTL))
 
 
+def _prune_confirms(now: float) -> None:
+    # Чистим только просроченные (TTL 5 мин + запас), никогда clear-all.
+    cutoff = now - (_CONFIRM_TTL + 60.0)
+    for tok in [t for t, ts in _confirm_used.items() if ts < cutoff]:
+        _confirm_used.pop(tok, None)
+    # Аварийный клапан: если всё равно >10k (атака), удаляем самые старые.
+    if len(_confirm_used) > 10_000:
+        for tok, _ts in sorted(_confirm_used.items(), key=lambda kv: kv[1])[: len(_confirm_used) - 10_000]:
+            _confirm_used.pop(tok, None)
+
+
 def consume_confirm(secret: str, token: str, tg_id: int, action: str) -> bool:
+    now = time.time()
     if not token or token in _confirm_used:
         return False
     payload = auth.read_token(secret, token)
@@ -147,9 +165,8 @@ def consume_confirm(secret: str, token: str, tg_id: int, action: str) -> bool:
         return False
     if payload.get("sub") != f"tma-confirm:{tg_id}:{action}":
         return False
-    _confirm_used.add(token)
-    if len(_confirm_used) > 10_000:
-        _confirm_used.clear()
+    _confirm_used[token] = now
+    _prune_confirms(now)
     return True
 
 
@@ -265,9 +282,10 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         _cfg, daemon, _tg, _f = ctx
         try:
             limit = int(request.query.get("limit", "20"))
-        except ValueError:
-            limit = 20
-        limit = max(1, min(limit, 50))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "bad limit"}, status=400)
+        if not 1 <= limit <= 50:
+            return web.json_response({"error": "bad limit"}, status=400)
         return web.json_response({"history": await daemon.cycle_history(limit)})
 
     async def api_networks(request: web.Request) -> web.Response:
@@ -301,7 +319,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": "bad request"}, status=400)
         action = str(body.get("action", ""))
         if action not in {"start", "pause", "resume", "stop"}:
-            return web.json_response({"error": "unknown"}, status=404)
+            return web.json_response({"error": "unknown action"}, status=400)
         if not _mut_ok(tg_id, "farm"):
             return web.json_response({"error": "rate"}, status=429)
         logger.info("[AUDIT] miniapp farm user=%s action=%s", tg_id, action)
@@ -376,7 +394,9 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
                 return web.json_response({"ok": ok, "lines": lines})
         except (ValueError, TypeError) as e:
             return web.json_response({"error": str(e)[:200]}, status=400)
-        return web.json_response({"error": "unknown"}, status=404)
+        return web.json_response({"error": "unknown kind"}, status=400)
+
+    _EXPORT_FORMATS = {"csv", "json", "enc-csv", "enc-json"}
 
     async def api_export_token(request: web.Request) -> web.Response:
         ctx = await _auth(request)
@@ -388,7 +408,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         except Exception:  # noqa: BLE001
             body = {}
         fmt = str(body.get("format", "csv"))
-        if fmt not in {"csv", "json"}:
+        if fmt not in _EXPORT_FORMATS:
             return web.json_response({"error": "bad format"}, status=400)
         if not _mut_ok(tg_id, "export_token"):
             return web.json_response({"error": "rate"}, status=429)
@@ -406,7 +426,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "bad request"}, status=400)
         fmt = str(body.get("format", "csv"))
-        if fmt not in {"csv", "json"}:
+        if fmt not in _EXPORT_FORMATS:
             return web.json_response({"error": "bad format"}, status=400)
         if not consume_confirm(cfg.secret, str(body.get("confirm_token", "")), tg_id,
                                f"export:{fmt}"):
@@ -416,16 +436,28 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         ok, _wait = _bt._flood_ok(tg_id, "export")
         if not ok:
             return web.json_response({"error": "cooldown"}, status=429)
+        # Шифрованный вариант: пароль — только в памяти, в логи не пишем
+        # (тот же trust, что у EncWiz бота: сервер шифрует в tmp и шлёт .enc
+        # в чат с protect + автоудалением).
+        password = None
+        if fmt.startswith("enc-"):
+            password = body.get("password", "")
+            if not isinstance(password, str) or not 4 <= len(password) <= 256:
+                return web.json_response({"error": "bad password"}, status=400)
+            fmt = fmt[4:]
         try:
             from aiogram import Bot
 
             bot = Bot(token=cfg.telegram_token)
             async with bot:
-                await _bt.send_wallets_file(bot, tg_id, daemon, fmt)
+                if password is None:
+                    await _bt.send_wallets_file(bot, tg_id, daemon, fmt)
+                else:
+                    await _bt._send_encrypted(bot, tg_id, daemon, fmt, password)
         except Exception:  # noqa: BLE001
             logger.warning("miniapp export упал", exc_info=True)
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp export user=%s fmt=%s", tg_id, fmt)
+        logger.info("[AUDIT] miniapp export user=%s fmt=%s", tg_id, fmt if password is None else f"enc-{fmt}")
         return web.json_response({"ok": True, "sent": "chat"})
 
     async def api_settings_get(request: web.Request) -> web.Response:
@@ -480,11 +512,122 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": "failed"}, status=500)
         return web.json_response(state)
 
+    async def api_alerts_get(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, _tg, _f = ctx
+        try:
+            return web.json_response(daemon.balance_alerts_state())
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+
+    async def api_alerts_set(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, tg_id, _f = ctx
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "bad request"}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({"error": "bad request"}, status=400)
+        if not _mut_ok(tg_id, "alerts"):
+            return web.json_response({"error": "rate"}, status=429)
+        try:
+            threshold = float(body.get("threshold", 0.001))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "bad threshold"}, status=400)
+        if not 0 <= threshold <= 100:
+            return web.json_response({"error": "bad threshold"}, status=400)
+        enabled = bool(body.get("enabled", True))
+        if str(body.get("enabled", "")).lower() in {"off", "0", "false", "disable"}:
+            enabled = False
+        try:
+            res = await daemon.set_balance_alerts(enabled, threshold)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+        logger.info("[AUDIT] miniapp alerts user=%s enabled=%s threshold=%s", tg_id, enabled, threshold)
+        return web.json_response({"ok": True, **res})
+
+    async def api_rpc(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, _tg, _f = ctx
+        try:
+            return web.json_response(await daemon.rpc_health())
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+
+    async def api_faucet(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, tg_id, _f = ctx
+        if not _mut_ok(tg_id, "faucet"):
+            return web.json_response({"error": "rate"}, status=429)
+        try:
+            report = await daemon.faucet_report()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+        live = sum(1 for p in report if isinstance(p, dict) and p.get("alive"))
+        return web.json_response({"ok": True, "live": live, "strategies": report,
+                                  "drip": daemon.drip_state()})
+
+    async def api_faucet_drip(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, tg_id, _f = ctx
+        if not _mut_ok(tg_id, "faucet"):
+            return web.json_response({"error": "rate"}, status=429)
+        try:
+            res = await daemon.drip_faucet()
+        except RuntimeError as e:
+            return web.json_response({"error": str(e)}, status=503)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+        logger.info("[AUDIT] miniapp drip user=%s started=%s", tg_id, res.get("started"))
+        return web.json_response(res, status=202 if res.get("started") else 409)
+
+    async def api_net_switch(request: web.Request) -> web.Response:
+        ctx = await _auth(request)
+        if ctx is None:
+            return _deny()
+        _cfg, daemon, tg_id, _f = ctx
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "bad request"}, status=400)
+        if not isinstance(body, dict):
+            return web.json_response({"error": "bad request"}, status=400)
+        slug = str(body.get("slug", "")).strip()[:64]
+        if not slug:
+            return web.json_response({"error": "bad slug"}, status=400)
+        if not _mut_ok(tg_id, "net_switch"):
+            return web.json_response({"error": "rate"}, status=429)
+        try:
+            ok = await daemon.switch_to(slug)
+        except Exception:  # noqa: BLE001
+            return web.json_response({"error": "failed"}, status=500)
+        if not ok:
+            return web.json_response({"error": "unknown network"}, status=404)
+        logger.info("[AUDIT] miniapp net_switch user=%s slug=%s", tg_id, slug)
+        return web.json_response({"ok": True, **daemon.run_state()})
+
     app.router.add_get("/app/", app_page)
     app.router.add_get("/api/miniapp/state", api_state)
     app.router.add_get("/api/miniapp/history", api_history)
     app.router.add_get("/api/miniapp/scheduler", api_scheduler)
     app.router.add_get("/api/miniapp/networks", api_networks)
+    app.router.add_get("/api/miniapp/alerts", api_alerts_get)
+    app.router.add_post("/api/miniapp/alerts", api_alerts_set)
+    app.router.add_get("/api/miniapp/rpc", api_rpc)
+    app.router.add_get("/api/miniapp/faucet", api_faucet)
+    app.router.add_post("/api/miniapp/faucet/drip", api_faucet_drip)
+    app.router.add_post("/api/miniapp/network/switch", api_net_switch)
     app.router.add_post("/api/miniapp/farm", api_farm)
     app.router.add_post("/api/miniapp/command", api_command)
     app.router.add_post("/api/miniapp/export/token", api_export_token)

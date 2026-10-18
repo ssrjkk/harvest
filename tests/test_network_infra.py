@@ -398,6 +398,31 @@ class TestSwitchRpc(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_breakers_are_per_node(self):
+        from unittest.mock import MagicMock, patch
+
+        from core.network import NetworkManager
+
+        def _connect(self, url):
+            return MagicMock()
+
+        async def scenario():
+            with patch.object(NetworkManager, "_connect_rpc", _connect):
+                net = NetworkManager(self._CONFIG, MagicMock())
+                # Кладём ноду A в OPEN: B при этом обязана оставаться доступной.
+                for _ in range(net._circuit_breaker._failure_threshold):
+                    net._circuit_breaker.record_failure()
+                self.assertFalse(net._circuit_breaker.allow_request())
+                await net._switch_rpc()
+                self.assertTrue(net._circuit_breaker.allow_request())
+                # Возврат на A: её OPEN честно досиживает recovery_timeout.
+                await net._switch_rpc()
+                self.assertTrue(net.rpc_url.startswith("https://a.example.com/rpc"))
+                self.assertFalse(net._circuit_breaker.allow_request())
+                await net.close()
+
+        asyncio.run(scenario())
+
     def test_close_idempotent(self):
         from unittest.mock import MagicMock, patch
 

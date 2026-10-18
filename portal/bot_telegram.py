@@ -280,7 +280,18 @@ def _esc(value: object) -> str:
 _FLOOD_INTERVAL_S = 30.0
 # Экспорт — 1 в минуту на пользователя (п.6 ТЗ) + запись в аудит-лог.
 # Ключи текстом — та же чувствительность (п.6 ТЗ).
-_FLOOD_INTERVALS: dict[str, float] = {"export": 60.0, "keys": 60.0}
+# Лёгкие чтения — короче, чтобы /balance не душил RPC, а /status не тормозил UI.
+_FLOOD_INTERVALS: dict[str, float] = {
+    "export": 60.0,
+    "keys": 60.0,
+    "status": 5.0,
+    "history": 5.0,
+    "doctor": 5.0,
+    "balance": 10.0,
+    "faucet": 15.0,
+    "rpc": 15.0,
+    "scheduler": 10.0,
+}
 # Автоудаление сообщений с файлами экспорта (сек): ключи не лежат в истории.
 _EXPORT_AUTODELETE_S = 60.0
 _flood_last: dict[tuple[int, str], float] = {}
@@ -320,12 +331,23 @@ class _RedactingFilter(logging.Filter):
             record.msg = redact_token(record.msg)
         except Exception:  # noqa: BLE001
             pass
+        # Трейсбэк форматируется позже (Formatter добавляет текст исключения
+        # с URL api.telegram.org/bot<id>:<secret>). Предформатируем здесь
+        # в record.exc_text — форматтер использует его вместо exc_info.
+        # Сам объект исключения НЕ трогаем (мутация args исказила бы raise).
+        try:
+            if record.exc_info and record.exc_info[0] is not None and not record.exc_text:
+                import traceback as _tb
+
+                record.exc_text = redact_token("".join(_tb.format_exception(*record.exc_info)))
+        except Exception:  # noqa: BLE001
+            pass
         return True
 
 
 def install_token_redaction() -> None:
-    """Вешает редакцию токена на portal- и aiogram-логгеры (идемпотентно)."""
-    for name in ("portal", "portal.bot_telegram", "aiogram", "aiogram.dispatcher"):
+    """Вешает редакцию токена на portal/aiogram/root-логгеры (идемпотентно)."""
+    for name in ("portal", "portal.bot_telegram", "aiogram", "aiogram.dispatcher", ""):
         lg = logging.getLogger(name)
         if not any(isinstance(f, _RedactingFilter) for f in lg.filters):
             lg.addFilter(_RedactingFilter())
@@ -434,19 +456,29 @@ async def notify_owner(cfg: PortalConfig, text: str) -> None:
 
 BOT_COMMANDS_RU: list[tuple[str, str]] = [
     ("start", "Поле — главный экран"),
+    ("menu", "Меню — все разделы"),
     ("status", "Живое поле фермы"),
     ("monitor", "Мониторинг с алертами"),
     ("doctor", "Диагностика"),
+    ("diag", "Диагностика подробно"),
     ("history", "История циклов"),
     ("balance", "Балансы кошельков"),
     ("wallets", "Список кошельков"),
     ("profiles", "Профили флота"),
     ("export", "Скачать кошельки (с подтверждением)"),
     ("network", "Переключение сети"),
+    ("pause", "Пауза фарма"),
+    ("resume", "Продолжить фарм"),
+    ("stop", "Остановить фарм"),
+    ("faucet", "Проверка крана"),
+    ("rpc", "Здоровье RPC"),
+    ("scheduler", "Планировщик"),
+    ("alerts", "Мониторинг балансов"),
     ("cmd", "Конструктор команды"),
     ("cfg", "Конструктор YAML"),
     ("check", "Проверка YAML"),
     ("ref", "Справочник параметров"),
+    ("cancel", "Закрыть мастер"),
     ("help", "Справка"),
 ]
 
@@ -685,11 +717,17 @@ _HELP_TEXT = (
     "Поле и диагностика:\n"
     "• /status — живой статус (успех %, средние, health)\n"
     "• /monitor — живой мониторинг с алертами\n"
-    "• /doctor — диагностика, /history — история циклов\n"
-    "• /balance — балансы кошельков\n\n"
+    "• /doctor — диагностика, /diag — подробно\n"
+    "• /history — история циклов\n"
+    "• /balance — балансы кошельков\n"
+    "• /faucet — проверка крана (pre-flight)\n"
+    "• /rpc — здоровье RPC\n\n"
     "Управление:\n"
-    "• Старт / Стоп / Пауза / Резюм\n"
-    "• /network — переключение тестнет-сети\n\n"
+    "• /network — переключение тестнет-сети\n"
+    "• /pause — пауза, /resume — продолжить\n"
+    "• /stop — остановить фарм\n"
+    "• /scheduler — планировщик (или /schedule)\n"
+    "• /alerts — мониторинг балансов\n\n"
     "Конструкторы (как вкладки Про на сайте):\n"
     "• /cmd сеть [кошельки] [циклы] — готовая команда\n"
     "• Кнопка [CMD] — мастер: сеть → кошельки → циклы → кран\n"
@@ -698,15 +736,69 @@ _HELP_TEXT = (
     "• /check + YAML следующими строками — проверка валидатором\n"
     "• YAML можно прислать файлом (.yaml) — тоже проверю\n"
     "• /cancel — закрыть мастер\n"
+    "• /menu — все разделы\n"
     "• /ref — сжатый справочник параметров\n\n"
     "Кошельки:\n"
     "• /wallets — список (ключи под спойлером)\n"
     "• /profiles — разнообразие профилей флота\n"
-    "• /diag — диагностика подробно\n"
     "• /export [json] — скачать все кошельки (CSV)\n\n"
     "/start — главное меню\n/help — эта справка\n\n"
     "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
 )
+
+
+def _fmt_rpc(health: dict) -> str:
+    """Компактный RPC-статус для /rpc (HTML, без секретов)."""
+    import html as _h
+
+    if not isinstance(health, dict) or not health:
+        return "RPC: нет данных."
+    lines = ["<b>harvest // RPC</b>"]
+    # Ожидаемая форма daemon.rpc_health(): {nodes:[{url,ok,latency_ms,...}], ...}
+    nodes = health.get("nodes") if isinstance(health.get("nodes"), list) else None
+    if nodes is not None:
+        if not nodes:
+            lines.append("нод нет")
+        for n in nodes[:10]:
+            if not isinstance(n, dict):
+                continue
+            url = _h.escape(str(n.get("url") or n.get("rpc") or "?")[:60])
+            ok = n.get("ok", n.get("healthy", "?"))
+            lat = n.get("latency_ms", n.get("latency", n.get("ms", "?")))
+            mark = "[ok]" if ok is True or str(ok).lower() in {"ok", "true", "1"} else "[err]" if ok is False else "[?]"
+            lines.append(f"{mark} <code>{url}</code> {lat}ms")
+        if len(nodes) > 10:
+            lines.append(f"+{len(nodes) - 10}…")
+        return "\n".join(lines)
+    # Fallback: плоский dict.
+    for k, v in list(health.items())[:12]:
+        lines.append(f"{_h.escape(str(k))}: <code>{_h.escape(str(v)[:80])}</code>")
+    return "\n".join(lines)
+
+
+def _fmt_scheduler(state: dict) -> str:
+    """Компактный планировщик для /scheduler (HTML)."""
+    import html as _h
+
+    if not isinstance(state, dict):
+        return "Планировщик: нет данных."
+    _raw_tasks = state.get("tasks")
+    tasks: list = _raw_tasks if isinstance(_raw_tasks, list) else []
+    run = "запущен" if state.get("running") else "остановлен"
+    lines = [f"<b>harvest // PLAN</b> ({run}, задач: {len(tasks)})"]
+    for t in tasks[:10]:
+        if not isinstance(t, dict):
+            continue
+        tid = _h.escape(str(t.get("task_id") or t.get("id") or "?")[:40])
+        name = _h.escape(str(t.get("name") or "")[:40])
+        nxt = _h.escape(str(t.get("next_run") or "—")[:32])
+        en = "on" if t.get("enabled", True) else "off"
+        lines.append(f"• <code>{tid}</code> {name} [{en}] → {nxt}")
+    if len(tasks) > 10:
+        lines.append(f"+{len(tasks) - 10}…")
+    if not tasks:
+        lines.append("задач нет — портал → Расписание")
+    return "\n".join(lines)
 
 
 def _networks_kb(networks: list[dict]) -> InlineKeyboardMarkup:
@@ -776,6 +868,25 @@ def _nav_kb(back_cb: str, lang: str = "ru") -> InlineKeyboardMarkup:
     ]])
 
 
+def _menu_screen_kb(lang: str = "ru", live_on: bool = False) -> InlineKeyboardMarkup:
+    """Клавиатура экрана Меню: все вторичные разделы (те же колбэки, что и кнопки)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=_R.tr("btn_wallets", lang), callback_data="v1:wallets:page:1"),
+         InlineKeyboardButton(text=_R.tr("btn_profiles", lang), callback_data="v1:profiles:show"),
+         InlineKeyboardButton(text=_R.tr("btn_history", lang), callback_data="v1:history:show")],
+        [InlineKeyboardButton(text=_R.tr("btn_builder", lang), callback_data="v1:builder:show"),
+         InlineKeyboardButton(text=_R.tr("btn_net", lang), callback_data="v1:net:show"),
+         InlineKeyboardButton(text=_R.tr("btn_diag", lang), callback_data="v1:diag:show")],
+        [InlineKeyboardButton(text=_R.tr("btn_scale", lang), callback_data="v1:scale:show"),
+         InlineKeyboardButton(text=_R.tr("btn_ref", lang), callback_data="v1:ref:show"),
+         InlineKeyboardButton(text=_R.tr("btn_danger", lang), callback_data="v1:danger:show")],
+        [InlineKeyboardButton(text=_R.tr("btn_live_off" if live_on else "btn_live_on", lang),
+                               callback_data="v1:home:live")],
+        [InlineKeyboardButton(text=_R.tr("btn_back", lang), callback_data="v1:home:show"),
+         InlineKeyboardButton(text=_R.tr("btn_home", lang), callback_data="v1:home:show")],
+    ])
+
+
 async def _safe_edit(message: Message, text: str, **kwargs) -> bool:
     """edit_text с молчаливым глотанием 'message is not modified' (п.2 ТЗ)."""
     try:
@@ -823,7 +934,7 @@ async def _home_state(daemon: FarmDaemon) -> dict:
             slug = str(n.get("slug") or slug)
             break
     try:
-        cells, total = await daemon.wallet_cells()  # type: ignore[attr-defined]
+        cells, total = await daemon.wallet_cells()
     except Exception:  # noqa: BLE001
         try:
             total = int(stats.get("wallet_count") or 0)
@@ -1180,6 +1291,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await _show_home_edit(call, daemon)
 
     async def _scale() -> None:
+        count: int | str
         try:
             count = await daemon.wallet_count()
         except Exception:  # noqa: BLE001
@@ -1230,8 +1342,8 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             wallets = await daemon.all_wallets()
         except Exception:  # noqa: BLE001
             wallets = []
-        cfg = getattr(daemon, "config", None) or {}
-        beh = (cfg.get("behavior") or {}) if isinstance(cfg, dict) else {}
+        cfg_dict = getattr(daemon, "config", None) or {}
+        beh = (cfg_dict.get("behavior") or {}) if isinstance(cfg_dict, dict) else {}
         summary = _bot_ops.profiles_summary(
             [w.get("address", "") for w in wallets if isinstance(w, dict)], beh)
         await call.message.edit_text(
@@ -1243,21 +1355,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
         await call.message.edit_text(
             "<b>harvest // МЕНЮ</b>" if lang == "ru" else "<b>harvest // MENU</b>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=_R.tr("btn_wallets", lang), callback_data="v1:wallets:page:1"),
-                 InlineKeyboardButton(text=_R.tr("btn_profiles", lang), callback_data="v1:profiles:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_history", lang), callback_data="v1:history:show")],
-                [InlineKeyboardButton(text=_R.tr("btn_builder", lang), callback_data="v1:builder:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_net", lang), callback_data="v1:net:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_diag", lang), callback_data="v1:diag:show")],
-                [InlineKeyboardButton(text=_R.tr("btn_scale", lang), callback_data="v1:scale:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_ref", lang), callback_data="v1:ref:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_danger", lang), callback_data="v1:danger:show")],
-                [InlineKeyboardButton(text=_R.tr("btn_live_off" if live_on else "btn_live_on", lang),
-                                       callback_data="v1:home:live")],
-                [InlineKeyboardButton(text=_R.tr("btn_back", lang), callback_data="v1:home:show"),
-                 InlineKeyboardButton(text=_R.tr("btn_home", lang), callback_data="v1:home:show")],
-            ]), link_preview_options=_NO_PREVIEW)
+            reply_markup=_menu_screen_kb(lang, live_on), link_preview_options=_NO_PREVIEW)
         return True
     if screen == "net" and action == "show":
         answer, kb = _networks_view(daemon)
@@ -1530,12 +1628,13 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
     if screen == "master" and action == "c":
         if state is None:
             return True
-        n = 0 if arg == "∞" else None
-        if n is None:
+        n_cycles: int | None = 0 if arg == "∞" else None
+        if n_cycles is None:
             try:
-                n = int(arg)
+                n_cycles = int(arg)
             except (TypeError, ValueError):
                 return True
+        n = n_cycles
         if not 0 <= n <= 100000:
             await call.message.answer("[err] Нужно число 0..100000.")
             return True
@@ -1786,19 +1885,35 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
         if text == "/help":
             await message.answer(_HELP_TEXT, parse_mode=ParseMode.HTML, reply_markup=_menu())
         elif text == "/doctor":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "doctor")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Диагностика — антифлуд 5с.")
+                return
             await message.answer(
                 _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=_menu(),
             )
         elif text == "/diag":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "doctor")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Диагностика — антифлуд 5с.")
+                return
             await message.answer(
                 _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
                 parse_mode=ParseMode.HTML,
             )
         elif text == "/history":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "history")
+            if not ok:
+                await message.answer(f"[жди {wait}с] История — антифлуд 5с.")
+                return
             await message.answer(_fmt_history(await daemon.cycle_history()), parse_mode=ParseMode.HTML)
         elif text == "/status":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "status")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Статус — антифлуд 5с.")
+                return
             await message.answer(_fmt_status(await daemon.statistics()), parse_mode=ParseMode.HTML)
         elif text.startswith("/wallets"):
             ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "wallets")
@@ -1838,19 +1953,137 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 wallets = await daemon.all_wallets()
             except Exception:  # noqa: BLE001
                 wallets = []
+            if not wallets:
+                await message.answer(
+                    "Профилей пока нет — флот пуст.\n"
+                    "Создай кошельки: портал → Кошельки → Создать, или /wallets → [+ СОЗДАТЬ]."
+                )
+                return
             cfgd = getattr(daemon, "config", None) or {}
             beh = (cfgd.get("behavior") or {}) if isinstance(cfgd, dict) else {}
             summary = _bot_ops.profiles_summary(
                 [w.get("address", "") for w in wallets if isinstance(w, dict)], beh)
             _mode, lang = await _mode_lang(daemon, message.from_user.id if message.from_user else None)
             await message.answer(_R.render_profiles(summary, lang), parse_mode=ParseMode.HTML)
+        elif text == "/menu":
+            _mode, lang = await _mode_lang(daemon, message.from_user.id if message.from_user else None)
+            uid = message.from_user.id if message.from_user else None
+            live_on = bool(uid and _live.get(uid) is not None and not _live[uid].done())
+            await message.answer(
+                "<b>harvest // МЕНЮ</b>" if lang == "ru" else "<b>harvest // MENU</b>",
+                parse_mode=ParseMode.HTML,
+                reply_markup=_menu_screen_kb(lang, live_on),
+            )
         elif text == "/balance":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "balance")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Балансы — антифлуд 10с.")
+                return
             try:
                 bals = await daemon.wallet_balances()
             except RuntimeError:
                 await message.answer("[err] Ферма не запущена.")
                 return
+            except Exception:  # noqa: BLE001
+                await message.answer("[err] Не удалось прочитать балансы.")
+                return
+            if not bals:
+                await message.answer("Кошельков пока нет — создайте через /wallets или портал.")
+                return
             await message.answer(_fmt_balances(bals), parse_mode=ParseMode.HTML)
+        elif text == "/pause":
+            ok = await daemon.pause()
+            await message.answer("[ПАУЗА] Фарм на паузе." if ok else "[err] Нечего ставить на паузу.")
+        elif text == "/resume":
+            ok = await daemon.resume()
+            await message.answer("[ОК] Фарм продолжен." if ok else "[err] Нечего продолжать.")
+        elif text == "/stop":
+            ok = await daemon.stop()
+            await message.answer("[СТОП] Фарм остановлен." if ok else "[err] Ферма не запущена.")
+        elif text == "/faucet":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "faucet")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Кран — антифлуд 15с.")
+                return
+            try:
+                report = await daemon.faucet_report()
+            except Exception:  # noqa: BLE001
+                report = []
+            live = sum(1 for p in report if isinstance(p, dict) and p.get("alive"))
+            lines = ["<b>harvest // КРАН</b>"]
+            if not report:
+                lines.append("проба не удалась — смотри логи фарма.")
+            for p in report[:6]:
+                mark = "[ok]" if p.get("alive") else "[err]"
+                lines.append(
+                    f"{mark} {p.get('type')}: {html.escape(str(p.get('reason', ''))[:160])}"
+                )
+            if live > 0:
+                lines.append(f"Итого живых: {live}.")
+            else:
+                lines.append(
+                    "Итого: 0 живых — задай CHAINSTACK_API_KEY в окружении "
+                    "фарм-машины и перезапусти задачу."
+                )
+            await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
+        elif text == "/rpc":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "rpc")
+            if not ok:
+                await message.answer(f"[жди {wait}с] RPC — антифлуд 15с.")
+                return
+            try:
+                health = await daemon.rpc_health()
+            except Exception:  # noqa: BLE001
+                await message.answer("[err] Не удалось опросить RPC.")
+                return
+            await message.answer(_fmt_rpc(health), parse_mode=ParseMode.HTML)
+        elif text.startswith("/scheduler") or text.startswith("/schedule"):
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "scheduler")
+            if not ok:
+                await message.answer(f"[жди {wait}с] Планировщик — антифлуд 10с.")
+                return
+            await message.answer(_fmt_scheduler(daemon.scheduler_state()), parse_mode=ParseMode.HTML)
+        elif text.startswith("/alerts"):
+            parts = text.split()
+            if len(parts) >= 2 and parts[1].lower() in {"off", "0", "disable"}:
+                try:
+                    await daemon.set_balance_alerts(False, 0)
+                    await message.answer("[ok] Алерты выкл.")
+                except Exception:  # noqa: BLE001
+                    await message.answer("[err] Не удалось выключить алерты.")
+                return
+            if len(parts) >= 2:
+                try:
+                    threshold = float(parts[1])
+                    if not 0 <= threshold <= 100:
+                        raise ValueError
+                    res = await daemon.set_balance_alerts(True, threshold)
+                    await message.answer(f"[ok] Алерты вкл, порог {res.get('threshold')}.")
+                    return
+                except (ValueError, TypeError):
+                    await message.answer("[err] /alerts [порог 0..100] или /alerts off")
+                    return
+                except Exception:  # noqa: BLE001
+                    await message.answer("[err] Не удалось сохранить алерты.")
+                    return
+                try:
+                    await daemon.set_balance_alerts(False, 0)
+                    await message.answer("[ok] Алерты выкл.")
+                except Exception:  # noqa: BLE001
+                    await message.answer("[err] Не удалось выключить алерты.")
+                return
+            try:
+                st = daemon.balance_alerts_state()
+            except Exception:  # noqa: BLE001
+                await message.answer("[err] Не удалось прочитать алерты.")
+                return
+            on = "вкл" if st.get("enabled") else "выкл"
+            await message.answer(
+                f"Алерты: {on}, порог {st.get('threshold')}.\n"
+                "/alerts 0.01 — вкл с порогом, /alerts off — выкл."
+            )
+        elif text == "/cancel":
+            await message.answer("[ОТМЕНА] Мастер закрыт.")
         elif text.startswith("/cmd"):
             await message.answer(
                 _bot_ops_parse_cmd(text), parse_mode=ParseMode.HTML, reply_markup=_menu()

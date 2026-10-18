@@ -80,6 +80,17 @@ class RiskEngine:
     def _state(self, subject: str) -> SubjectState:
         st = self._states.get(subject)
         if st is None:
+            # Клапан от раздувания: чистим давно молчавших перед добавлением нового.
+            if len(self._states) >= 20_000:
+                now = time.monotonic()
+                ttl = getattr(self.cfg, "subject_ttl_s", 3600.0)
+                for _s in [s for s, _st in self._states.items() if now - _st.last_ts > ttl]:
+                    self._states.pop(_s, None)
+                # Если всё равно переполнение (флуд новыми) — удаляем самые старые.
+                if len(self._states) >= 20_000:
+                    oldest = sorted(self._states.items(), key=lambda kv: kv[1].last_ts)
+                    for _s, _ in oldest[: len(self._states) - 19_000]:
+                        self._states.pop(_s, None)
             st = SubjectState(last_ts=time.monotonic())
             self._states[subject] = st
         return st

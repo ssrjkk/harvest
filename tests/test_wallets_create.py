@@ -158,12 +158,12 @@ class TestApiWalletsCreate(unittest.IsolatedAsyncioTestCase):
             resp = await client.post("/api/wallets", data=b"{broken", headers={"Content-Type": "application/json"})
             self.assertEqual(resp.status, 400)
 
-    async def test_no_db_500(self):
+    async def test_no_db_503(self):
         client = await self._client(_NoDbDaemon())
         async with client:
             await client.post("/api/login/password", json={"password": "k" * 64})
             resp = await client.post("/api/wallets", json={"count": 2})
-            self.assertEqual(resp.status, 500)
+            self.assertEqual(resp.status, 503)
 
 
 if __name__ == "__main__":

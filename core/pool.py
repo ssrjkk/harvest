@@ -438,6 +438,9 @@ class FarmerPool:
                 # Чанковая точка crash-state: закрывает окно между автосейвами
                 # mark_done (каждые 50) — при жёстком убийстве процесса теряется
                 # максимум кусок последнего незаконченного чанка.
+                # Нулевой чанк (все r==0) намеренно не пишем: отмечаются только
+                # реально прошедшие адреса (r>0), нулевые — кандидаты на повтор
+                # (сухой кран может ожить); финальный save() ниже persists итог.
                 if marked_this_chunk:
                     await self._state.save()
                 done = min(chunk_start + self.chunk_size, len(wallets))
@@ -524,11 +527,11 @@ class FarmerPool:
             pass
         await self.network.close()
 
-    async def run_forever(self, stop_event: asyncio.Event) -> None:
+    async def run_forever(self, stop_event: asyncio.Event, max_cycles: int = 0) -> None:
         min_d, max_d = self.config["farming"]["delay_between_cycles"]
         cycle_count = 0
         try:
-            while not stop_event.is_set():
+            while not stop_event.is_set() and (max_cycles <= 0 or cycle_count < max_cycles):
                 cycle_count += 1
                 self.cycle_count = cycle_count
                 logger.info(f"{'=' * 50}")

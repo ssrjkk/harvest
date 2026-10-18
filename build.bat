@@ -13,11 +13,11 @@ if errorlevel 1 (
     exit /b 1
 )
 
-:: Проверяем PyInstaller
+:: Проверяем PyInstaller (пин major — воспроизводимый exe)
 pip show pyinstaller >nul 2>&1
 if errorlevel 1 (
     echo Устанавливаю PyInstaller...
-    pip install pyinstaller
+    pip install "pyinstaller>=6,<7"
 )
 
 echo.

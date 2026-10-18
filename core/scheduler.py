@@ -90,7 +90,9 @@ class Scheduler:
     def save(self) -> None:
         try:
             data = {"tasks": [t.to_dict() for t in self.tasks.values()]}
-            self.path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+            tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(self.path)
         except Exception as e:
             logger.warning("Scheduler: failed to save: %s", e)
 
@@ -143,7 +145,9 @@ class Scheduler:
                 h, m = map(int, task.run_at_time.split(":"))
                 candidate = now.replace(hour=h, minute=m, second=0, microsecond=0)
                 if candidate <= now:
-                    candidate = candidate.replace(day=candidate.day + 1)
+                    from datetime import timedelta
+
+                    candidate = candidate + timedelta(days=1)
                 task.next_run = candidate.isoformat()
             except Exception:
                 task.next_run = None
@@ -223,7 +227,9 @@ class Scheduler:
         logger.info("Scheduler: executing task %s (%s)", task.task_id, task.name)
         task.last_run = datetime.now().isoformat()
         self._compute_next_run(task)
-        self.save()
+        # Запись schedule.json — через executor, чтобы не стопать loop
+        # на медленном диске (sync save() для прямых вызовов сохранён).
+        await asyncio.to_thread(self.save)
         if self._run_callback:
             try:
                 await self._run_callback(task.cycles)
