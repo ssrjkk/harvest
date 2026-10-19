@@ -2,7 +2,7 @@
 # Сборка: docker build -f deploy/Dockerfile -t harvest-portal:latest .
 # Python зафиксирован на 3.12 (код и ruff-target — py312; Dependabot-обновления
 # мажора только после проверки зависимостей).
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
