@@ -209,7 +209,7 @@ class ActionExecutor:
             )
             return True
         try:
-            result_hash = await self.network.send_transfer(
+            result_hash, reason = await self.network.send_transfer_with_reason(
                 wallet["private_key"],
                 to_address,
                 amount,
@@ -230,7 +230,7 @@ class ActionExecutor:
                 "transfer",
                 "",
                 False,
-                f"to={to_address}, amount={amount:.6f}",
+                f"error={reason}; to={to_address}, amount={amount:.6f}",
             )
         except Exception as e:
             logger.error(f"Transfer error: {e}")
@@ -311,7 +311,7 @@ class ActionExecutor:
             return True
         try:
             value = amount if amount is not None else 0.0
-            result_hash = await self.network.send_transfer(
+            result_hash, reason = await self.network.send_transfer_with_reason(
                 wallet["private_key"],
                 contract,
                 value,
@@ -333,7 +333,7 @@ class ActionExecutor:
                 action_conf["type"],
                 "",
                 False,
-                f"contract={contract}, value={value:.6f}, data={data or ''}",
+                f"error={reason}; contract={contract}, value={value:.6f}, data={data or ''}",
             )
         except Exception as e:
             logger.error(f"contract_call {contract} ошибка: {e}")

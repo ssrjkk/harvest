@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -209,6 +210,37 @@ class TestPublishDash(unittest.TestCase):
         self.assertNotIn(addr, json.dumps(state))
 
 
+class TestPushFailureDiagnosis(unittest.TestCase):
+    """Отказ push должен называть причину, а не молчать «exit status 128»."""
+
+    def _exc(self, stderr: str):
+        return subprocess.CalledProcessError(128, "git push", stderr=stderr)
+
+    def test_auth_failure_named(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            publish_dash._report_push_failure(
+                self._exc("remote: Invalid username or token.\nfatal: Authentication failed")
+            )
+        out = buf.getvalue()
+        self.assertIn("ОТКАЗ АВТОРИЗАЦИИ", out)
+        self.assertIn("gh auth login", out)
+
+    def test_other_failure_plain(self):
+        import contextlib
+        import io
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            publish_dash._report_push_failure(self._exc("fatal: unable to access: network"))
+        out = buf.getvalue()
+        self.assertNotIn("ОТКАЗ АВТОРИЗАЦИИ", out)
+        self.assertIn("git push не удался", out)
+
+
 class TestWalletsBlob(unittest.TestCase):
     def test_no_key_skips(self):
         from tools import sync_wallets_blob as sm
@@ -259,6 +291,46 @@ class TestWalletsBlob(unittest.TestCase):
             sm._parse_key("short")
         with self.assertRaises(ValueError):
             sm._parse_key("zz" * 32)
+
+    def test_master_key_probe_does_not_create_file(self):
+        """Проба кандидатов не должна оставлять master.key в CWD.
+
+        resolve_master_key() создаёт отсутствующий файл. Если бы проба его
+        использовала, публикатор оставлял бы в рабочей папке случайный ключ —
+        а ферма, запущенная оттуда, зашифровала бы новые кошельки чужим ключом.
+        """
+        import secrets as _secrets
+
+        from core.crypto import encrypt_seed
+        from tools import sync_wallets_blob as sm
+
+        good = _secrets.token_bytes(32)
+        with tempfile.TemporaryDirectory() as dbdir, tempfile.TemporaryDirectory() as cwd:
+            db = os.path.join(dbdir, "t.db")
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                "mnemonic TEXT, total_actions INTEGER DEFAULT 0)"
+            )
+            con.execute(
+                "INSERT INTO wallets VALUES (?,?,?,?)",
+                ("0x" + "cd" * 20, encrypt_seed(good, "0xkey"), encrypt_seed(good, "w"), 1),
+            )
+            con.commit()
+            con.close()
+            # Рабочий ключ лежит только рядом с БД; в CWD его нет.
+            Path(dbdir, "master.key").write_bytes(good)
+            prev = os.getcwd()
+            os.chdir(cwd)
+            wkey = _secrets.token_hex(32)
+            try:
+                res = asyncio.run(sm.sync(db_path=db, key_hex=wkey))
+            finally:
+                os.chdir(prev)
+            self.assertTrue(res["ok"], res)
+            self.assertEqual(res["count"], 1)
+            # Ключ в CWD не появился — побочного мусора нет.
+            self.assertFalse(Path(cwd, "master.key").exists())
 
     def test_master_key_picks_working_candidate(self):
         import secrets as _secrets

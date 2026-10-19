@@ -274,10 +274,13 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         # если сеть недоступна, mark() просто не вызывается, и отчёт честно
         # скажет «прочитать не удалось».
         pnl_tracker: PnlTracker | None = None
+        pnl_since_id = 0
         if not args.skip_pnl and wallets:
             pnl_tracker = PnlTracker(
                 [w["address"] for w in wallets], sample=args.pnl_sample, concurrency=8
             )
+            # Точка отсчёта: в отчёт попадут только действия текущего прогона.
+            pnl_since_id = await db.get_max_action_id()
 
         # === ФАЗА 2: КРАН ===
         if not args.skip_faucet:
@@ -445,6 +448,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                         currency=net_meta["currency"],
                         explorer=net_meta["explorer"],
                         out_path=args.pnl_out,
+                        since_id=pnl_since_id,
                     )
                     print(
                         f"  {Fore.GREEN}PnL: {summary['path']}"

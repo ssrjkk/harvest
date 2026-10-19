@@ -243,7 +243,7 @@ class TestActionExecutor:
     @pytest.mark.asyncio
     async def test_transfer_success(self):
         ex, net, vb, _ = self._make_executor()
-        net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
+        net.send_transfer_with_reason = AsyncMock(return_value=("0x" + "f" * 64, ""))
         wallet = _make_wallet()
         result = await ex.transfer(wallet, "0x" + "c" * 40, 0.001, gas_mult=1.5)
         assert result is True
@@ -251,7 +251,7 @@ class TestActionExecutor:
     @pytest.mark.asyncio
     async def test_transfer_returns_hash(self):
         ex, net, vb, _ = self._make_executor()
-        net.send_transfer = AsyncMock(return_value="")
+        net.send_transfer_with_reason = AsyncMock(return_value=("", "reverted"))
         wallet = _make_wallet()
         result = await ex.transfer(wallet, "0x" + "c" * 40, 0.001)
         assert result is False
@@ -259,10 +259,28 @@ class TestActionExecutor:
     @pytest.mark.asyncio
     async def test_transfer_exception(self):
         ex, net, vb, _ = self._make_executor()
-        net.send_transfer = AsyncMock(side_effect=RuntimeError("net err"))
+        net.send_transfer_with_reason = AsyncMock(side_effect=RuntimeError("net err"))
         wallet = _make_wallet()
         result = await ex.transfer(wallet, "0x" + "c" * 40, 0.001)
         assert result is False
+
+    @pytest.mark.asyncio
+    async def test_transfer_records_failure_reason(self):
+        """Причина отказа обязана попасть в details.
+
+        Раньше при пустом хеше писалось только 'to=..., amount=...', и при
+        100% отказе оператор не видел в actions_log, что именно ломается.
+        """
+        ex, net, vb, _ = self._make_executor()
+        net.send_transfer_with_reason = AsyncMock(return_value=("", "reverted"))
+        wallet = _make_wallet()
+        ex.writer = MagicMock()
+        ex.writer.add_action = AsyncMock()
+        result = await ex.transfer(wallet, "0x" + "c" * 40, 0.001)
+        assert result is False
+        details = ex.writer.add_action.await_args[0][4]
+        assert "error=reverted" in details
+        assert "amount=" in details
 
     @pytest.mark.asyncio
     async def test_contract_call_dry_run(self):
@@ -323,7 +341,7 @@ class TestActionExecutor:
     @pytest.mark.asyncio
     async def test_execute_action_transfer_random(self):
         ex, net, vb, _ = self._make_executor()
-        net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
+        net.send_transfer_with_reason = AsyncMock(return_value=("0x" + "f" * 64, ""))
         wallet = _make_wallet()
         addrs = [wallet["address"], "0x" + "c" * 40]
         result = await ex.execute_action(wallet, addrs)
@@ -333,7 +351,7 @@ class TestActionExecutor:
     async def test_execute_action_transfer_target(self):
         actions = [{"type": "transfer", "target": "0x" + "d" * 40}]
         ex, net, vb, _ = self._make_executor(actions=actions)
-        net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
+        net.send_transfer_with_reason = AsyncMock(return_value=("0x" + "f" * 64, ""))
         wallet = _make_wallet()
         result = await ex.execute_action(wallet, [wallet["address"]])
         assert result is True
@@ -381,7 +399,7 @@ class TestActionExecutor:
     async def test_execute_action_fallback_no_contract(self):
         actions = [{"type": "vibevibe_swap", "method": "swap", "contract": "0x" + "0" * 40}]
         ex, net, vb, _ = self._make_executor(actions=actions)
-        net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
+        net.send_transfer_with_reason = AsyncMock(return_value=("0x" + "f" * 64, ""))
         wallet = _make_wallet()
         addrs = [wallet["address"], "0x" + "c" * 40]
         result = await ex.execute_action(wallet, addrs)
@@ -399,7 +417,7 @@ class TestActionExecutor:
     async def test_execute_action_with_profile(self):
         from core.behavior import WalletProfile
         ex, net, vb, _ = self._make_executor()
-        net.send_transfer = AsyncMock(return_value="0x" + "f" * 64)
+        net.send_transfer_with_reason = AsyncMock(return_value=("0x" + "f" * 64, ""))
         wallet = _make_wallet()
         prof = WalletProfile(
             activity=1.0, amount_min_mul=1.0, amount_max_mul=1.0,

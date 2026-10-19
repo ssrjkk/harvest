@@ -1326,6 +1326,38 @@ class NetworkManager:
         gas_price_mult: float = 1.0,
         data_hex: str | None = None,
     ) -> str | None:
+        """Обёртка без причины отказа. Нужен хеш — бери его.
+
+        Если нужен и ответ «почему не отправилось», зови
+        :meth:`send_transfer_with_reason`.
+        """
+        tx_hash, _reason = await self.send_transfer_with_reason(
+            private_key,
+            to_address,
+            amount_eth,
+            gas_limit=gas_limit,
+            gas_price_mult=gas_price_mult,
+            data_hex=data_hex,
+        )
+        return tx_hash
+
+    async def send_transfer_with_reason(
+        self,
+        private_key: str,
+        to_address: str,
+        amount_eth: float,
+        gas_limit: int = 21000,
+        gas_price_mult: float = 1.0,
+        data_hex: str | None = None,
+    ) -> tuple[str | None, str]:
+        """Отправляет перевод. Возвращает ``(tx_hash, reason)``.
+
+        ``reason`` непустой, когда транзакция не прошла: ``reverted``,
+        ``no receipt (в mempool)`` или текст исключения. Раньше причина
+        уходила только в лог, и в ``actions_log`` попадало голое
+        ``to=..., amount=...`` — при 100% отказе оператор не видел, что
+        именно ломается.
+        """
         sent = False
         nonce = None
         account = None
@@ -1361,7 +1393,7 @@ class NetworkManager:
                 # а не отдаст stale pre-tx из кэша.
                 logger.warning(f"Transfer unconfirmed: tx={tx_hash.hex()} (в mempool, нет ресипта)")
                 self.invalidate_balance(account.address)
-                return None
+                return None, "no receipt (в mempool)"
             # Дорогой исход: первичная нода говорит «реверт». Одно подозрительное
             # показание не должно решать судьбу заявки — пере-спрашиваем ресипт
             # на независимой вторичной ноде (read-only). Консервативная логика
@@ -1375,9 +1407,9 @@ class NetworkManager:
                 logger.warning(f"Transfer reverted: tx={tx_hash.hex()}")
                 self.invalidate_balance(account.address)
                 await self.release_nonce(account.address, nonce)
-                return None
+                return None, "reverted"
             self.invalidate_balance(account.address)
-            return tx_hash.hex()
+            return tx_hash.hex(), ""
         except asyncio.CancelledError:
             # Отмена (таймаут кошелька, стоп пула): транзакция могла как уйти в сеть,
             # так и остаться неподписанной. Инвалидируем баланс (следующий отчёт
@@ -1401,4 +1433,4 @@ class NetworkManager:
                     await self.rollback_nonce_if_free(account.address, nonce)
                 except Exception:
                     pass
-            return None
+            return None, f"send error: {e}"

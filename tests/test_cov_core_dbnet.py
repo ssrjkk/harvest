@@ -10,6 +10,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from core import network as netmod
 from core.database import (
     Database,
     _PgAdapter,
@@ -19,7 +20,6 @@ from core.database import (
     _restrict_backup_dir,
     _translate_pg,
 )
-from core import network as netmod
 from core.network import (
     NetworkManager,
     _CircuitBreaker,
@@ -503,9 +503,12 @@ class TestInitBranches(unittest.IsolatedAsyncioTestCase):
         for fail in (False, True):
             with tempfile.TemporaryDirectory() as d:
                 db = self._db(d)
+                # fail из цикла — привязываем к значению на момент вызова
+                # (default arg), иначе замыкание видит последнее значение (B023).
+                boom = fail
 
-                def fn(sql, pr):
-                    if fail and ("VACUUM" in sql or "wal_checkpoint" in sql):
+                def fn(sql, pr, boom=boom):
+                    if boom and ("VACUUM" in sql or "wal_checkpoint" in sql):
                         raise RuntimeError("clean boom")
                     if "integrity_check" in sql:
                         return _FCur(row=("ok",))
@@ -750,13 +753,37 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.get_metrics_history(5), [])
             await db.close()
 
-    async def test_actions_since(self):
-        """Покрытие Database.get_actions_since: пустой вход + успешный путь.
+    async def test_max_action_id(self):
+        """Точка отсчёта для PnL: max(id) в actions_log."""
+        import gc
 
-        На Windows aiosqlite держит handle после close() из-за WAL/SHM файлов.
-        Поэтому после close() явно удаляем все связанные файлы БД, иначе
-        TemporaryDirectory._rmtree падает с PermissionError.
-        """
+        with tempfile.TemporaryDirectory() as d:
+            db = await self._db(d)
+            # пустая таблица → 0
+            self.assertEqual(await db.get_max_action_id(), 0)
+            await db.log_actions_batch([("0x1", "transfer", "0xh", 1, "")])
+            await db.log_actions_batch([("0x2", "transfer", "0xh", 1, "")])
+            self.assertEqual(await db.get_max_action_id(), 2)
+            # Windows aiosqlite file-lock workaround
+            await db.close()
+            gc.collect()
+            for suf in ("", ".wal", ".shm", "-journal"):
+                p = Path(d) / f"s.db{suf}"
+                if p.exists():
+                    p.unlink()
+
+        # ошибка БД → 0, без падения
+        with tempfile.TemporaryDirectory() as d:
+            db = Database(str(Path(d) / "e.db"), master_key=_key())
+
+            async def boom():
+                raise RuntimeError("connect boom")
+
+            db._connect = boom
+            self.assertEqual(await db.get_max_action_id(), 0)
+
+    async def test_actions_since(self):
+        """Покрытие Database.get_actions_since: пустой вход, успех и ошибка БД."""
         import gc
 
         with tempfile.TemporaryDirectory() as d:
@@ -774,7 +801,7 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             await db.log_actions_batch(
                 [
                     ("0x1111", "transfer", "0xh1", 1, ""),
-                    ("0x2222", "stake",    "0xh2", 0, ""),
+                    ("0x2222", "stake", "0xh2", 0, "error=reverted; to=0x22"),
                 ]
             )
             rows = await db.get_actions_since(0, limit=10)
@@ -783,6 +810,8 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(rows[0]["success"])   # stake: success=0 → False
             self.assertTrue(rows[1]["success"])    # transfer: success=1 → True
             self.assertIn("id", rows[0])
+            self.assertIn("details", rows[0])
+            self.assertIn("reverted", rows[0]["details"])
 
             # Windows aiosqlite file-lock workaround
             await db.close()
@@ -791,6 +820,18 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
                 p = Path(d) / f"s.db{suf}"
                 if p.exists():
                     p.unlink()
+
+        # ветка ошибки: соединение недоступно — пустой список, без падения.
+        # БД не открываем (никакого файла) — чистый вызов _connect.
+        with tempfile.TemporaryDirectory() as d:
+            db = Database(str(Path(d) / "err.db"), master_key=_key())
+
+            async def boom():
+                raise RuntimeError("connect boom")
+
+            db._connect = boom
+            self.assertEqual(await db.get_actions_since(0), [])
+            self.assertEqual(await db.get_actions_since(-5, 0), [])
             await db.close()
 
     async def test_metrics_ok(self):
@@ -840,7 +881,7 @@ class TestPoaFallback(unittest.TestCase):
 
 class TestRetryableWeb3(unittest.TestCase):
     def test_retryable_web3_class(self):
-        from web3.exceptions import RequestTimedOut, ProviderConnectionError
+        from web3.exceptions import ProviderConnectionError, RequestTimedOut
 
         self.assertTrue(_is_retryable_error(RequestTimedOut("t")))
         self.assertTrue(_is_retryable_error(ProviderConnectionError("c")))

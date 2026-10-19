@@ -97,6 +97,22 @@ def _fmt_eth(v: float | None, places: int = 6) -> str:
     return f"{v:.{places}f}"
 
 
+def failure_reason(details: str) -> str:
+    """Достаёт причину отказа из details.
+
+    Формат записи: ``error=<причина>; to=..., amount=...``. В записях,
+    сделанных до появления причины (или если сбой случился не в сети),
+    её нет — такие помечаем явно, а не молча прячем в «ошибки».
+    """
+    if not details:
+        return "причина не записана"
+    marker = "error="
+    if marker in details:
+        reason = details.split(marker, 1)[1].split(";", 1)[0].strip()
+        return reason or "причина не записана"
+    return "причина не записана"
+
+
 def summarize_actions(actions: list[dict], *, sample: set[str], top_n: int = 8) -> dict:
     """Сводка по actions_log: по типам действий, по кошелькам и свежие tx.
 
@@ -105,11 +121,15 @@ def summarize_actions(actions: list[dict], *, sample: set[str], top_n: int = 8) 
     """
     by_type: dict[str, dict[str, int]] = {}
     per_wallet: dict[str, dict[str, int]] = {}
+    by_reason: dict[str, int] = {}
     txs: list[dict] = []
     for a in actions:
         t = a.get("action_type") or "?"
         slot = by_type.setdefault(t, {"ok": 0, "fail": 0})
         slot["ok" if a.get("success") else "fail"] += 1
+        if not a.get("success"):
+            reason = failure_reason(a.get("details") or "")
+            by_reason[reason] = by_reason.get(reason, 0) + 1
         if a.get("address") in sample:
             w = per_wallet.setdefault(a["address"], {"ok": 0, "fail": 0})
             w["ok" if a.get("success") else "fail"] += 1
@@ -120,6 +140,7 @@ def summarize_actions(actions: list[dict], *, sample: set[str], top_n: int = 8) 
         "by_type": by_type,
         "per_wallet": ranked[:top_n],
         "recent_txs": txs[:10],
+        "by_reason": by_reason,
         "total_ok": sum(v["ok"] for v in by_type.values()),
         "total_fail": sum(v["fail"] for v in by_type.values()),
     }
@@ -256,6 +277,12 @@ def render_html(
         for t, d in sorted(actions["by_type"].items(), key=lambda kv: -(kv[1]["ok"]))
     ) or '<tr><td colspan="4" class="mut">нет данных</td></tr>'
 
+    # --- причины отказов ---
+    reason_rows = "".join(
+        f"<tr><td>{esc(reason)}</td><td class='neg'>{cnt}</td></tr>"
+        for reason, cnt in sorted(actions.get("by_reason", {}).items(), key=lambda kv: -kv[1])
+    ) or '<tr><td colspan="2" class="mut">отказов не было</td></tr>'
+
     # --- по кошелькам выборки ---
     pw = dict(actions["per_wallet"])
     farm = tracker.section("pre_farm", "post_run")
@@ -320,6 +347,15 @@ def render_html(
     {type_rows}
   </table>
 
+  <h2>Причины отказов</h2>
+  <table>
+    <tr><th>Причина</th><th>Случаев</th></tr>
+    {reason_rows}
+  </table>
+  <p class="note">Причина пишется в <code>actions_log.details</code> при каждом отказе.
+     Записи, сделанные до этого, причину не содержат — они помечены
+     «причина не записана».</p>
+
   <h2>Кошельки выборки</h2>
   <table>
     <tr><th>Кошелёк</th><th>OK</th><th>Ошибок</th><th>До</th><th>После</th><th>Δ</th></tr>
@@ -351,12 +387,17 @@ async def build_report(
     currency: str,
     explorer: str,
     out_path: str,
+    since_id: int = 0,
 ) -> dict:
-    """Собирает цифры и пишет HTML. Возвращает сводку для CLI."""
+    """Собирает цифры и пишет HTML. Возвращает сводку для CLI.
+
+    ``since_id`` — id первого действия текущего прогона: всё, что было в логе
+    раньше, к отчёту не относится.
+    """
     faucet = tracker.section("pre_faucet", "pre_farm")
     farm = tracker.section("pre_farm", "post_run")
     actions = summarize_actions(
-        await db.get_actions_since(0, limit=5000), sample=set(tracker.addresses)
+        await db.get_actions_since(since_id, limit=5000), sample=set(tracker.addresses)
     )
     doc = render_html(
         tracker=tracker,

@@ -1017,21 +1017,21 @@ class TestActionsEasy2(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await ex._generic_call(w, ex.actions_conf[0], amount=0.01))
         # non-dry success
         ex2, net2, vb2 = self._exec([{"type": "contract_call", "contract": "0x" + "aa" * 20}])
-        net2.send_transfer = AsyncMock(return_value="0xhash")
+        net2.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         w2 = {"address": "0x" + "aa" * 20, "private_key": "0x" + "bb" * 32}
         self.assertTrue(
             await ex2._generic_call(w2, {"type": "contract_call", "contract": "0x" + "aa" * 20}, amount=0.01)
         )
-        net2.send_transfer = AsyncMock(return_value="")
+        net2.send_transfer_with_reason = AsyncMock(return_value=("", "reverted"))
         self.assertFalse(
             await ex2._generic_call(w2, {"type": "contract_call", "contract": "0x" + "aa" * 20}, amount=0.01)
         )
-        net2.send_transfer = AsyncMock(side_effect=RuntimeError("boom"))
+        net2.send_transfer_with_reason = AsyncMock(side_effect=RuntimeError("boom"))
         self.assertFalse(
             await ex2._generic_call(w2, {"type": "contract_call", "contract": "0x" + "aa" * 20}, amount=0.01)
         )
         # data None branch (no method)
-        net2.send_transfer = AsyncMock(return_value="0xhash2")
+        net2.send_transfer_with_reason = AsyncMock(return_value=("0xhash2", ""))
         self.assertTrue(
             await ex2._generic_call(w2, {"type": "contract_call", "contract": "0x" + "aa" * 20}, amount=None)
         )
@@ -1097,7 +1097,7 @@ class TestActionsEasy2(unittest.IsolatedAsyncioTestCase):
         from collections import deque
 
         ex._outcomes = [deque(maxlen=20)]
-        net.send_transfer = AsyncMock(return_value="0xhash")
+        net.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         w = {"address": "0x" + "aa" * 20, "private_key": "0x" + "bb" * 32}
         ok = await ex.execute_action(w, [w["address"], "0x" + "cc" * 20])
         self.assertTrue(ok)
@@ -1105,12 +1105,12 @@ class TestActionsEasy2(unittest.IsolatedAsyncioTestCase):
         ex2, net2, vb2 = self._exec(
             [{"type": "contract_call", "contract": "0x" + "aa" * 20, "min_amount": 0.001, "max_amount": 0.002}]
         )
-        net2.send_transfer = AsyncMock(return_value="0xhash")
+        net2.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         ok2 = await ex2.execute_action(w, [w["address"]])
         self.assertTrue(ok2)
         # contract_call no amount
         ex3, net3, vb3 = self._exec([{"type": "contract_call", "contract": "0x" + "aa" * 20}])
-        net3.send_transfer = AsyncMock(return_value="0xhash")
+        net3.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         self.assertTrue(await ex3.execute_action(w, []))
         # register via execute
         ex4, net4, vb4 = self._exec([{"type": "vibevibe_register", "contract": "0x" + "aa" * 20}])
@@ -1143,7 +1143,7 @@ class TestActionsEasy2(unittest.IsolatedAsyncioTestCase):
         from core.behavior import WalletProfile
 
         ex, net, vb = self._exec([{"type": "transfer", "target": "random_wallet"}])
-        net.send_transfer = AsyncMock(return_value="0xhash")
+        net.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         w = {"address": "0x" + "aa" * 20, "private_key": "0x" + "bb" * 32}
         prof = WalletProfile(activity=1.0, amount_min_mul=1.0, amount_max_mul=1.0, odd_amount_prob=1.0, neutral=False)
         with mock.patch("random.random", return_value=0.0):

@@ -66,6 +66,23 @@ def _key_from_env() -> bytes:
     return _parse_key(os.environ.get(_KEY_ENV, ""))
 
 
+def _file_key(path: str) -> bytes | None:
+    """Читает master-ключ из файла. Файл НЕ создаётся.
+
+    resolve_master_key() создаёт отсутствующий ключ — для пробы кандидата
+    это вредно: публикатор оставлял бы в CWD случайный master.key, и ферма,
+    запущенная из этой папки, зашифровала бы новые кошельки чужим ключом.
+    """
+    p = Path(path)
+    if not p.is_file():
+        return None
+    try:
+        data = p.read_bytes()
+    except OSError:
+        return None
+    return data if len(data) == 32 else None
+
+
 def _master_key(db_path: str) -> bytes:
     """Ключ БД: перебирает кандидатов и возвращает тот, что реально расшифровывает.
 
@@ -84,10 +101,9 @@ def _master_key(db_path: str) -> bytes:
         ("рядом с БД", str(Path(db_path).parent / "master.key")),
         ("в CWD", "master.key"),
     ):
-        try:
-            cands.append((label, resolve_master_key({"database": {"master_key": path}}, ignore_env=True)))
-        except MasterKeyError:
-            pass
+        key = _file_key(path)
+        if key is not None:
+            cands.append((label, key))
     # Дубли убираем, порядок сохраняем.
     seen: set[bytes] = set()
     uniq: list[tuple[str, bytes]] = []
@@ -100,14 +116,14 @@ def _master_key(db_path: str) -> bytes:
     sample = _first_seed(db_path)
     if sample is None:
         return uniq[0][1]
-    for label, k in uniq:
+    for _label, k in uniq:
         try:
             decrypt_seed(k, sample)
             return k
         except Exception:
             continue
     raise MasterKeyError(
-        "ни один ключ не расшифровал БД (проверены: %s)" % ", ".join(label for label, _ in uniq)
+        f"ни один ключ не расшифровал БД (проверены: {', '.join(label for label, _ in uniq)})"
     )
 
 

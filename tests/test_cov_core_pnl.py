@@ -14,6 +14,7 @@ from core.pnl import (  # noqa: E402
     _fmt_eth,
     build_report,
     describe,
+    failure_reason,
     pick_sample,
     render_html,
     resolve_network_meta,
@@ -33,23 +34,24 @@ class _FakeNet:
 
 
 class _FakeDB:
-    """Фейк БД с предзаданными действиями."""
+    """Фейк БД с предзаданными действиями (уважает since_id)."""
 
     async def get_actions_since(self, since_id: int = 0, limit: int = 5000):
-        return [
-            {"address": "0x0000000000000000000000000000000000000001",
+        rows = [
+            {"id": 1, "address": "0x0000000000000000000000000000000000000001",
              "action_type": "transfer", "tx_hash": "0x" + "a" * 62, "success": True,
-             "timestamp": "2026-01-01 00:00:00"},
-            {"address": "0x0000000000000000000000000000000000000002",
+             "timestamp": "2026-01-01 00:00:00", "details": "amount=0.1, to=0x2"},
+            {"id": 2, "address": "0x0000000000000000000000000000000000000002",
              "action_type": "transfer", "tx_hash": "", "success": False,
-             "timestamp": "2026-01-01 00:00:01"},
-            {"address": "0x0000000000000000000000000000000000000002",
+             "timestamp": "2026-01-01 00:00:01", "details": "error=reverted; to=0x3, amount=0.2"},
+            {"id": 3, "address": "0x0000000000000000000000000000000000000002",
              "action_type": "stake", "tx_hash": "0x" + "b" * 62, "success": True,
-             "timestamp": "2026-01-01 00:00:02"},
-            {"address": "0x0000000000000000000000000000000000000003",
+             "timestamp": "2026-01-01 00:00:02", "details": ""},
+            {"id": 4, "address": "0x0000000000000000000000000000000000000003",
              "action_type": "transfer", "tx_hash": "0x" + "c" * 62, "success": True,
-             "timestamp": "2026-01-01 00:00:03"},
+             "timestamp": "2026-01-01 00:00:03", "details": ""},
         ]
+        return [r for r in rows if r["id"] > since_id][:limit]
 
 
 AFT1 = "0x0000000000000000000000000000000000000001"
@@ -107,6 +109,14 @@ class PnlTest(unittest.TestCase):
         res = asyncio.run(snapshot(_Flaky(), [AFT1], concurrency=1))
         self.assertEqual(res[AFT1], None)
 
+    def test_failure_reason(self):
+        self.assertEqual(failure_reason("error=reverted; to=0x1, amount=0.1"), "reverted")
+        self.assertEqual(failure_reason("error=no receipt (в mempool); to=0x1"), "no receipt (в mempool)")
+        self.assertEqual(failure_reason("error=; to=0x1"), "причина не записана")
+        # записи, сделанные до появления причины
+        self.assertEqual(failure_reason("to=0x1, amount=0.1"), "причина не записана")
+        self.assertEqual(failure_reason(""), "причина не записана")
+
     def test_summarize_actions(self):
         s = summarize_actions([], sample={AFT1})
         self.assertEqual(s["total_ok"], 0)
@@ -121,6 +131,8 @@ class PnlTest(unittest.TestCase):
         self.assertEqual(s["recent_txs"], [actions[0], actions[2], actions[3]])
         by = dict(s["per_wallet"])
         self.assertEqual(by[AFT2], {"ok": 1, "fail": 1})
+        # причины отказов собраны отдельно
+        self.assertEqual(s["by_reason"], {"reverted": 1})
 
     def test_tracker(self):
         t = _seed_tracker_sample2()
@@ -166,6 +178,29 @@ class PnlTest(unittest.TestCase):
         self.assertIn("ссылок нет", doc)
         self.assertNotIn("/address/", doc)
         self.assertIn("<code>0xbbbbbbbbbbbbbbbb…</code>", doc)
+
+    def test_render_html_failure_reasons(self):
+        t = _seed_tracker_sample2()
+        actions = {
+            "by_type": {"transfer": {"ok": 1, "fail": 2}},
+            "per_wallet": [],
+            "recent_txs": [],
+            "by_reason": {"reverted": 2},
+            "total_ok": 1,
+            "total_fail": 2,
+        }
+        doc = render_html(
+            tracker=t,
+            faucet_delta=0.0,
+            farm_delta=0.0,
+            actions=actions,
+            network={"name": "N", "slug": "S", "chain_id": 46630},
+            explorer="https://explorer.testnet.chain.robinhood.com",
+            currency="ETH",
+            out_path="pnl_report.html",
+        )
+        self.assertIn("Причины отказов", doc)
+        self.assertIn("reverted", doc)
 
     def test_render_html_empty_sections(self):
         t = _seed_tracker_sample2()
@@ -272,6 +307,32 @@ class PnlTest(unittest.TestCase):
                 self.assertIn("3", desc)  # ok-счёт из сводки
                 return desc
         self.assertIsInstance(asyncio.run(run()), str)
+
+    def test_build_report_respects_since_id(self):
+        """Отчёт считает только действия текущего прогона."""
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                return await build_report(
+                    tracker=t,
+                    db=_FakeDB(),
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                    since_id=2,
+                )
+
+        summary = asyncio.run(run())
+        # id>2 → только записи 3 и 4: два успешных, ни одной ошибки
+        self.assertEqual(summary["ok"], 2)
+        self.assertEqual(summary["fail"], 0)
 
 
 if __name__ == "__main__":

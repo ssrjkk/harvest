@@ -1006,7 +1006,9 @@ def _donor_net(balance=0.0, send_result="0xhash"):
     net = AsyncMock()
     net.get_balance = AsyncMock(return_value=balance)
     net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
-    net.send_transfer = AsyncMock(return_value=send_result)
+    net.send_transfer_with_reason = AsyncMock(
+        return_value=(send_result, "" if send_result else "reverted")
+    )
     return net
 
 
@@ -1040,8 +1042,8 @@ class TestFaucetDonor(unittest.TestCase):
         net = _donor_net()
         with _donor_key("0x" + "ab" * 32):
             self.assertTrue(_run(f._donor_topup(net, _ADDR)))
-        net.send_transfer.assert_awaited_once()
-        args = net.send_transfer.await_args[0]
+        net.send_transfer_with_reason.assert_awaited_once()
+        args = net.send_transfer_with_reason.await_args[0]
         self.assertEqual(args[1], _ADDR)
         self.assertAlmostEqual(args[2], 0.01)
 
@@ -1051,21 +1053,21 @@ class TestFaucetDonor(unittest.TestCase):
         with _donor_key("0x" + "ab" * 32):
             self.assertTrue(_run(f._donor_topup(net, _ADDR)))
         # topup_amount не задан → цель из конфига (target 0.05)
-        self.assertAlmostEqual(net.send_transfer.await_args[0][2], 0.05)
+        self.assertAlmostEqual(net.send_transfer_with_reason.await_args[0][2], 0.05)
 
     def test_topup_no_key(self):
         f = _donor_faucet([dict(self._STRATEGY)])
         net = _donor_net()
         with _donor_key(None):
             self.assertFalse(_run(f._donor_topup(net, _ADDR)))
-        net.send_transfer.assert_not_awaited()
+        net.send_transfer_with_reason.assert_not_awaited()
 
     def test_topup_bad_amount_falls_back(self):
         f = _donor_faucet([{"type": "donor", "topup_amount": "lots"}])
         net = _donor_net()
         with _donor_key("0x" + "ab" * 32):
             self.assertTrue(_run(f._donor_topup(net, _ADDR)))
-        self.assertAlmostEqual(net.send_transfer.await_args[0][2], 0.05)
+        self.assertAlmostEqual(net.send_transfer_with_reason.await_args[0][2], 0.05)
 
     def test_topup_bad_key(self):
         f = _donor_faucet([dict(self._STRATEGY)])
@@ -1073,12 +1075,12 @@ class TestFaucetDonor(unittest.TestCase):
         net.get_account = MagicMock(side_effect=RuntimeError("bad key"))
         with _donor_key("0x" + "ab" * 32):
             self.assertFalse(_run(f._donor_topup(net, _ADDR)))
-        net.send_transfer.assert_not_awaited()
+        net.send_transfer_with_reason.assert_not_awaited()
 
     def test_topup_send_raises(self):
         f = _donor_faucet([dict(self._STRATEGY)])
         net = _donor_net()
-        net.send_transfer = AsyncMock(side_effect=RuntimeError("rpc down"))
+        net.send_transfer_with_reason = AsyncMock(side_effect=RuntimeError("rpc down"))
         with _donor_key("0x" + "ab" * 32):
             self.assertFalse(_run(f._donor_topup(net, _ADDR)))
 
@@ -1118,7 +1120,7 @@ class TestFaucetDonor(unittest.TestCase):
         net = AsyncMock()
         net.get_balance = AsyncMock(side_effect=[0.0, 0.05])
         net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
-        net.send_transfer = AsyncMock(return_value="0xhash")
+        net.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         with _donor_key("0x" + "ab" * 32):
             with patch.object(f, "request_tokens", new_callable=AsyncMock) as rt:
                 self.assertTrue(_run(f.ensure_balance(net, _ADDR)))
@@ -1131,7 +1133,7 @@ class TestFaucetDonor(unittest.TestCase):
         # донор долил до 0.01 (< target 0.05) — дальше внешний кран
         net.get_balance = AsyncMock(side_effect=[0.0, 0.01, 0.05])
         net.get_account = MagicMock(return_value=MagicMock(address="0x" + "d" * 40))
-        net.send_transfer = AsyncMock(return_value="0xhash")
+        net.send_transfer_with_reason = AsyncMock(return_value=("0xhash", ""))
         with _donor_key("0x" + "ab" * 32):
             with patch.object(f, "request_tokens", new_callable=AsyncMock, return_value=True) as rt:
                 self.assertTrue(_run(f.ensure_balance(net, _ADDR)))

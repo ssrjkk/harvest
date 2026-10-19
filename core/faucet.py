@@ -416,12 +416,14 @@ class Faucet:
                 logger.warning(f"Кран donor: неверный ключ ({e}) — пропуск")
                 continue
             try:
-                tx_hash = await network.send_transfer(key, address, amount)
+                tx_hash, reason = await network.send_transfer_with_reason(key, address, amount)
             except Exception as e:
                 logger.warning(f"Кран donor: трансфер не удался для {address[:10]}: {e}")
                 continue
             if not tx_hash:
-                logger.warning(f"Кран donor: трансфер не подтверждён для {address[:10]}")
+                logger.warning(
+                    f"Кран donor: трансфер не подтверждён для {address[:10]}: {reason or 'причина не указана'}"
+                )
                 continue
             logger.info(
                 f"Кран donor: {donor.address[:10]} -> {address[:10]} "

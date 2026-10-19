@@ -1237,18 +1237,34 @@ class Database:
             logger.error(f"Ошибка чтения истории метрик: {e}")
         return rows
 
+    async def get_max_action_id(self) -> int:
+        """Максимальный id в actions_log — точка отсчёта для отчёта по прогону.
+
+        Снимок делается в начале прогона: всё, что попадёт в лог после,
+        относится к текущему прогону, а не к предыдущим.
+        """
+        try:
+            db = await self._connect()
+            async with db.execute("SELECT MAX(id) FROM actions_log") as cur:
+                row = await cur.fetchone()
+            return int(row[0] or 0) if row else 0
+        except Exception as e:
+            logger.error(f"Ошибка чтения максимального id действий: {e}")
+            return 0
+
     async def get_actions_since(self, since_id: int = 0, limit: int = 5000) -> list[dict]:
         """Действия с id > since_id (свежие последними) — сырьё для PnL-отчёта.
 
-        Отдаём только то, что нужно отчёту: адрес, тип, хеш, исход и время.
-        Ничего секретного, поэтому отдельной защиты ключей здесь не требуется.
+        Отдаём только то, что нужно отчёту: адрес, тип, хеш, исход, время и
+        детали (в них причина отказа). Ничего секретного, поэтому отдельной
+        защиты ключей здесь не требуется.
         """
         rows: list[dict] = []
         try:
             db = await self._connect()
             async with db.execute(
                 """
-                SELECT id, address, action_type, tx_hash, success, timestamp
+                SELECT id, address, action_type, tx_hash, success, timestamp, details
                 FROM actions_log
                 WHERE id > ?
                 ORDER BY id DESC
@@ -1265,6 +1281,7 @@ class Database:
                             "tx_hash": row[3] or "",
                             "success": bool(row[4]),
                             "timestamp": str(row[5] or ""),
+                            "details": row[6] or "",
                         }
                     )
         except Exception as e:

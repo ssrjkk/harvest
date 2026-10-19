@@ -2040,7 +2040,7 @@ class TestNetAuto(unittest.IsolatedAsyncioTestCase):
                 candidate=cand, rpc_url="https://x", chain_id=1, block_number=1, gas_price_wei=1, latency_ms=1.0
             )
             rep_ok = nd.DiscoverReport(live=[pr], config_path=out, config={"actions": [{"type": "transfer"}]}, error="")
-            with mock.patch.object(sys, "argv", ["netdiscovery", "--scan"]):
+            with mock.patch.object(sys, "argv", ["netdiscovery", "--scan", "--out", out]):
                 with mock.patch.object(nd, "auto_discover", new=AsyncMock(return_value=rep_ok)):
                     self.assertEqual(nd.main_cli(), 0)
             # fail -> 1 (no live)
@@ -2056,17 +2056,22 @@ class TestNetAuto(unittest.IsolatedAsyncioTestCase):
     def test_main_entry(self):
         import runpy
 
-        with mock.patch.object(sys, "argv", ["netdiscovery", "--scan"]):
-            with mock.patch(
-                "core.netdiscovery.auto_discover",
-                new=AsyncMock(
-                    return_value=__import__("core.netdiscovery", fromlist=["DiscoverReport"]).DiscoverReport()
-                ),
-            ):
-                try:
-                    runpy.run_module("core.netdiscovery", run_name="__main__", alter_sys=False)
-                except SystemExit as e:
-                    self.assertIn(e.code, (0, 1))
+        # runpy исполняет модуль заново: мок core.netdiscovery.auto_discover на
+        # него не действует, и реальный auto_discover пишет конфиг. Без
+        # явного --out он писал config_auto.yaml в корень репозитория.
+        with tempfile.TemporaryDirectory() as td:
+            out = str(Path(td) / "config_auto.yaml")
+            with mock.patch.object(sys, "argv", ["netdiscovery", "--scan", "--out", out]):
+                with mock.patch(
+                    "core.netdiscovery.auto_discover",
+                    new=AsyncMock(
+                        return_value=__import__("core.netdiscovery", fromlist=["DiscoverReport"]).DiscoverReport()
+                    ),
+                ):
+                    try:
+                        runpy.run_module("core.netdiscovery", run_name="__main__", alter_sys=False)
+                    except SystemExit as e:
+                        self.assertIn(e.code, (0, 1))
 
 
 # ================= LOGGER =================

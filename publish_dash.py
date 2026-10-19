@@ -370,10 +370,35 @@ def _publish_inner(state: dict, wallets_blob: dict | None = None) -> None:
     # один retry с fetch перед второй попыткой.
     try:
         git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as e:
+        _report_push_failure(e)
         git("fetch", "origin", DASH_BRANCH, cwd=wt, check=False)
-        git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
+        try:
+            git("push", "--force-with-lease", "origin", f"HEAD:refs/heads/{DASH_BRANCH}", cwd=wt)
+        except subprocess.CalledProcessError as e2:
+            _report_push_failure(e2)
+            raise
     print(f"опубликовано в GitHub Pages: {DASH_BRANCH}")
+
+
+def _report_push_failure(exc: subprocess.CalledProcessError) -> None:
+    """Читаемая причина отказа push.
+
+    Отозванный GitHub-токен — самая частая причина, и без расшифровки stderr
+    в логе остаётся только «exit status 128»: непонятно, что чинить.
+    """
+    err = (getattr(exc, "stderr", "") or "").lower()
+    detail = (getattr(exc, "stderr", "") or "")[:200].replace("\n", " ")
+    if "authentication failed" in err or "invalid username or token" in err or "403" in err:
+        print(
+            "ОТКАЗ АВТОРИЗАЦИИ GitHub: токен недействителен или отозван. "
+            "Публикация невозможна, пока не восстановлен доступ. "
+            "Проверь: 'gh auth status' (или 'D:\\gh.exe auth status'), "
+            "затем 'gh auth login -h github.com'. "
+            f"Ответ сервера: {detail}"
+        )
+    else:
+        print(f"git push не удался: {detail}")
 
 
 def _blob_from_sync(res: object) -> tuple[dict | None, int]:
@@ -437,7 +462,8 @@ async def main() -> int:
     try:
         publish(state, blob)
     except Exception as e:  # noqa: BLE001
-        print(f"git push не удался: {e}")
+        # Подробности (в т.ч. про отозванный токен) уже напечатаны выше.
+        print(f"публикация не удалась: {e}")
         return 1
     if blob is None:
         print(f"опубликовано в GitHub Pages: {DASH_BRANCH} (без свежего блоба кошельков)")
