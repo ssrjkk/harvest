@@ -1,5 +1,6 @@
 """Тесты веб-интерфейса (core/web_gui.py): API endpoints, WebSocket, scheduler/groups/alerts."""
 
+import contextlib
 import sys
 import tempfile
 import unittest
@@ -8,10 +9,30 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import pytest
 from fastapi.testclient import TestClient
 
 import core.web_gui as web_gui
 from core.web_gui import _state, app
+
+
+@contextlib.contextmanager
+def _master_key(value: str):
+    """Временно включает/выключает авторизацию веб-GUI."""
+    original = web_gui.MASTER_KEY
+    web_gui.MASTER_KEY = value
+    try:
+        yield
+    finally:
+        web_gui.MASTER_KEY = original
+
+
+@pytest.fixture(autouse=True)
+def _no_ambient_master_key():
+    """MASTER_KEY читается при импорте модуля — на машине с заданным
+    FARMER_MASTER_KEY без этого все запросы получили бы 401."""
+    with _master_key(""):
+        yield
 
 
 class TestWebGuiStatus(unittest.TestCase):

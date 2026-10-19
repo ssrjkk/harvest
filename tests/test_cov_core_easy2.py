@@ -1547,9 +1547,15 @@ class TestSingleRemaining(unittest.TestCase):
             g = si.SingleInstance(p)
             self.assertTrue(g.acquire())
             fd_before = g._fd
-            with mock.patch.object(si.msvcrt, "locking", side_effect=OSError("boom")):
-                with mock.patch("os.close", side_effect=OSError("boom2")):
-                    g.release()
+            # Отсоединяем блокировку того бэкенда, который реально занял файл,
+            # и роняем оба os.close — так покрывается ветка «разблокировка упала,
+            # закрытие тоже упала» на Windows и на POSIX.
+            if si.msvcrt is not None:
+                backend = mock.patch.object(si.msvcrt, "locking", side_effect=OSError("boom"))
+            else:
+                backend = mock.patch.object(si.fcntl, "flock", side_effect=OSError("boom"))
+            with backend, mock.patch("os.close", side_effect=OSError("boom2")):
+                g.release()
             try:
                 _os.close(fd_before)
             except Exception:
