@@ -5,4 +5,4 @@
 aiogram>=3.10,<4
 aiohttp>=3.11.2,<4
 pyyaml>=6.0,<7
-Pillow>=11,<13
+Pillow>=12.3.0,<13

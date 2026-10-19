@@ -1,2 +1,2 @@
 aiogram>=3.31.0,<4
-cryptography>=42.0.4,<46
+cryptography>=50.0.2,<51
