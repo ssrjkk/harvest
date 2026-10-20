@@ -110,7 +110,7 @@ def _config(tmp: str) -> dict:
     return {
         "network": {"name": "T", "rpc_url": "http://127.0.0.1:1/rpc", "chain_id": 1},
         "wallets": {"count": 2, "generate_if_missing": False},
-        "database": {"path": str(Path(tmp) / "s.db")},
+        "database": {"path": str(Path(tmp) / "s.db"), "master_key": str(Path(tmp) / "master.key")},
         "faucet": {"enabled": True, "min_balance": 0.005, "target_balance": 0.05, "strategies": [
             {"type": "direct", "url": "http://127.0.0.1:1/claim"},
         ]},

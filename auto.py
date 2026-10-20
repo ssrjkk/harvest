@@ -131,6 +131,20 @@ def banner() -> None:
 {"=" * 60}{Style.RESET_ALL}""")
 
 
+def _db_path(config: dict) -> str:
+    """Путь к рабочей БД.
+
+    PORTAL_DB — тот же env, что у публикатора (publish_dash.py) и портала.
+    Раньше ферма брала путь только из конфига, а публикатор — из PORTAL_DB, и
+    они могли смотреть в разные базы: ферма писала в одну, а сайт получал
+    кошельки из другой. Теперь источник пути один.
+    """
+    env = os.environ.get("PORTAL_DB", "").strip()
+    if env:
+        return env
+    return config.get("database", {}).get("path", "farming_state.db")
+
+
 async def _probe_funded(network, wallets: list[dict], config: dict, sample: int = 5) -> dict:
     """Есть ли у кошельков средства, когда кран недоступен.
 
@@ -210,7 +224,8 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         raise SystemExit(2) from None
 
     try:
-        db = Database(config["database"]["path"], master_key=resolve_master_key(config))
+        db_path = _db_path(config)
+        db = Database(db_path, master_key=resolve_master_key(config, db_path=db_path))
     except MasterKeyError as e:
         print(f"  {Fore.RED}{e}{Style.RESET_ALL}")
         raise SystemExit(1) from None
@@ -650,7 +665,8 @@ async def main_auto() -> None:
             raise SystemExit(1)
         setup_logging(config)
         try:
-            db = Database(config["database"]["path"], master_key=resolve_master_key(config))
+            db_path = _db_path(config)
+            db = Database(db_path, master_key=resolve_master_key(config, db_path=db_path))
         except MasterKeyError as e:
             print(f"  {Fore.RED}{e}{Style.RESET_ALL}")
             raise SystemExit(1) from None
