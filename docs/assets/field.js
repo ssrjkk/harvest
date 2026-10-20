@@ -313,11 +313,14 @@ var _FILTERS=["all","i","w","o","e","r"];
 function readUrl(){
   var s="";try{s=location.search||"";}catch(e){}
   if(!s)return;
-  var p={};
-  s.replace(/^\?/,"").split("&").forEach(function(kv){var a=kv.split("=");if(a[0])p[a[0]]=decodeURIComponent(a[1]||"");});
-  if(p.f&&_FILTERS.indexOf(p.f)!==-1)filter=p.f;
-  if(p.z==="1")zoom250=false;
-  if(p.q&&/^\d+$/.test(p.q))query=p.q;
+  // Ключи строки запроса читаем через URLSearchParams, а не складываем их в
+  // объект: `?__proto__=…` или `?constructor=…` в прошлом варианте писал
+  // свойство в прототип, и проверка ниже читала уже не то, что прислал адрес.
+  var q=new URLSearchParams(s);
+  var f=q.get("f"),z=q.get("z"),qq=q.get("q");
+  if(f&&_FILTERS.indexOf(f)!==-1)filter=f;
+  if(z==="1")zoom250=false;
+  if(qq&&/^\d+$/.test(qq))query=qq;
 }
 function writeUrl(){
   var parts=[];

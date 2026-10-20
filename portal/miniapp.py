@@ -323,7 +323,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": "unknown action"}, status=400)
         if not _mut_ok(tg_id, "farm"):
             return web.json_response({"error": "rate"}, status=429)
-        logger.info("[AUDIT] miniapp farm user=%s action=%s", tg_id, action)
+        logger.info("[AUDIT] miniapp farm user=%s action=%s", logsafe(tg_id), logsafe(action))
         if action == "stop" and daemon.running:
             task = asyncio.get_running_loop().create_task(daemon.stop())
 
@@ -387,7 +387,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
                     except Exception:  # noqa: BLE001
                         logger.warning("miniapp cfg_send упал", exc_info=True)
                         return web.json_response({"error": "failed"}, status=500)
-                    logger.info("[AUDIT] miniapp cfg_send user=%s net=%s", logsafe(tg_id), slug)
+                    logger.info("[AUDIT] miniapp cfg_send user=%s net=%s", logsafe(tg_id), logsafe(slug))
                     return web.json_response({"ok": True, "sent": "chat"})
                 return web.json_response({"ok": True, "filename": filename, "yaml": content})
             if kind == "check":
@@ -458,7 +458,11 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         except Exception:  # noqa: BLE001
             logger.warning("miniapp export упал", exc_info=True)
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp export user=%s fmt=%s", logsafe(tg_id), fmt if password is None else f"enc-{fmt}")
+        logger.info(
+            "[AUDIT] miniapp export user=%s fmt=%s",
+            logsafe(tg_id),
+            logsafe(fmt if password is None else f"enc-{fmt}"),
+        )
         return web.json_response({"ok": True, "sent": "chat"})
 
     async def api_settings_get(request: web.Request) -> web.Response:
@@ -496,7 +500,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
                 lang = await _bs.set_lang(db_path, tg_id, str(body["lang"]))
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp settings user=%s mode=%s lang=%s", logsafe(tg_id), mode, lang)
+        logger.info("[AUDIT] miniapp settings user=%s mode=%s lang=%s", logsafe(tg_id), logsafe(mode), logsafe(lang))
         return web.json_response({"ok": True, "mode": mode, "lang": lang})
 
     async def api_scheduler(request: web.Request) -> web.Response:
@@ -549,7 +553,12 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             res = await daemon.set_balance_alerts(enabled, threshold)
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp alerts user=%s enabled=%s threshold=%s", tg_id, enabled, threshold)
+        logger.info(
+            "[AUDIT] miniapp alerts user=%s enabled=%s threshold=%s",
+            logsafe(tg_id),
+            logsafe(enabled),
+            logsafe(threshold),
+        )
         return web.json_response({"ok": True, **res})
 
     async def api_rpc(request: web.Request) -> web.Response:
@@ -590,7 +599,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": str(e)}, status=503)
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp drip user=%s started=%s", tg_id, res.get("started"))
+        logger.info("[AUDIT] miniapp drip user=%s started=%s", logsafe(tg_id), logsafe(res.get("started")))
         return web.json_response(res, status=202 if res.get("started") else 409)
 
     async def api_net_switch(request: web.Request) -> web.Response:
@@ -615,7 +624,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": "failed"}, status=500)
         if not ok:
             return web.json_response({"error": "unknown network"}, status=404)
-        logger.info("[AUDIT] miniapp net_switch user=%s slug=%s", logsafe(tg_id), slug)
+        logger.info("[AUDIT] miniapp net_switch user=%s slug=%s", logsafe(tg_id), logsafe(slug))
         return web.json_response({"ok": True, **daemon.run_state()})
 
     app.router.add_get("/app/", app_page)
