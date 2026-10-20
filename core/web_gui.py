@@ -16,7 +16,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from core.logger import logsafe
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -27,6 +26,7 @@ from core.crypto import resolve_master_key
 from core.database import Database
 from core.faucet import Faucet
 from core.license import enforce_license_async
+from core.logger import logsafe
 from core.network import NetworkManager
 from core.pool import FarmerPool
 from core.scheduler import Scheduler

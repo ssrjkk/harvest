@@ -241,6 +241,50 @@ class TestPushFailureDiagnosis(unittest.TestCase):
         self.assertIn("git push не удался", out)
 
 
+class TestBotforgeZip(unittest.TestCase):
+    """Сборщик деплой-архива бота: состав, соответствие исходникам, детерминизм."""
+
+    def test_build_matches_sources(self):
+        import zipfile
+
+        from tools import build_botforge_zip as bz
+
+        with tempfile.TemporaryDirectory() as d:
+            zpath = Path(d) / "b.zip"
+            names = bz.build(zpath)
+            self.assertEqual(names, ["main.py", "bot.py", "requirements.txt", "README.md"])
+            with zipfile.ZipFile(zpath) as zf:
+                bot = (bz.BFDIR / "bot.py").read_bytes()
+                self.assertEqual(zf.read("main.py"), bot)
+                self.assertEqual(zf.read("bot.py"), bot)
+                self.assertEqual(zf.read("requirements.txt"), (bz.BFDIR / "requirements.txt").read_bytes())
+                self.assertEqual(zf.read("README.md"), (bz.BFDIR / "README.md").read_bytes())
+
+    def test_build_is_deterministic(self):
+        from tools import build_botforge_zip as bz
+
+        with tempfile.TemporaryDirectory() as d:
+            a = Path(d) / "a.zip"
+            b = Path(d) / "b.zip"
+            bz.build(a)
+            bz.build(b)
+            self.assertEqual(a.read_bytes(), b.read_bytes())
+
+    def test_build_missing_source(self):
+        from tools import build_botforge_zip as bz
+
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "bf"
+            fake.mkdir()
+            orig = bz.BFDIR
+            bz.BFDIR = fake
+            try:
+                with self.assertRaises(FileNotFoundError):
+                    bz.build(Path(d) / "x.zip")
+            finally:
+                bz.BFDIR = orig
+
+
 class TestWalletsBlob(unittest.TestCase):
     def test_no_key_skips(self):
         from tools import sync_wallets_blob as sm

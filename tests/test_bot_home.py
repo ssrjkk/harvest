@@ -1019,6 +1019,14 @@ class TestProfilesScreen(unittest.IsolatedAsyncioTestCase):
             msg = _M(uid=123, text=cmd)
             await dp.message.handlers[1].callback(msg, _State())
             self.assertTrue(msg.answers, cmd)
+            # Ожидаемый кусок есть в одном из ответов (не обязательно в
+            # последнем — последним приходит меню). Сравнение без учёта
+            # регистра: бот пишет заголовки капсом ("КРАН", "СТОП").
+            texts = [a[0][0] for a in msg.answers]
+            self.assertTrue(
+                any(expect.lower() in t.lower() for t in texts),
+                f"{cmd}: {expect} нет в {texts}",
+            )
             # сброс антифлуда между командами
             import portal.bot_telegram as _bt
 

@@ -1144,6 +1144,7 @@ def _lic_cfg(tdir, **over):
 class TestLicenseAnalyze(unittest.TestCase):
     def test_all_branches(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1171,6 +1172,7 @@ class TestLicenseAnalyze(unittest.TestCase):
 class TestLicenseVerify(unittest.TestCase):
     def test_empty(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1180,6 +1182,7 @@ class TestLicenseVerify(unittest.TestCase):
 
     def test_pbkdf2_ok_fail(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1190,6 +1193,7 @@ class TestLicenseVerify(unittest.TestCase):
 
     def test_iters_bounds(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1199,6 +1203,7 @@ class TestLicenseVerify(unittest.TestCase):
 
     def test_malformed_and_attr(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1214,6 +1219,7 @@ class TestLicenseVerify(unittest.TestCase):
 
     def test_legacy(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1228,6 +1234,7 @@ class TestLicenseVerify(unittest.TestCase):
 class TestLicenseCache(unittest.TestCase):
     def test_roundtrip(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1238,6 +1245,7 @@ class TestLicenseCache(unittest.TestCase):
 
     def test_write_tmp_fail(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1251,6 +1259,7 @@ class TestLicenseCache(unittest.TestCase):
 
     def test_write_restrict_fail(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1260,6 +1269,7 @@ class TestLicenseCache(unittest.TestCase):
 
     def test_read_bad(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1273,6 +1283,7 @@ class TestLicenseCache(unittest.TestCase):
 
     def test_sig_mismatch(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1303,6 +1314,7 @@ class FakeResp:
 class TestLicenseFetch(unittest.TestCase):
     def test_no_url(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1311,6 +1323,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_urlsplit_fail(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1320,6 +1333,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_http_non_loopback(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1328,6 +1342,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_https_ok(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1339,6 +1354,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_status_not_200(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1348,6 +1364,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_big_body(self):
         import tempfile
+
         from core import license as lic_mod
         from core.license import LicenseManager
 
@@ -1360,6 +1377,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_nondict_payload(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1369,6 +1387,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_exception(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1378,6 +1397,7 @@ class TestLicenseFetch(unittest.TestCase):
 
     def test_loopback_http(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1396,6 +1416,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_no_url(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1406,6 +1427,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_online_analyze_fail(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1416,6 +1438,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_online_cache_hit(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1428,6 +1451,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_online_password_ok(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1440,6 +1464,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_online_need_password(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1455,6 +1480,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_offline_no_cache(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1466,6 +1492,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_offline_bad_payload(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1477,6 +1504,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_offline_expired(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1489,6 +1517,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_offline_pw_match(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1500,6 +1529,7 @@ class TestLicenseRequire(unittest.IsolatedAsyncioTestCase):
 
     async def test_offline_password_verify(self):
         import tempfile
+
         from core.license import LicenseManager
 
         with tempfile.TemporaryDirectory() as td:
@@ -1524,6 +1554,7 @@ class TestLicenseEnforce(unittest.IsolatedAsyncioTestCase):
 
     async def test_env_ok(self):
         import tempfile
+
         from core.license import enforce_license_async
 
         with tempfile.TemporaryDirectory() as td:
@@ -1539,6 +1570,7 @@ class TestLicenseEnforce(unittest.IsolatedAsyncioTestCase):
 
     async def test_env_fail(self):
         import tempfile
+
         from core.license import LicenseError, enforce_license_async
 
         with tempfile.TemporaryDirectory() as td:
@@ -1554,6 +1586,7 @@ class TestLicenseEnforce(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_interactive_ok_fail(self):
         import tempfile
+
         from core.license import LicenseError, enforce_license_async
 
         with tempfile.TemporaryDirectory() as td:
@@ -1584,6 +1617,7 @@ class TestLicenseEnforce(unittest.IsolatedAsyncioTestCase):
 
     async def test_interactive(self):
         import tempfile
+
         from core.license import LicenseError, enforce_license_async
 
         with tempfile.TemporaryDirectory() as td:
@@ -1902,6 +1936,7 @@ class TestNetConfig(unittest.TestCase):
 
     def test_write(self):
         import tempfile
+
         from core.netdiscovery import write_config
 
         with tempfile.TemporaryDirectory() as td:
@@ -2137,6 +2172,7 @@ class TestLoggerFull(unittest.TestCase):
 
     def test_json(self):
         import json as _j
+
         from core.logger import JSONFormatter
 
         f = JSONFormatter()

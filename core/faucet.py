@@ -25,6 +25,9 @@ _REQUEST_TIMEOUT = 12
 # путь запроса — /mcp: POST на /request_testnet_funds отвечает 404 и не пополняет
 # ни один кошелёк, поэтому в конфигах обязан быть именно /mcp.
 _CHAINSTACK_TOOL = "request_testnet_funds"
+# Read-only инструмент Chainstack MCP: не тратит квоту крана, но отвечает
+# «Invalid API key» на недействительном ключе. Нужен для честной пробы.
+_CHAINSTACK_READONLY_TOOL = "get_organization"
 _CHAINSTACK_KEY_ENV = "CHAINSTACK_API_KEY"
 _MCP_PROTOCOL_VERSION = "2025-06-18"
 _MCP_SESSION_HEADER = "mcp-session-id"
@@ -357,23 +360,53 @@ class Faucet:
         self,
         session: aiohttp.ClientSession,
         url: str,
-    ) -> bool:
-        """Функциональная проба MCP-крана: handshake с ключом даёт session id.
+    ) -> tuple[bool, str]:
+        """Проба MCP-крана: handshake + проверка ключа read-only вызовом.
 
-        GET-проба на /mcp бессмысленна (405/406), а исторический URL
-        …/request_testnet_funds отвечает 404 — «любой HTTP-ответ = жив»
-        пропускал такую стратегию в фарм-пачку.
+        Одного handshake мало: сервер открывает сессию и с недействительным
+        ключом, и стратегия выглядела живой. Тогда ферма уходила в тысячи
+        заведомо падающих переводов («Invalid API key» приходил только на
+        tools/call request_testnet_funds). Проверяем ключ инструментом без
+        побочных эффектов (`get_organization`, readOnly) — квота крана не
+        тратится, а недействительный ключ виден сразу.
         """
         if not self._api_key():
             logger.warning(
                 f"Кран chainstack: {_CHAINSTACK_KEY_ENV} не задан — стратегия исключена "
                 "(ключ: https://console.chainstack.com/user/settings/api-keys)"
             )
-            return False
+            return False, f"{_CHAINSTACK_KEY_ENV} не задан"
         if not isinstance(url, str) or not url:
-            return False
+            return False, "no url in strategy"
         auth = {"Authorization": f"Bearer {self._api_key()}"}
-        return bool(await self._mcp_session(session, url, None, auth))
+        sid = await self._mcp_session(session, url, None, auth)
+        if not sid:
+            return False, "MCP handshake failed (ключ? сеть?)"
+        status, msg, _ = await self._mcp_post(
+            session,
+            url,
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/call",
+                "params": {"name": _CHAINSTACK_READONLY_TOOL, "arguments": {}},
+            },
+            None,
+            {**auth, _MCP_SESSION_HEADER: sid},
+        )
+        if status != 200 or not isinstance(msg, dict):
+            return False, f"проба ключа: MCP status {status}"
+        result = msg.get("result") or {}
+        text = _mcp_text(result)
+        if result.get("isError"):
+            low = text.lower()
+            if "invalid api key" in low or "unauthorized" in low or "401" in low:
+                return False, (
+                    "недействительный API-ключ "
+                    "(https://console.chainstack.com/user/settings/api-keys)"
+                )
+            return False, f"проба ключа не прошла: {text[:120]}"
+        return True, "MCP handshake ok, ключ принят"
 
     def _donor_strategies(self) -> list[dict]:
         """Стратегии авто-донора (Hub & Spoke): раздача с мастер-кошелька."""
@@ -469,8 +502,8 @@ class Faucet:
                         "в окружение фарм-машины и перезапустите задачу/сервис "
                         "(https://console.chainstack.com/user/settings/api-keys)"
                     )
-                ok = await self._chainstack_probe(session, url)
-                return ok, "MCP handshake ok" if ok else "MCP handshake failed (ключ? сеть?)"
+                ok, reason = await self._chainstack_probe(session, url)
+                return ok, reason
             try:
                 # GET-проба обычно дешевле POST и не тратит лимиты пополнений.
                 # 405 (GET не поддерживается) — тоже ответ живого эндпоинта.
@@ -480,7 +513,14 @@ class Faucet:
                     timeout=aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT),
                 ) as resp:
                     if resp.status in _DEAD_PROBE_STATUSES:
-                        return False, f"HTTP {resp.status} — эндпоинта заявки нет"
+                        # 404 на GET — не доказательство: кран может принимать
+                        # только POST и отдавать 404 на GET. Формулировка
+                        # осторожная, чтобы оператор не искал несуществующий
+                        # путь вместо рабочего POST-эндпоинта.
+                        return False, (
+                            f"HTTP {resp.status} — GET-проба не подтвердила эндпоинт "
+                            "(возможен только POST)"
+                        )
                     return True, f"HTTP {resp.status}"
             except (TimeoutError, aiohttp.ClientError) as e:
                 return False, f"timeout/unreachable: {type(e).__name__}"

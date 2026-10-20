@@ -144,8 +144,9 @@ class TestSchedulerEasy2(unittest.IsolatedAsyncioTestCase):
             s.save()
 
     def test_compute_next_run_last_valid_and_broken(self):
-        from core.scheduler import Scheduler
         from datetime import datetime
+
+        from core.scheduler import Scheduler
 
         with tempfile.TemporaryDirectory() as td:
             s = Scheduler(str(Path(td) / "s.json"))
@@ -350,8 +351,9 @@ class TestUiEasy2(unittest.IsolatedAsyncioTestCase):
         importlib.reload(ui_mod)
 
     def test_tty_wide_except(self):
-        import core.ui as ui_mod
         import builtins as _b
+
+        import core.ui as ui_mod
 
         fake_stdout = MagicMock()
         fake_stdout.isatty.return_value = True
@@ -623,8 +625,8 @@ class TestVibeVibeEasy2(unittest.TestCase):
         self.assertIsNone(res)
 
     def test_call_trade_sign_raises(self):
-        from web3 import Web3
         from eth_account import Account
+        from web3 import Web3
 
         vi = _make_vi2()
         acct = Account.from_key("0x" + "cd" * 32)
@@ -638,8 +640,8 @@ class TestVibeVibeEasy2(unittest.TestCase):
         self.assertIsNone(res)
 
     def test_call_contract_tx_nope(self):
-        from web3 import Web3
         from eth_account import Account
+        from web3 import Web3
 
         vi = _make_vi2()
         acct = Account.from_key("0x" + "cd" * 32)
@@ -1195,8 +1197,8 @@ class TestFarmerEasy2(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res, 3)
 
     async def test_burst_and_hilo(self):
-        from core.farmer import Farmer
         from core.behavior import WalletProfile
+        from core.farmer import Farmer
 
         cfg, wallet, network, faucet, executor = self._mk(
             farming={"actions_per_cycle": [1, 1], "delay_between_actions": 0, "skip_cycle_probability": 0.0}
@@ -1214,8 +1216,8 @@ class TestFarmerEasy2(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(n2, 1)
 
     async def test_faucet_skip_and_force(self):
-        from core.farmer import Farmer
         from core.behavior import WalletProfile
+        from core.farmer import Farmer
 
         # faucet_skip_prob branch
         cfg, wallet, network, faucet, executor = self._mk()
@@ -1536,8 +1538,9 @@ class TestSchedulerRemaining(unittest.IsolatedAsyncioTestCase):
 
 class TestSingleRemaining(unittest.TestCase):
     def test_pid_write_oserror_covers_95(self):
-        import core.single_instance as si
         import os as _os
+
+        import core.single_instance as si
 
         with tempfile.TemporaryDirectory() as td:
             p = str(Path(td) / "x.lock")
@@ -1559,8 +1562,9 @@ class TestSingleRemaining(unittest.TestCase):
                     pass
 
     def test_release_double_oserror_covers_116(self):
-        import core.single_instance as si
         import os as _os
+
+        import core.single_instance as si
 
         with tempfile.TemporaryDirectory() as td:
             p = str(Path(td) / "y.lock")
@@ -1628,10 +1632,11 @@ class TestUtilsRemaining(unittest.TestCase):
                     pass
 
     def test_resolve_loop_return_covers_173(self):
-        from core.utils import resolve_bundled
         import sys
-        from pathlib import Path
         import tempfile
+        from pathlib import Path
+
+        from core.utils import resolve_bundled
 
         had = hasattr(sys, "_MEIPASS")
         old = getattr(sys, "_MEIPASS", None)

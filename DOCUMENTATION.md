@@ -129,7 +129,19 @@ python auto.py --schedule 6                      # пайплайн каждые
   `--batch N` (пачка крана, default 50), `--workers N` / `--rpc-threads N`
   (переопределение конфига), `--fast` (минимальные задержки), `--dry-run`
   (`advanced.dry_run`), `--encrypt` (AES-256 экспортов), `--decrypt FILE`,
-  `--version`, `--history [N]`, `--doctor`, `--schedule HOURS` (минимум 0.05 ч).
+  `--version`, `--history [N]`, `--doctor`, `--schedule HOURS` (минимум 0.05 ч),
+  `--pnl-sample N` / `--pnl-out PATH` / `--skip-pnl` (PnL-отчёт по прогону),
+  `--force-farm` (фермить даже без крана и без денег на кошельках).
+
+`run_once()` возвращает код: 0 — цикл выполнен, 1 — остановлен (например,
+кран недоступен и ни один кошелёк не имеет средств). Код доходит до кода
+возврата процесса; в режиме `--schedule` цикл повторяется по расписанию.
+
+**Кран мёртв, денег нет — фарм не идёт.** Если кран недоступен и на выборке
+кошельков (5 шт.) нет средств, прогон останавливается до отправки
+транзакций: каждый перевод тогда заведомо падает («insufficient funds»),
+сеть сожжёт лимит, а лог забьётся бесполезными отказами. Если средства
+заведены вручную — фарм идёт. Обход: `--force-farm`.
 
 Фазы в `run_once`:
 1. **Генерация/переиспользование**: `generate_if_missing=true` — добирает
@@ -552,7 +564,12 @@ daily_window_strength, burst_prob/burst_mult, start_delay, neutral).
 `Faucet(config)`: `strategies` — список dict (`type: chainstack|direct|web|donor`,
 `url`, `network_param`); `_REQUEST_TIMEOUT = 12`.
 - `validate() -> int` — pre-flight: сколько стратегий живы. Для `chainstack` —
-  реальный MCP handshake (`initialize` → `mcp-session-id` → кэш на пачку).
+  реальный MCP handshake (`initialize` → `mcp-session-id` → кэш на пачку) ПЛЮС
+  read-only вызов `get_organization`: сервер поднимает сессию и с
+  недействительным ключом, а `tools/call` без побочных эффектов честно
+  отвечает «Invalid API key» — квота крана при этом не тратится. Без этой
+  проверки стратегия выглядела живой, и ферма уходила в тысячи заведомо
+  падающих переводов.
   Для `donor` — проверка ключа без сети (трансфер пойдёт через `ensure_balance`).
   Для остальных — HTTP-проба (404/410 = мертва, остальные статусы = жива).
   Разбор — в `self._last_probe` (`[{type, url(redacted), alive, reason}]`),

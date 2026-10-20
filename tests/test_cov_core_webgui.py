@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
+from fastapi import HTTPException
 
 import core.web_gui as web_gui
 from core.web_gui import _sessions, _state, app
@@ -302,8 +303,9 @@ class TestAuthHelpers(unittest.IsolatedAsyncioTestCase):
         web_gui.MASTER_KEY = "s"
         req = MagicMock()
         req.cookies = {}
-        with self.assertRaises(Exception):
+        with self.assertRaises(HTTPException) as cm:
             await web_gui._verify_request_auth(req)
+        self.assertEqual(cm.exception.status_code, 401)
 
     async def test_verify_ws_no_auth(self):
         web_gui.MASTER_KEY = ""
@@ -762,7 +764,7 @@ class TestFarmingStartStop(unittest.IsolatedAsyncioTestCase, HttpxMixin):
             if task is not None:
                 try:
                     await asyncio.wait_for(task, timeout=5)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     task.cancel()
 
     async def test_farming_loop_cancelled(self):
@@ -779,7 +781,7 @@ class TestFarmingStartStop(unittest.IsolatedAsyncioTestCase, HttpxMixin):
             task = _state["farming_task"]
             try:
                 await asyncio.wait_for(task, timeout=5)
-            except (asyncio.TimeoutError, asyncio.CancelledError):
+            except (TimeoutError, asyncio.CancelledError):
                 pass
             self.assertFalse(_state["is_farming"])
 
@@ -797,7 +799,7 @@ class TestFarmingStartStop(unittest.IsolatedAsyncioTestCase, HttpxMixin):
             task = _state["farming_task"]
             try:
                 await asyncio.wait_for(task, timeout=5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 if task is not None:
                     task.cancel()
             self.assertFalse(_state["is_farming"])
@@ -1051,7 +1053,7 @@ class TestBalanceAlertsCov(unittest.IsolatedAsyncioTestCase, HttpxMixin):
             self.assertIsNotNone(t)
             try:
                 await asyncio.wait_for(t, timeout=5)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 t.cancel()
 
     async def test_monitor_balance_exc_and_faucet_exc(self):

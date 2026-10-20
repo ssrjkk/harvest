@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 class TestPortalInitFallback(unittest.TestCase):
     def test_version_fallback(self):
         import importlib
+
         import portal as _p
         self.assertTrue(hasattr(_p, "__version__"))
         # форсируем except-ветку (строки 15-16): core.version недоступен
@@ -51,6 +52,7 @@ class TestConfigExtra(unittest.TestCase):
 class TestStatusCardWalletCells(unittest.TestCase):
     def test_status_card_no_pil(self):
         import importlib
+
         import portal.status_card as _card
         self.assertTrue(hasattr(_card, "available"))
         with mock.patch.dict(sys.modules, {"PIL": None, "PIL.Image": None}):
@@ -296,14 +298,15 @@ class TestShieldRiskSanitizeExtra(unittest.IsolatedAsyncioTestCase):
 
     async def test_sanitize_branches(self):
         from portal.shield.config import SanitizeConfig
-        from portal.shield.sanitize import PayloadGuard, _emoji_ratio
+        from portal.shield.sanitize import PayloadGuard, SanitizationError, _emoji_ratio
         self.assertEqual(_emoji_ratio(""), 0.0)
         g = PayloadGuard(SanitizeConfig())
         g.check_bytes(None)
         # too_many_items
         g2 = PayloadGuard(SanitizeConfig(max_items=2))
-        with self.assertRaises(Exception):
+        with self.assertRaises(SanitizationError) as cm:
             g2.check([1, 2, 3])
+        self.assertIn("too_many_items", str(cm.exception))
         # whitespace passthrough
         g.check("a\tb\nc")
         # flood evict
@@ -406,10 +409,11 @@ class TestShieldMiddlewareExtra(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(resp.status, 200)
 
     async def test_idempotent_read_fail_and_setitem_fail(self):
+        from aiohttp import web
+
         from portal.shield.config import GuardConfig
         from portal.shield.middleware import idempotent
         from portal.shield.shield import Shield
-        from aiohttp import web
         sh = Shield(GuardConfig(enabled=True))
 
         async def _h(_r):
@@ -440,10 +444,11 @@ class TestShieldMiddlewareExtra(unittest.IsolatedAsyncioTestCase):
         self.assertIn(resp2.status, (200, 500))
 
     async def test_idempotent_text_no_body(self):
+        from aiohttp import web
+
         from portal.shield.config import GuardConfig
         from portal.shield.middleware import idempotent
         from portal.shield.shield import Shield
-        from aiohttp import web
         sh = Shield(GuardConfig(enabled=True))
         async def _h(_r):
             return web.Response(text="hi")

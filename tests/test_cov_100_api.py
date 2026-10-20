@@ -174,8 +174,8 @@ class ApiCov(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(r.status, 400)
 
     async def test_guard_endpoint(self):
-        from portal.shield.shield import Shield
         from portal.shield.config import GuardConfig
+        from portal.shield.shield import Shield
         cfg = _make_cfg()
         sh = Shield(GuardConfig(enabled=True))
         c = await self._client(cfg, shield=sh)

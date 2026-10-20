@@ -487,7 +487,7 @@ class TestFaucetValidate(unittest.TestCase):
         self.assertEqual(server.handshakes, 0)
 
     def test_validate_chainstack_probe_is_functional(self):
-        """Проба = handshake MCP (без запроса пополнения): стратегия жива, квота не потрачена."""
+        """Проба = handshake MCP + read-only проверка ключа (квота не тратится)."""
         from core.faucet import Faucet
         f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
                     "proxy": {}})
@@ -497,8 +497,74 @@ class TestFaucetValidate(unittest.TestCase):
         ):
             self.assertEqual(_run(f.validate()), 1)
         self.assertEqual(server.handshakes, 1)
+        # request_testnet_funds не вызывался — квота крана не потрачена
         self.assertEqual(server.tool_calls, [])
+        # но ключ проверен read-only вызовом
+        self.assertEqual(len(server.readonly_calls), 1)
         self.assertEqual(f._mcp_sids, {"https://mcp.test/mcp": "sid1"})
+
+    def test_validate_chainstack_invalid_key_detected(self):
+        """Недействительный ключ обязан ловиться на пробе, а не на тысяче отказов."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        server = _McpServer(readonly_error=True)
+        with _chainstack_key("bad-key"), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=_McpSession(server)
+        ):
+            self.assertEqual(_run(f.validate()), 0)
+        self.assertEqual(server.tool_calls, [])  # квота не трачена
+        reasons = " ".join(p["reason"] for p in f.probe_report())
+        self.assertIn("недействительный API-ключ", reasons)
+
+    def test_validate_chainstack_readonly_other_error(self):
+        """Read-only проба упала с другой ошибкой — стратегия мертва, но не из-за ключа."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        server = _McpServer(readonly_error=True)
+        with _chainstack_key("cs-key-1"), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=_McpSession(server)
+        ):
+            with patch.object(f, "_mcp_post", new_callable=AsyncMock,
+                              return_value=(200, {"result": {"content": [{"type": "text", "text": "boom"}],
+                                                           "isError": True}}, "sid")):
+                self.assertEqual(_run(f.validate()), 0)
+        reasons = " ".join(p["reason"] for p in f.probe_report())
+        self.assertIn("проба ключа не прошла", reasons)
+
+    def test_validate_chainstack_handshake_failed(self):
+        """Handshake не дал session id — стратегия мертва."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        with _chainstack_key("cs-key-1"), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=AsyncMock()
+        ):
+            with patch.object(f, "_mcp_session", new_callable=AsyncMock, return_value=None):
+                self.assertEqual(_run(f.validate()), 0)
+        reasons = " ".join(p["reason"] for p in f.probe_report())
+        self.assertIn("MCP handshake failed", reasons)
+
+    def test_validate_chainstack_probe_bad_status(self):
+        """MCP ответил не 200 на пробу ключа — стратегия мертва."""
+        from core.faucet import Faucet
+        f = Faucet({"faucet": {"strategies": [{"type": "chainstack", "url": "https://mcp.test/mcp"}]},
+                    "proxy": {}})
+        server = _McpServer()
+        with _chainstack_key("cs-key-1"), patch.object(
+            f, "_get_session", new_callable=AsyncMock, return_value=_McpSession(server)
+        ):
+            async def _post(session, url, payload, proxy, headers=None):
+                # initialize проходит, а проба ключа получает 500
+                if (payload or {}).get("method") == "initialize":
+                    return 200, None, "sid1"
+                return 500, None, None
+
+            with patch.object(f, "_mcp_post", new=_post):
+                self.assertEqual(_run(f.validate()), 0)
+        reasons = " ".join(p["reason"] for p in f.probe_report())
+        self.assertIn("MCP status 500", reasons)
 
     def test_validate_multiple_mixed(self):
         from core.faucet import Faucet
@@ -691,6 +757,7 @@ class _McpServer:
         no_sid=False,
         tool_status=200,
         reject_key=False,
+        readonly_error=False,
         gate_text="",
         jsonrpc_text="boom",
     ):
@@ -700,10 +767,14 @@ class _McpServer:
         self.no_sid = no_sid
         self.tool_status = tool_status
         self.reject_key = reject_key
+        self.readonly_error = readonly_error
         self.gate_text = gate_text
         self.jsonrpc_text = jsonrpc_text
         self.handshakes = 0
         self.tool_calls = []
+        # Проба ключа: read-only вызов get_organization. Квоту крана не тратит,
+        # поэтому идёт отдельным списком.
+        self.readonly_calls = []
         self.sessions = set()
 
     def post(self, url, **kw):
@@ -730,7 +801,31 @@ class _McpServer:
         if self.drop_session:
             self.sessions.discard(sid)
             return _McpResp(400, {"error": {"code": -32600, "message": "Missing session ID"}}, sse=False)
-        args = payload["params"]["arguments"]
+        name = payload["params"].get("name", "")
+        args = payload["params"].get("arguments", {})
+        if name == "get_organization":
+            # read-only проба ключа: квоту крана не тратит
+            self.readonly_calls.append((args, headers.get("Authorization")))
+            if self.readonly_error:
+                return _McpResp(
+                    200,
+                    {
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "Error calling tool 'get_organization': Invalid API key. "
+                                        "Get one at https://console.chainstack.com/user/settings/api-keys"
+                                    ),
+                                }
+                            ],
+                            "isError": True,
+                        }
+                    },
+                    sid=sid,
+                )
+            return _McpResp(200, {"result": {"content": [{"type": "text", "text": "org-1"}]}}, sid=sid)
         self.tool_calls.append((args, headers.get("Authorization")))
         if self.tool_status != 200:
             return _McpResp(self.tool_status, sse=False)
@@ -939,7 +1034,8 @@ class TestFaucetChainstackMcp(unittest.TestCase):
             with patch.object(f, "_get_session", new_callable=AsyncMock, return_value=session):
                 self.assertEqual(_run(f.validate()), 0)
             # Прямой вызов тоже стоек (defense in depth).
-            self.assertFalse(_run(f._chainstack_probe(session, None)))
+            ok, _reason = _run(f._chainstack_probe(session, None))
+            self.assertFalse(ok)
 
     def test_request_strategy_skips_donor(self):
         from core.faucet import Faucet

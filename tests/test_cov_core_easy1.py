@@ -103,8 +103,9 @@ class TestFaucetEasy(unittest.TestCase):
         )
         with mock.patch.dict(os.environ, {}, clear=False):
             os.environ.pop("CHAINSTACK_API_KEY", None)
-            result = asyncio.run(f._chainstack_probe(mock.MagicMock(), "https://mcp.example/mcp"))
-        self.assertFalse(result)
+            ok, reason = asyncio.run(f._chainstack_probe(mock.MagicMock(), "https://mcp.example/mcp"))
+        self.assertFalse(ok)
+        self.assertIn("CHAINSTACK_API_KEY", reason)
 
     def test_probe_timeout_reason(self):
         f = Faucet(

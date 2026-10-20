@@ -95,6 +95,14 @@ def parse_args() -> argparse.Namespace:
         help="Не строить PnL-отчёт по окончании прогона",
     )
     p.add_argument(
+        "--force-farm",
+        action="store_true",
+        help=(
+            "Фармить даже если кран недоступен и кошельки пусты "
+            "(все переводы упадут; по умолчанию прогон останавливается)"
+        ),
+    )
+    p.add_argument(
         "--decrypt",
         default=None,
         metavar="FILE",
@@ -123,6 +131,28 @@ def banner() -> None:
 {"=" * 60}{Style.RESET_ALL}""")
 
 
+async def _probe_funded(network, wallets: list[dict], config: dict, sample: int = 5) -> dict:
+    """Есть ли у кошельков средства, когда кран недоступен.
+
+    Проверяем не все кошельки (1000 RPC-вызовов ради проверки), а выборку:
+    хватает одного кошелька со средствами, чтобы фарм имел смысл.
+    """
+    min_balance = float((config.get("faucet") or {}).get("min_balance", 0.005) or 0)
+    addresses = [w["address"] for w in wallets[: max(1, sample)]]
+    funded = 0
+    checked = 0
+    for addr in addresses:
+        try:
+            bal = await network.get_balance(addr, refresh=True)
+        except Exception as e:  # noqa: BLE001 — сеть может ответить ошибкой
+            logger.debug(f"Проверка баланса {addr[:10]} не удалась: {e}")
+            continue
+        checked += 1
+        if bal >= min_balance:
+            funded += 1
+    return {"funded": funded, "checked": checked}
+
+
 def progress(current: int, total: int, prefix: str = "") -> None:
     bar_len = 30
     filled = int(bar_len * current / total) if total > 0 else 0
@@ -134,7 +164,7 @@ def progress(current: int, total: int, prefix: str = "") -> None:
         print()
 
 
-async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = None) -> None:
+async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = None) -> int:
     """Один проход пайплайна: генерация -> кран -> фарм -> экспорт."""
     config = load_config(args.config)
     if config is None:
@@ -176,7 +206,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         print(f"  {Fore.YELLOW}Для получения пароля обратитесь к владельцу софта.{Style.RESET_ALL}")
         if stop_event is not None:
             print(f"  {Fore.YELLOW}Цикл пропущен; при следующем запуске проверка повторится{Style.RESET_ALL}")
-            return
+            return 0
         raise SystemExit(2) from None
 
     try:
@@ -212,7 +242,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         print(f"  {Fore.YELLOW}Уже работает другой экземпляр фармера (pid={guard.holder_pid()}).{Style.RESET_ALL}")
         print("  Два пула на одной БД несовместимы — пропуск цикла.")
         await db.close()
-        return
+        return 0
 
     network = None
     try:
@@ -242,7 +272,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                 except Exception:
                     pass
                 await db.close()
-                return
+                return 0
             if existing:
                 if len(existing) >= wallet_count:
                     wallet_rows = existing[:wallet_count]
@@ -266,7 +296,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                     f"  {Fore.YELLOW}Кошельков в БД нет, а генерация отключена "
                     f"(wallets.generate_if_missing=false) — фармить нечего{Style.RESET_ALL}"
                 )
-                return
+                return 0
         wallets = wallet_rows
 
         # PnL-трекер: снимки балансов выборки в ключевых точках прогона.
@@ -283,6 +313,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             pnl_since_id = await db.get_max_action_id()
 
         # === ФАЗА 2: КРАН ===
+        faucet_dead = False
         if not args.skip_faucet:
             print(f"\n{Fore.CYAN}[2/4] Кран: пополнение {len(wallets)} кошельков...{Style.RESET_ALL}")
             if config.get("faucet", {}).get("enabled", True) and config.get("faucet", {}).get("strategies"):
@@ -306,6 +337,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                             f"  {Fore.YELLOW}Фарм пойдёт без пополнения (force_farm).{Style.RESET_ALL}"
                         )
                         config.setdefault("advanced", {})["force_farm"] = True
+                        faucet_dead = True
                     else:
                         addresses = [w["address"] for w in wallets]
                         funded, failed = await faucet.request_batch(
@@ -325,6 +357,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             else:
                 print(f"  {Fore.YELLOW}Кран отключён/нет стратегий, пропуск. force_farm=True{Style.RESET_ALL}")
                 config.setdefault("advanced", {})["force_farm"] = True
+                faucet_dead = True
         else:
             print(f"\n{Fore.CYAN}[2/4] Кран: пропущен (--skip-faucet){Style.RESET_ALL}")
 
@@ -336,6 +369,26 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             t3 = time.monotonic()
             if network is None:
                 network = NetworkManager(config, db)
+            # Кран мёртв, а кошельки пусты — каждый перевод заведомо упадёт
+            # («insufficient funds»), сеть сожжёт лимит, а лог заполнится
+            # бесполезными отказами. Останавливаемся до пула.
+            if faucet_dead and not args.force_farm:
+                probe = await _probe_funded(network, wallets, config)
+                if not probe["funded"]:
+                    print(
+                        f"  {Fore.RED}ОСТАНОВ: кран недоступен и ни один кошелёк не имеет "
+                        f"средств (проверено {probe['checked']} из {len(wallets)}).{Style.RESET_ALL}"
+                    )
+                    print(
+                        f"  {Fore.YELLOW}Фарм без денег — только заведомые отказы. "
+                        f"Почини кран (CHAINSTACK_API_KEY/URL стратегии) или запусти "
+                        f"с --force-farm, если средства уже заведены вручную.{Style.RESET_ALL}"
+                    )
+                    return 1
+                print(
+                    f"  {Fore.GREEN}Средства на кошельках есть ({probe['funded']} из "
+                    f"{probe['checked']}) — фарм продолжается без крана.{Style.RESET_ALL}"
+                )
             if pnl_tracker is not None:
                 # Снимок «перед фармом» — после крана, до транзакций пула.
                 await pnl_tracker.mark(network, "pre_farm")
@@ -468,6 +521,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         print(f"  Экспорт:    {csv_path}, {json_path}")
         print(f"  Время:      {elapsed:.0f} сек ({elapsed / 60:.1f} мин)")
         print(f"{'=' * 60}")
+        return 0
 
     finally:
         # Закрытие не должно съедать single-instance lock: любой сбой cleanup
@@ -500,7 +554,12 @@ async def run_schedule(args: argparse.Namespace, hours: float) -> None:
         n += 1
         print(f"\n{Fore.CYAN}=== ПЛАНОВЫЙ ЦИКЛ #{n} ==={Style.RESET_ALL}")
         try:
-            await run_once(args, stop)
+            code = await run_once(args, stop)
+            if code:
+                print(
+                    f"  {Fore.RED}Цикл не выполнен (код {code}) — повторим по расписанию."
+                    f"{Style.RESET_ALL}"
+                )
         except SystemExit:
             raise
         except Exception as e:
@@ -612,7 +671,9 @@ async def main_auto() -> None:
         await run_schedule(args, float(args.schedule))
         return
 
-    await run_once(args)
+    code = await run_once(args)
+    if code:
+        raise SystemExit(code)
 
 
 if __name__ == "__main__":

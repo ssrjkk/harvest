@@ -372,9 +372,11 @@ def _html(path: str) -> web.Response:
     try:
         return web.Response(text=(STATIC_DIR / path).read_text(encoding="utf-8"), content_type="text/html")
     except FileNotFoundError:
-        raise web.HTTPNotFound()
-    except OSError:
-        raise web.HTTPInternalServerError()
+        # Контекст не нужен: клиенту не положено знать про файловую систему.
+        raise web.HTTPNotFound() from None
+    except OSError as e:
+        # Причину сохраняем в цепочке — в логах она полезна, наружу не уходит.
+        raise web.HTTPInternalServerError() from e
 
 
 async def index(request: web.Request) -> web.Response:
