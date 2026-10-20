@@ -139,6 +139,39 @@ function renderLive(s){
     const dur=Number(c.duration_s);const durS=isFinite(dur)?dur.toFixed(1):"—";
     return `<tr><td class="num" style="color:var(--muted)">${esc(c.id)}</td><td>${b}</td><td class="num">${fmt(c.actions_ok)}</td><td class="num">${esc(e)}</td><td class="num">${durS}</td><td class="num">${esc(c.wallets)}</td></tr>`;}).join("")
     ||'<tr><td colspan="6" class="note">—</td></tr>';
+  renderPnl(s.pnl);
+}
+function renderPnl(p){
+  const box=$("#pnlBox");
+  if(!box)return;
+  if(!p){box.hidden=true;return;}
+  box.hidden=false;
+  const ok=Number(p.actions_ok||0),fail=Number(p.actions_fail||0);
+  const rate=(ok+fail)>0?(ok/(ok+fail)*100):null;
+  setNum("pnlOk",ok);
+  setNum("pnlFail",fail);
+  const el=(id,t)=>{const n=$("#"+id);if(n)n.textContent=t;};
+  el("pnlRate",rate===null?"—":(lang==="en"?"success ":"успех ")+rate.toFixed(1)+"%");
+  const farm=Number(p.farm_delta),faucet=Number(p.faucet_delta);
+  const setDelta=(id,v)=>{
+    const n=$("#"+id);if(!n)return;
+    if(!isFinite(v)){n.textContent="—";n.className="v";return;}
+    n.textContent=(v>0?"+":"")+v.toFixed(6);
+    n.className="v "+(v>0?"ok":(v<0?"neg":""));
+  };
+  setDelta("pnlFarm",farm);
+  setDelta("pnlFaucet",faucet);
+  el("pnlSample",(lang==="en"?"sample ":"выборка ")+(Number(p.measured||0)+"/"+Number(p.total_wallets||0)));
+  el("pnlWindow",(lang==="en"?"window ":"окно ")+fmt(p.window_actions));
+  el("pnlWhen",(lang==="en"?"at ":"от ")+(p.created_at||"—"));
+  const tt=$("#tPnlTypes");
+  if(tt)tt.innerHTML=(p.by_type||[]).map(t=>
+    `<tr><td>${esc(t.type||"?")}</td><td class="num">${fmt(t.ok)}</td><td class="num">${fmt(t.fail)}</td></tr>`).join("")
+    ||'<tr><td colspan="3" class="note">—</td></tr>';
+  const tr=$("#tPnlReasons");
+  if(tr)tr.innerHTML=(p.by_reason||[]).map(r=>
+    `<tr><td>${esc(r.reason||"?")}</td><td class="num">${fmt(r.count)}</td></tr>`).join("")
+    ||'<tr><td colspan="2" class="note">—</td></tr>';
 }
 function netCard(n,cur){
   const acts=(n.activities||[]).map(a=>"<li>"+esc(a)+"</li>").join("");

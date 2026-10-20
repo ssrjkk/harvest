@@ -327,6 +327,10 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 - Логи действий: `log_actions_batch`, `prune_actions_log(keep_latest=200000)`.
 - Статистика: `get_stats`, `get_top_wallets`, `record_cycle`,
   `get_cycle_history`, `get_cycle_stats`.
+- Снапшоты PnL: `save_pnl_snapshot(snap)` / `get_last_pnl_snapshot()` —
+  таблица `pnl_snapshots`. Ферма кладёт туда агрегаты последнего прогона
+  (без адресов), публикатор копирует их в `state.json["pnl"]`, сайт рисует
+  блок PnL на «Поле».
 - Бэкапы (SQLite): `backup_now` (копия БД через SQLite backup API +
   ограничение прав каталога `_restrict_backup_dir`), `list_backups`,
   `restore_backup`, `delete_backup`.

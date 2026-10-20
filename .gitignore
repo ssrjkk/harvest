@@ -94,4 +94,9 @@ start_publish.ps1
 # Лок publish_dash.py (межпроцессный flock) — не коммитим.
 .dash-site.lock
 
+# Отчёт PnL содержит адреса кошельков и ссылки на эксплорер — в историю
+# публичного репозитория он попадать не должен.
+pnl_report*.html
+*_pnl.html
+
 docs/screenshots/matrix/
