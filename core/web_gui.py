@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
+from core.logger import logsafe
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -176,6 +177,33 @@ if static_dir.exists():
     app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
+def _internal_error(label: str, exc: BaseException) -> dict:
+    """Причина остаётся в журнале, наружу — общий текст и код обращения.
+
+    `str(exc)` в ответе выдаёт детали внутреннего сбоя: пути, строки ошибок
+    библиотек, куски соединения — по такому ответу сборку разбирают по частям.
+    Тот же текст пишется в лог рядом с кодом `ref`, поэтому разбор ошибки не
+    теряется: он просто недоступен снаружи.
+    """
+    ref = secrets.token_hex(4)
+    logger.error("%s #%s: %s", label, ref, exc)
+    return {"ok": False, "message": f"Внутренняя ошибка, код {ref}"}
+
+
+def _network_config(name: str) -> Path | None:
+    """Файл конфигурации сети по имени из реально лежащих рядом config*.yaml.
+
+    Путь не склеивается из пользовательской строки: имя ищется среди файлов,
+    которые нашлись при сканировании (тот же обход, что и в списке сетей).
+    Поэтому запрос «../../something» не попадает в другую часть файловой
+    системы, а в ответ уходит только то, что действительно существует.
+    """
+    for cfg in sorted(Path(".").glob("config*.yaml")):
+        if (cfg.stem.replace("config", "").strip("_") or "default") == name:
+            return cfg
+    return None
+
+
 def _scan_networks() -> list[str]:
     configs = sorted(Path(".").glob("config*.yaml"))
     names = []
@@ -311,7 +339,8 @@ async def init_system(_: None = Depends(_verify_request_auth)):
         try:
             key = resolve_master_key(config)
         except Exception as e:
-            return {"ok": False, "message": f"Master key error: {e}"}
+            logger.error("Master key error: %s", logsafe(e))
+            return {"ok": False, "message": "Master key error — проверьте master.key или FARMER_MASTER_KEY"}
 
         db = Database(config["database"]["path"], master_key=key)
         await db.init()
@@ -340,8 +369,7 @@ async def init_system(_: None = Depends(_verify_request_auth)):
         await broadcast_status()
         return {"ok": True, "message": "System initialized"}
     except Exception as e:
-        logger.error(f"Init error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Init error", e)
 
 
 @app.post("/api/wallets/create")
@@ -357,8 +385,7 @@ async def create_wallets(req: CreateWalletsRequest, _: None = Depends(_verify_re
         await broadcast_status()
         return {"ok": True, "created": len(created)}
     except Exception as e:
-        logger.error(f"Create wallets error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Create wallets error", e)
 
 
 @app.post("/api/faucet/request")
@@ -382,8 +409,7 @@ async def request_faucet(_: None = Depends(_verify_request_auth)):
         await broadcast_status()
         return {"ok": True, "success": success, "total": len(wallets)}
     except Exception as e:
-        logger.error(f"Faucet error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Faucet error", e)
 
 
 @app.post("/api/farming/start")
@@ -429,8 +455,7 @@ async def start_farming(_: None = Depends(_verify_request_auth)):
         _state["farming_task"] = asyncio.create_task(farming_loop())
         return {"ok": True, "message": "Farming started"}
     except Exception as e:
-        logger.error(f"Start farming error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Start farming error", e)
 
 
 @app.post("/api/farming/stop")
@@ -450,8 +475,7 @@ async def stop_farming(_: None = Depends(_verify_request_auth)):
         await broadcast_status()
         return {"ok": True, "message": "Farming stopped"}
     except Exception as e:
-        logger.error(f"Stop farming error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Stop farming error", e)
 
 
 @app.get("/api/stats")
@@ -464,8 +488,7 @@ async def get_stats(_: None = Depends(_verify_request_auth)):
         cycles = await _state["db"].get_cycle_stats()
         return {"ok": True, "stats": stats, "top_wallets": top, "cycles": cycles}
     except Exception as e:
-        logger.error(f"Stats error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Stats error", e)
 
 
 @app.get("/api/rpc/health")
@@ -497,8 +520,7 @@ async def rpc_health(_: None = Depends(_verify_request_auth)):
             },
         }
     except Exception as e:
-        logger.error(f"RPC health error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("RPC health error", e)
 
 
 @app.get("/api/networks")
@@ -516,11 +538,10 @@ async def switch_network(req: SwitchNetworkRequest, _: None = Depends(_verify_re
         if _state["is_farming"]:
             return {"ok": False, "message": "Stop farming before switching network"}
 
-        config_path = f"config_{req.network}.yaml" if req.network != "default" else "config.yaml"
-        if not Path(config_path).exists():
-            config_path = f"config_{req.network}.yaml"
-        if not Path(config_path).exists():
-            return {"ok": False, "message": f"Config not found: {config_path}"}
+        name = (req.network or "default").strip()
+        config_path = _network_config(name)
+        if config_path is None:
+            return {"ok": False, "message": f"Конфигурация «{logsafe(name)}» не найдена"}
 
         if _state["network"]:
             await _state["network"].close()
@@ -534,16 +555,15 @@ async def switch_network(req: SwitchNetworkRequest, _: None = Depends(_verify_re
         _state["faucet"] = None
         _state["group_manager"] = None
 
-        os.environ["HARVEST_NETWORK"] = req.network
+        os.environ["HARVEST_NETWORK"] = name
         result = await init_system()
         if result.get("ok"):
-            _state["current_network"] = req.network
-            logger.info(f"Switched to network: {req.network}")
-            await broadcast_event("network_switched", {"network": req.network})
+            _state["current_network"] = name
+            logger.info("Switched to network: %s", logsafe(name))
+            await broadcast_event("network_switched", {"network": name})
         return result
     except Exception as e:
-        logger.error(f"Switch network error: {e}")
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Switch network error", e)
 
 
 @app.get("/api/scheduler/tasks")
@@ -569,7 +589,7 @@ async def create_schedule_task(req: ScheduleCreateRequest, _: None = Depends(_ve
         await broadcast_event("scheduler_updated", {})
         return {"ok": True, "task": task.to_dict()}
     except Exception as e:
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Scheduler add error", e)
 
 
 @app.put("/api/scheduler/tasks/{task_id}")
@@ -720,10 +740,10 @@ async def create_group(req: GroupCreateRequest, _: None = Depends(_verify_reques
     try:
         group = await _state["group_manager"].create_group(req.name, req.color)
         return {"ok": True, "group": group}
-    except ValueError as e:
-        return {"ok": False, "message": str(e)}
+    except ValueError:
+        return {"ok": False, "message": f"Группа «{logsafe(req.name)}» уже существует"}
     except Exception as e:
-        return {"ok": False, "message": str(e)}
+        return _internal_error("Group create error", e)
 
 
 @app.delete("/api/groups/{group_id}")

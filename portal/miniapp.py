@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 
 from aiohttp import web
 
+from core.logger import logsafe
 from portal import auth
 from portal import bot_ops as _bot_ops
 from portal.config import PortalConfig
@@ -114,7 +115,7 @@ async def tma_user(
         return None
     ip = _client_ip(request, cfg)
     if not _gchoke_ok("tma") or not _choke_ok("tma", ip):
-        logger.warning("[AUDIT] tma choke ip=%s", ip)
+        logger.warning("[AUDIT] tma choke ip=%s", logsafe(ip))
         return None
     user = auth.validate_telegram_init_data(cfg.telegram_token, raw)
     if user is None:
@@ -122,10 +123,10 @@ async def tma_user(
     try:
         tg_id = int(user.get("id", 0))
     except (TypeError, ValueError):
-        logger.warning("[AUDIT] tma bad id ip=%s", ip)
+        logger.warning("[AUDIT] tma bad id ip=%s", logsafe(ip))
         return None
     if not tg_id or not cfg.telegram_user_allowed(tg_id):
-        logger.warning("[AUDIT] tma denied id=%s ip=%s", tg_id, ip)
+        logger.warning("[AUDIT] tma denied id=%s ip=%s", logsafe(tg_id), logsafe(ip))
         return None
     return tg_id, str(user.get("first_name", ""))[:200]
 
@@ -386,7 +387,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
                     except Exception:  # noqa: BLE001
                         logger.warning("miniapp cfg_send упал", exc_info=True)
                         return web.json_response({"error": "failed"}, status=500)
-                    logger.info("[AUDIT] miniapp cfg_send user=%s net=%s", tg_id, slug)
+                    logger.info("[AUDIT] miniapp cfg_send user=%s net=%s", logsafe(tg_id), slug)
                     return web.json_response({"ok": True, "sent": "chat"})
                 return web.json_response({"ok": True, "filename": filename, "yaml": content})
             if kind == "check":
@@ -457,7 +458,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         except Exception:  # noqa: BLE001
             logger.warning("miniapp export упал", exc_info=True)
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp export user=%s fmt=%s", tg_id, fmt if password is None else f"enc-{fmt}")
+        logger.info("[AUDIT] miniapp export user=%s fmt=%s", logsafe(tg_id), fmt if password is None else f"enc-{fmt}")
         return web.json_response({"ok": True, "sent": "chat"})
 
     async def api_settings_get(request: web.Request) -> web.Response:
@@ -495,7 +496,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
                 lang = await _bs.set_lang(db_path, tg_id, str(body["lang"]))
         except Exception:  # noqa: BLE001
             return web.json_response({"error": "failed"}, status=500)
-        logger.info("[AUDIT] miniapp settings user=%s mode=%s lang=%s", tg_id, mode, lang)
+        logger.info("[AUDIT] miniapp settings user=%s mode=%s lang=%s", logsafe(tg_id), mode, lang)
         return web.json_response({"ok": True, "mode": mode, "lang": lang})
 
     async def api_scheduler(request: web.Request) -> web.Response:
@@ -614,7 +615,7 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
             return web.json_response({"error": "failed"}, status=500)
         if not ok:
             return web.json_response({"error": "unknown network"}, status=404)
-        logger.info("[AUDIT] miniapp net_switch user=%s slug=%s", tg_id, slug)
+        logger.info("[AUDIT] miniapp net_switch user=%s slug=%s", logsafe(tg_id), slug)
         return web.json_response({"ok": True, **daemon.run_state()})
 
     app.router.add_get("/app/", app_page)

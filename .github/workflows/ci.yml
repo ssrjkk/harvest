@@ -5,6 +5,11 @@ on:
     branches: [main, master]
   pull_request:
 
+# CI только читает репозиторий: права объявлены явно, иначе job с умолчанию
+# write-all получает запись в репозиторий «на всякий случай».
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

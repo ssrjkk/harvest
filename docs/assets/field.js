@@ -35,7 +35,10 @@ function setNum(id,raw){
 }
 function cellName(c){
   const names={i:{ru:"спит",en:"idle"},w:{ru:"работает",en:"working"},o:{ru:"успех",en:"ok"},e:{ru:"ошибка",en:"error"},r:{ru:"отдыхает",en:"rest"}};
-  const n=names[c]||names.i;return lang==="en"?n.en:n.ru;
+  // Символ ячейки приходит с сервера: без проверки собственного свойства names["__proto__"]
+  // или names["constructor"] вернул бы чужой объект, а не подпись состояния.
+  const n=Object.prototype.hasOwnProperty.call(names,c)?names[c]:names.i;
+  return lang==="en"?n.en:n.ru;
 }
 function renderGrid(cells,n,running){
   const g=$("#fieldGrid");

@@ -19,6 +19,7 @@ from pathlib import Path
 
 from aiohttp import web
 
+from core.logger import logsafe
 from portal import auth
 from portal.config import PortalConfig, load_links
 from portal.farm import FarmDaemon
@@ -176,7 +177,7 @@ _MAX_PASSWORD_LEN = 512
 def _audit(request: web.Request, msg: str) -> None:
     user = _session_user(request)
     sub = user.get("sub", "?") if user else "-"
-    logger.info("[AUDIT] sub=%s ip=%s %s", sub, _client_ip(request), msg)
+    logger.info("[AUDIT] sub=%s ip=%s %s", logsafe(sub), logsafe(_client_ip(request)), logsafe(msg))
 
 
 def _login_allowed(ip: str) -> bool:
@@ -290,7 +291,7 @@ def _require_user(request: web.Request) -> dict:
     if user is None:
         # Default-deny: каждое отклонение пишем в аудит-журнал (без токена/деталей),
         # чтобы несанкционированные обращения не проходили молча.
-        logger.warning("[AUDIT] deny unauth sub=- ip=%s path=%s", _client_ip(request), request.path)
+        logger.warning("[AUDIT] deny unauth sub=- ip=%s path=%s", logsafe(_client_ip(request)), logsafe(request.path))
         raise web.HTTPUnauthorized()
     return user
 
@@ -309,7 +310,7 @@ def _guard_check(request: web.Request, obj: object) -> web.Response | None:
     try:
         guard.check(obj)
     except Exception as e:  # noqa: BLE001 — SanitizationError(ValueError)
-        logger.warning("[AUDIT] sanitize-reject path=%s err=%s", request.path, e)
+        logger.warning("[AUDIT] sanitize-reject path=%s err=%s", logsafe(request.path), logsafe(e))
         return _json({"error": f"bad input: {e}"}, status=400)
     return None
 
@@ -408,7 +409,7 @@ async def api_login_password(request: web.Request) -> web.Response:
     if not allowed:
         return _json({"error": reason}, status=403)
     if not _login_allowed(ip):
-        logger.warning("[AUDIT] login-limit ip=%s", ip)
+        logger.warning("[AUDIT] login-limit ip=%s", logsafe(ip))
         return _json({"error": "Слишком много попыток. Подождите 10 минут."}, status=429)
     if not _login_allowed_global():
         logger.warning("[AUDIT] login-limit GLOBAL")
@@ -425,9 +426,9 @@ async def api_login_password(request: web.Request) -> web.Response:
     if not auth.check_master_key(cfg.master_key, password):
         _note_login_fail(ip)
         _note_global_login_fail()
-        logger.warning("[AUDIT] login-fail ip=%s", ip)
+        logger.warning("[AUDIT] login-fail ip=%s", logsafe(ip))
         return _json({"error": "Неверный пароль"}, status=401)
-    logger.info("[AUDIT] login-ok (password) ip=%s", ip)
+    logger.info("[AUDIT] login-ok (password) ip=%s", logsafe(ip))
     resp = _json({"ok": True})
     _set_session_cookie(resp, cfg, auth.sign_token(cfg.secret, "master", "master"))
     return resp
@@ -475,7 +476,7 @@ async def api_google_callback(request: web.Request) -> web.Response:
     # Сетевой обмен с Google на каждый запрос: не даём молотить callback потоком.
     # Хосты тыкают с разных фейковых XFF — держим и глобальный счётчик.
     if not _choke_allowed_global("google_cb") or not _choke_allowed("google_cb", ip):
-        logger.warning("[AUDIT] google_cb choke ip=%s", ip)
+        logger.warning("[AUDIT] google_cb choke ip=%s", logsafe(ip))
         resp = web.HTTPFound(location="/login?error=rate")
         resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
@@ -493,7 +494,7 @@ async def api_google_callback(request: web.Request) -> web.Response:
     else:
         stored_state = stored
     if not auth.verify_csrf_state(cfg.secret, state) or state != stored_state:
-        logger.warning("[AUDIT] oauth bad_state ip=%s", _client_ip(request))
+        logger.warning("[AUDIT] oauth bad_state ip=%s", logsafe(_client_ip(request)))
         resp = web.HTTPFound(location="/login?error=bad_state")
         resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
@@ -510,11 +511,11 @@ async def api_google_callback(request: web.Request) -> web.Response:
         raise resp
     email = profile["email"]
     if not cfg.google_email_allowed(email):
-        logger.warning("[AUDIT] oauth denied email=%s ip=%s", email, _client_ip(request))
+        logger.warning("[AUDIT] oauth denied email=%s ip=%s", logsafe(email), logsafe(_client_ip(request)))
         resp = web.HTTPFound(location="/login?error=denied")
         resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
         raise resp
-    logger.info("[AUDIT] login-ok (google) email=%s ip=%s", email, _client_ip(request))
+    logger.info("[AUDIT] login-ok (google) email=%s ip=%s", logsafe(email), logsafe(_client_ip(request)))
     resp = web.HTTPFound(location="/")
     resp.del_cookie(OAUTH_COOKIE, path="/", secure=cfg.cookie_secure)
     _set_session_cookie(resp, cfg, auth.sign_token(cfg.secret, profile["sub"], profile["name"] or email))
@@ -636,7 +637,7 @@ async def api_wallets_export(request: web.Request) -> web.Response:
     _require_user(request)
     cfg: PortalConfig = request.app[KEY_CFG]
     if not (_is_https(request) or cfg.allow_insecure_password):
-        logger.warning("[AUDIT] wallets-export denied over HTTP ip=%s", _client_ip(request))
+        logger.warning("[AUDIT] wallets-export denied over HTTP ip=%s", logsafe(_client_ip(request)))
         return _json({"error": "Экспорт ключей доступен только по HTTPS"}, status=403)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     fmt = request.query.get("format", "")
@@ -697,11 +698,11 @@ async def api_tg_init(request: web.Request) -> web.Response:
     try:
         tg_id = int(user.get("id", 0))
     except (TypeError, ValueError):
-        logger.warning("[AUDIT] tg bad id ip=%s", _client_ip(request))
+        logger.warning("[AUDIT] tg bad id ip=%s", logsafe(_client_ip(request)))
         return _json({"error": "unauthorized"}, status=401)
     if not cfg.telegram_user_allowed(tg_id):
         # Uniform-401: «неверная подпись / не в списке» неразличимы снаружи.
-        logger.warning("[AUDIT] tg denied id=%s ip=%s", tg_id, _client_ip(request))
+        logger.warning("[AUDIT] tg denied id=%s ip=%s", logsafe(tg_id), logsafe(_client_ip(request)))
         return _json({"error": "unauthorized"}, status=401)
     name = str(user.get("first_name", ""))[:200]
     sub = f"{_SESSION_TG}:{tg_id}"
@@ -1059,7 +1060,7 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
     ws = web.WebSocketResponse(heartbeat=30.0)
     await ws.prepare(request)
     clients.add(ws)
-    logger.info("[WS] client connected (sub=%s), total=%d", user.get("sub"), len(clients))
+    logger.info("[WS] client connected (sub=%s), total=%d", logsafe(user.get("sub")), len(clients))
 
     try:
         # Пушим статус с фиксированным шагом: клиент рисует дашборд из этих
@@ -1125,7 +1126,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
         except web.HTTPException:
             raise
         except Exception:  # noqa: BLE001
-            logger.exception("Unhandled error %s %s", request.method, request.path)
+            logger.exception("Unhandled error %s %s", logsafe(request.method), logsafe(request.path))
             return web.json_response({"error": "internal error"}, status=500)
 
     @web.middleware
@@ -1141,7 +1142,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
             origin = request.headers.get("Origin")
             base = _effective_base(request)
             if origin and origin.rstrip("/") != base:
-                logger.warning("[AUDIT] csrf-origin origin=%s != base=%s", origin, base)
+                logger.warning("[AUDIT] csrf-origin origin=%s != base=%s", logsafe(origin), logsafe(base))
                 raise web.HTTPForbidden()
         return await handler(request)
 
@@ -1190,7 +1191,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
             p = request.path
             if p == "/app/" or p.startswith(("/app/", "/api/miniapp/", "/static/", "/healthz")):
                 return await handler(request)
-            logger.warning("[AUDIT] miniapp-only 404 ip=%s path=%s", _client_ip(request), p)
+            logger.warning("[AUDIT] miniapp-only 404 ip=%s path=%s", logsafe(_client_ip(request)), logsafe(p))
             raise web.HTTPNotFound()
 
         middlewares.insert(0, miniapp_only)

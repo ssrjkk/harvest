@@ -13,6 +13,23 @@ from core.utils import restrict_file_permissions
 
 init(autoreset=True)
 
+# Переводы строк, NUL и ESC вырезаются из значений, попадающих в журнал.
+_LOG_STRIP = dict.fromkeys((0x00, 0x0A, 0x0D, 0x1B), None)
+
+
+def logsafe(value: object, limit: int = 200) -> str:
+    """Значение для журнала одной строкой.
+
+    В строку лога попадает пользовательский ввод: path и ip из заголовков,
+    email, id телеги, имя сети. Без очистки перевод строки дописывает в журнал
+    собственную запись с выдуманным временем и уровнем — аудит-трейл перестаёт
+    быть доказательством. Срезаем переводы и остальные управляющие символы,
+    ограничиваем длину, пустое значение становится «-».
+    """
+    text = str(value).translate(_LOG_STRIP)
+    text = "".join(ch for ch in text if ch.isprintable()).strip()
+    return text[:limit] if text else "-"
+
 
 class RestrictedRotatingFileHandler(RotatingFileHandler):
     """RotatingFileHandler, который после создания и ротации файла ограничивает
