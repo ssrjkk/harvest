@@ -276,10 +276,15 @@ db_path + ".lock"`. Методы: `acquire() -> bool` (держит PID внут
 
 ### 3.8. `crypto.py` — шифрование сид-фраз
 
-- `resolve_master_key(config, ignore_env=False) -> bytes` — ключ БД:
-  `FARMER_MASTER_KEY` env (64 hex) или файл `database.master_key`
-  (`master.key`, с ограничением прав). Нет ключа и есть секреты →
-  `MasterKeyError` (fail-closed).
+- `resolve_master_key(config, ignore_env=False, db_path=None) -> bytes` — ключ БД.
+  Кандидаты по приоритету: `FARMER_MASTER_KEY` env (64 hex) → файл
+  `database.master_key` (относительно CWD) → `master.key` **рядом с БД**
+  (`database.path`). Если кандидатов несколько, выбирается тот, который
+  реально расшифровывает первый seed этой БД (`_sample_encrypted_seed` +
+  `decrypt_seed`): ферма могла стартовать из другой папки, и «тот самый»
+  файл в CWD может оказаться чужим. Нет ключа и есть секреты →
+  `MasterKeyError` (fail-closed). Файл создаётся автоматически (атомарно,
+  права 0600), если не найден.
 - `encrypt_seed(key, plaintext) -> "enc:<nonce>:<ciphertext>"` —
   AES-256-GCM, nonce 12 байт, AAD = `b"wallet-seed"` (`_ENC_PREFIX = "enc:"`).
 - `decrypt_seed(key, value) -> str | None` — обратно; мусор/неверный ключ → None.
@@ -662,7 +667,7 @@ db/farm_config/links):
 |---|---|
 | `PORTAL_SECRET` / `portal_secret.key` | секрет подписи сессий (без него портал не стартует; минимум 16 символов; автогенерация в файл 0600) |
 | `PORTAL_HOST` / `PORTAL_PORT` | bind (default `127.0.0.1:8080`) |
-| `PORTAL_DB` | путь к БД фермера (default `farming_state.db`) |
+| `PORTAL_DB` | путь к БД фермера (default `farming_state.db`). Читают **все** три: портал, публикатор (`publish_dash.py`) и сама ферма (`auto.py`) — иначе они смотрели бы в разные базы |
 | `PORTAL_FARM_CONFIG` | конфиг фармера (`config.yaml`) |
 | `PORTAL_LINKS` | `links.json` владельца |
 | `PORTAL_BASE_URL` | публичный URL (для OAuth-редиректа/Mini App) |

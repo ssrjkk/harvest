@@ -50,11 +50,70 @@ def _require_crypto() -> None:
         )
 
 
-def resolve_master_key(config: dict, ignore_env: bool = False) -> bytes:
+def _sample_encrypted_seed(db_path: str) -> str | None:
+    """Первый зашифрованный seed из БД — для проверки ключа пробной расшифровкой.
+
+    Только чтение, только локальный SQLite. Ошибки не поднимаем: проверка ключа
+    — необязательный шаг, её отсутствие не должно ломать запуск.
+    """
+    if not db_path or db_path.startswith(("postgres://", "postgresql://")):
+        return None
+    try:
+        import sqlite3
+
+        con = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=2)
+        try:
+            row = con.execute(
+                "SELECT private_key FROM wallets WHERE private_key LIKE 'enc:%' LIMIT 1"
+            ).fetchone()
+        finally:
+            con.close()
+    except Exception as e:  # noqa: BLE001 — БД может быть залочена/отсутствовать
+        logger.debug(f"Не удалось взять пробный seed из {db_path}: {e}")
+        return None
+    return row[0] if row else None
+
+
+def _key_files(config: dict, db_path: str | None) -> list[Path]:
+    """Кандидаты-файлы master-ключа в порядке приоритета.
+
+    Первый — как в конфиге (путь относительно CWD). Второй — рядом с самой
+    БД: ключ логично хранить с той базой, которую он защищает, и тогда ферма
+    находит его из любой рабочей папки.
+    """
+    out: list[Path] = []
+    configured = config.get("database", {}).get("master_key", "master.key")
+    if configured:
+        out.append(Path(configured))
+    if db_path and not db_path.startswith(("postgres://", "postgresql://")):
+        near = Path(db_path).parent / "master.key"
+        if near not in out:
+            out.append(near)
+    return out
+
+
+def _restrict(path: Path) -> None:
+    """Ограничивает права ключа.
+
+    Ключ мог быть создан старой версией или сторонним скриптом с широким
+    доступом — пере-ограничиваем. Ошибка не должна ломать чтение ключа.
+    """
+    try:
+        restrict_file_permissions(str(path))
+    except Exception:  # noqa: BLE001
+        pass
+
+
+def resolve_master_key(config: dict, ignore_env: bool = False, db_path: str | None = None) -> bytes:
     """Возвращает 32-байтовый master-ключ. Raises MasterKeyError при любом сбое.
 
-    Приоритет: env FARMER_MASTER_KEY > файл database.master_key.
-    Файл создаётся автоматически, если его нет.
+    Приоритет: env FARMER_MASTER_KEY > файл database.master_key > master.key
+    рядом с БД. Файл создаётся автоматически, если его нет.
+
+    db_path — путь к БД, которую ключ защищает. Если кандидатов несколько,
+    выбирается тот, который реально расшифровывает первый seed этой БД: ферма
+    могла стартовать из другой папки, и «тот самый» файл в CWD может оказаться
+    чужим (и наоборот — верным окажется ключ рядом с БД).
 
     ignore_env=True — не читать FARMER_MASTER_KEY: для случаев, когда env
     содержит короткий PIN-пароль портала, а ключом БД должен остаться master.key.
@@ -79,26 +138,45 @@ def resolve_master_key(config: dict, ignore_env: bool = False) -> bytes:
         )
         return key
 
-    path = config.get("database", {}).get("master_key", "master.key")
-    p = Path(path)
-    if p.exists():
+    existing: list[tuple[Path, bytes]] = []
+    for p in _key_files(config, db_path):
+        if not p.exists():
+            continue
         try:
             data = p.read_bytes()
         except OSError as e:
-            raise MasterKeyError(f"Master-ключ {path} не читается: {e}") from e
+            raise MasterKeyError(f"Master-ключ {p} не читается: {e}") from e
         if len(data) != 32:
-            raise MasterKeyError(f"Master-ключ {path} повреждён (не 32 байта)")
-        # Ключ мог быть создан старой версией/сторонним скриптом с широким доступом —
-        # пере-ограничиваем права на лучший эффект (доступность ключа важнее).
-        try:
-            restrict_file_permissions(str(p))
-        except Exception:
-            pass
+            raise MasterKeyError(f"Master-ключ {p} повреждён (не 32 байта)")
+        existing.append((p, data))
+
+    if existing:
         _require_crypto()
+        sample = _sample_encrypted_seed(db_path) if db_path else None
+        if sample:
+            for p, data in existing:
+                try:
+                    decrypt_seed(data, sample)
+                except Exception:  # noqa: BLE001 — просто не этот ключ
+                    continue
+                _restrict(p)
+                return data
+            logger.warning(
+                f"Ни один master-ключ ({', '.join(str(p) for p, _ in existing)}) не расшифровал "
+                f"seed из {db_path} — берём первый. Кошельки этой БД могут оказаться нечитаемыми."
+            )
+        p, data = existing[0]
+        _restrict(p)
         return data
 
     # Ключа нет — создаём, но только если сможем им шифровать
     _require_crypto()
+    path = config.get("database", {}).get("master_key", "master.key")
+    if not path:
+        # Пустой путь: файла нет и создать нечего (раньше здесь был
+        # MasterKeyError на попытке прочитать каталог).
+        raise MasterKeyError("путь к master-ключу не задан (database.master_key)")
+    p = Path(path)
     try:
         key = secrets.token_bytes(32)
         # Атомарное создание: пишем во временный файл, ограничиваем права ДО

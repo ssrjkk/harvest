@@ -1,6 +1,7 @@
 """Тесты крипто-слоя: шифрование/дешифрование и fail-closed master-ключ."""
 
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -165,6 +166,105 @@ class TestMasterKey(unittest.TestCase, HasKeyConfigMixin):
             self.assertEqual(resolve_master_key(cfg, ignore_env=True), bytes.fromhex("ab" * 32))
         finally:
             os.unlink(path)
+
+    def test_key_next_to_db_used_when_cwd_has_none(self):
+        """Ключ рядом с БД находится, даже если в CWD его нет."""
+        from core.crypto import encrypt_seed
+
+        with tempfile.TemporaryDirectory() as d:
+            dbdir = Path(d) / "data"
+            dbdir.mkdir()
+            db = dbdir / "farming.db"
+            con = sqlite3.connect(str(db))
+            con.execute(
+                "CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                "mnemonic TEXT, total_actions INTEGER DEFAULT 0)"
+            )
+            key = bytes.fromhex("11" * 32)
+            con.execute(
+                "INSERT INTO wallets VALUES (?,?,?,?)",
+                ("0x" + "ab" * 20, encrypt_seed(key, "0xsecret"), None, 0),
+            )
+            con.commit()
+            con.close()
+            (dbdir / "master.key").write_bytes(key)
+
+            cwd = Path(d) / "elsewhere"
+            cwd.mkdir()
+            prev = os.getcwd()
+            os.chdir(cwd)
+            try:
+                cfg = {"database": {"master_key": "master.key", "path": str(db)}}
+                got = resolve_master_key(cfg, ignore_env=True, db_path=str(db))
+            finally:
+                os.chdir(prev)
+            self.assertEqual(got, key)
+
+    def test_wrong_cwd_key_skipped_for_working_db_key(self):
+        """Ключ из CWD, не подходящий к БД, уступает рабочему ключу рядом с БД."""
+        from core.crypto import encrypt_seed
+
+        with tempfile.TemporaryDirectory() as d:
+            dbdir = Path(d) / "data"
+            dbdir.mkdir()
+            db = dbdir / "farming.db"
+            con = sqlite3.connect(str(db))
+            con.execute(
+                "CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                "mnemonic TEXT, total_actions INTEGER DEFAULT 0)"
+            )
+            good = bytes.fromhex("22" * 32)
+            con.execute(
+                "INSERT INTO wallets VALUES (?,?,?,?)",
+                ("0x" + "ab" * 20, encrypt_seed(good, "0xsecret"), None, 0),
+            )
+            con.commit()
+            con.close()
+            (dbdir / "master.key").write_bytes(good)
+
+            cwd = Path(d) / "elsewhere"
+            cwd.mkdir()
+            (cwd / "master.key").write_bytes(bytes.fromhex("33" * 32))  # чужой
+            prev = os.getcwd()
+            os.chdir(cwd)
+            try:
+                cfg = {"database": {"master_key": "master.key", "path": str(db)}}
+                got = resolve_master_key(cfg, ignore_env=True, db_path=str(db))
+            finally:
+                os.chdir(prev)
+            self.assertEqual(got, good)
+
+    def test_no_working_key_falls_back_to_first_with_warning(self):
+        """Ни один ключ не подошёл — берём первый, но предупреждаем."""
+        with tempfile.TemporaryDirectory() as d:
+            dbdir = Path(d) / "data"
+            dbdir.mkdir()
+            db = dbdir / "farming.db"
+            con = sqlite3.connect(str(db))
+            con.execute(
+                "CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                "mnemonic TEXT, total_actions INTEGER DEFAULT 0)"
+            )
+            con.execute(
+                "INSERT INTO wallets VALUES (?,?,?,?)",
+                ("0x" + "ab" * 20, "enc:" + "00" * 40, None, 0),
+            )
+            con.commit()
+            con.close()
+            first = bytes.fromhex("44" * 32)
+            (dbdir / "master.key").write_bytes(first)
+            cfg = {"database": {"master_key": str(dbdir / "master.key"), "path": str(db)}}
+            with self.assertLogs("core.crypto", level="WARNING") as cm:
+                got = resolve_master_key(cfg, ignore_env=True, db_path=str(db))
+            self.assertEqual(got, first)
+            self.assertTrue(any("не расшифровал seed" in m for m in cm.output))
+
+    def test_sample_seed_ignores_bad_db(self):
+        """Кривая БД не должна ломать выбор ключа."""
+        from core import crypto
+
+        self.assertIsNone(crypto._sample_encrypted_seed("/nonexistent/x.db"))
+        self.assertIsNone(crypto._sample_encrypted_seed("postgres://u:p@h/db"))
 
     def test_ignore_env_rescues_from_bad_env(self):
         os.environ["FARMER_MASTER_KEY"] = "nothex!"
