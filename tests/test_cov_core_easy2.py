@@ -1371,18 +1371,38 @@ class TestSingleInstanceEasy2(unittest.TestCase):
                     g = si.SingleInstance(p)
                     self.assertFalse(g.acquire())
 
+    def test_msvcrt_branch(self):
+        """msvcrt-ветка проверяется и на Linux: модуль подменяется фиксом.
+
+        Без этого гейт «100% покрытия core» падает ровно из-за того, на какой
+        системе крутится раннер: строки msvcrt-блокировки недостижимы на POSIX.
+        """
+        import core.single_instance as si
+
+        fake_msvcrt = MagicMock()
+        fake_msvcrt.LK_NBLCK = 1
+        fake_msvcrt.LK_UNLCK = 2
+        with tempfile.TemporaryDirectory() as td:
+            p = str(Path(td) / "m.lock")
+            with mock.patch.object(si, "msvcrt", fake_msvcrt):
+                g = si.SingleInstance(p)
+                self.assertTrue(g.acquire())
+                g.release()
+        self.assertEqual(fake_msvcrt.locking.call_count, 2)
+        self.assertEqual(fake_msvcrt.locking.call_args_list[0].args[1], fake_msvcrt.LK_NBLCK)
+        self.assertEqual(fake_msvcrt.locking.call_args_list[1].args[1], fake_msvcrt.LK_UNLCK)
+
     def test_acquire_oserror_inside(self):
         import core.single_instance as si
 
+        fake_msvcrt = MagicMock()
+        fake_msvcrt.LK_NBLCK = 1
+        fake_msvcrt.locking.side_effect = OSError("locked")
         with tempfile.TemporaryDirectory() as td:
             p = str(Path(td) / "c.lock")
-            # force locking to raise OSError
-            if si.msvcrt is not None:
-                with mock.patch.object(si.msvcrt, "locking", side_effect=OSError("locked")):
-                    g = si.SingleInstance(p)
-                    self.assertFalse(g.acquire())
-            else:
-                self.skipTest("no msvcrt")
+            with mock.patch.object(si, "msvcrt", fake_msvcrt):
+                g = si.SingleInstance(p)
+                self.assertFalse(g.acquire())
 
     def test_pid_write_oserror(self):
         import core.single_instance as si
