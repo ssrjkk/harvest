@@ -160,6 +160,36 @@
               </div>
             </div>
 
+            <!-- PNL ПОСЛЕДНЕГО ПРОГОНА (агрегаты, без адресов кошельков) -->
+            <div class="panel" id="pnlPanel" style="margin-bottom:16px" hidden>
+              <div class="panel-header">
+                <h3><i class="ti ti-chart-bar"></i> PnL последнего прогона</h3>
+                <span class="panel-sub" id="pnlWhen">—</span>
+              </div>
+              <div class="metrics-grid">
+                <div class="metric-card">
+                  <div class="metric-label">Успешных действий</div>
+                  <div class="metric-value" id="pnlOk">—</div>
+                  <div class="metric-sub" id="pnlRate">—</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Δ фарма</div>
+                  <div class="metric-value" id="pnlFarm">—</div>
+                  <div class="metric-sub" id="pnlSample">—</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Δ крана</div>
+                  <div class="metric-value" id="pnlFaucet">—</div>
+                  <div class="metric-sub" id="pnlWindow">—</div>
+                </div>
+                <div class="metric-card">
+                  <div class="metric-label">Отказов</div>
+                  <div class="metric-value" id="pnlFail">—</div>
+                  <div class="metric-sub" id="pnlReasons">—</div>
+                </div>
+              </div>
+            </div>
+
             <!-- SUCCESS RATE PROGRESS -->
             <div class="panel" style="margin-bottom:16px">
               <div class="panel-body padded">

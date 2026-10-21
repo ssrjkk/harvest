@@ -515,6 +515,10 @@ a:hover { color: var(--cyan); }
   color: var(--text-0);
 }
 
+/* Знаковые значения PnL: плюс — зелёный, минус — красный. */
+.metric-value.pos { color: var(--green); }
+.metric-value.neg { color: var(--red); }
+
 .metric-sub {
   font-family: var(--font-data);
   font-size: 10px;

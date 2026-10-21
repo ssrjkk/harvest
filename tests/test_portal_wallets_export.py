@@ -189,6 +189,9 @@ class TestFarmDaemonExport(unittest.TestCase):
             async def count_wallets(self):
                 return 7
 
+            async def get_last_pnl_snapshot(self):
+                return {"actions_ok": 4, "actions_fail": 1}
+
         class _Pool:
             network = mock.Mock()
             network.concurrency_factor.return_value = 0.9
@@ -201,6 +204,48 @@ class TestFarmDaemonExport(unittest.TestCase):
         daemon.db = _Db()
         stats = asyncio.run(daemon.statistics())
         self.assertEqual(stats["wallet_count"], 7)
+        # PnL едет в статистику — веб-дашборд рисует блок по нему
+        self.assertEqual(stats["pnl"], {"actions_ok": 4, "actions_fail": 1})
+
+    def test_statistics_without_pnl_support(self):
+        """Старый/заглушечный БД без метода — /api/stats не должен падать."""
+
+        class _Db:
+            async def get_cycle_stats(self):
+                return {"cycles": 1}
+
+            async def count_wallets(self):
+                return 3
+
+        class _Pool:
+            network = mock.Mock()
+            network.concurrency_factor.return_value = 1.0
+
+            def live_stats(self):
+                return {"actions": 1}
+
+        daemon = FarmDaemon("cfg.yaml", "db.sqlite")
+        daemon.pool = _Pool()
+        daemon.db = _Db()
+        stats = asyncio.run(daemon.statistics())
+        self.assertIsNone(stats["pnl"])
+
+    def test_pnl_snapshot_error_tolerated(self):
+        """БД падает при чтении снапшота — PnL просто отсутствует."""
+
+        class _Db:
+            async def get_cycle_stats(self):
+                return {"cycles": 1}
+
+            async def count_wallets(self):
+                return 2
+
+            async def get_last_pnl_snapshot(self):
+                raise RuntimeError("db boom")
+
+        daemon = FarmDaemon("cfg.yaml", "db.sqlite")
+        daemon.db = _Db()
+        self.assertIsNone(asyncio.run(daemon.pnl_snapshot()))
 
     def test_csv_safe(self):
         self.assertEqual(_csv_safe("=SUM(1)"), "'=SUM(1)")

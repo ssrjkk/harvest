@@ -277,6 +277,24 @@ def main() -> int:
         txt = open(os.path.join(ROOT, rel), encoding="utf-8").read()
         check(f"no пульт in {rel}", re.search(r"[Пп]ульт", txt) is None)
 
+    # Блок PnL в локальном портале (веб-дашборд): разметка, рендер и стили
+    # знаковых значений — вместе, иначе блок либо не отрисуется, либо останется
+    # без подкраски дельт.
+    portal_index = os.path.join(ROOT, "portal", "static", "index.html")
+    portal_js = os.path.join(ROOT, "portal", "static", "app.js")
+    portal_css = os.path.join(ROOT, "portal", "static", "app.css")
+    if os.path.exists(portal_index):
+        phtml = open(portal_index, encoding="utf-8").read()
+        check("portal: pnl panel", 'id="pnlPanel"' in phtml)
+        check("portal: pnl fields", all(f'id="pnl{k}"' in phtml for k in
+                                         ("Ok", "Farm", "Faucet", "Fail", "Rate", "Sample", "Window", "When", "Reasons")))
+    if os.path.exists(portal_js):
+        pjs = open(portal_js, encoding="utf-8").read()
+        check("portal: renderPnl", "function renderPnl" in pjs and "renderPnl(s.pnl)" in pjs)
+    if os.path.exists(portal_css):
+        pcss = open(portal_css, encoding="utf-8").read()
+        check("portal: pnl sign colors", ".metric-value.pos" in pcss and ".metric-value.neg" in pcss)
+
     return 1 if fails else 0
 
 

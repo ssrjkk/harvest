@@ -219,6 +219,41 @@ function renderState(s) {
     $("headerNet").textContent = s.network;
     if ($("netSelect")) $("netSelect").value = s.network;
   }
+  renderPnl(s.pnl);
+}
+
+/* ── PNL ─────────────────────────────────────────────────────── */
+/* Агрегаты последнего прогона: только счётчики, без адресов кошельков. */
+function renderPnl(p) {
+  const panel = $("pnlPanel");
+  if (!panel) return;
+  if (!p || typeof p !== "object") { panel.hidden = true; return; }
+  panel.hidden = false;
+  const ok = Number(p.actions_ok || 0);
+  const fail = Number(p.actions_fail || 0);
+  const total = ok + fail;
+  $("pnlOk").textContent = fmt(ok);
+  $("pnlFail").textContent = fmt(fail);
+  $("pnlRate").textContent = total ? (ok / total * 100).toFixed(1) + "%" : "—";
+
+  const setDelta = (id, v) => {
+    const n = $(id);
+    if (!n) return;
+    const num = Number(v);
+    if (!isFinite(num)) { n.textContent = "—"; n.className = "metric-value"; return; }
+    n.textContent = (num > 0 ? "+" : "") + num.toFixed(6);
+    n.className = "metric-value " + (num > 0 ? "pos" : (num < 0 ? "neg" : ""));
+  };
+  setDelta("pnlFarm", p.farm_delta);
+  setDelta("pnlFaucet", p.faucet_delta);
+
+  $("pnlSample").textContent = "выборка " + fmt(p.measured || 0) + "/" + fmt(p.total_wallets || 0);
+  $("pnlWindow").textContent = "окно " + fmt(p.window_actions || 0) + " действий";
+  $("pnlWhen").textContent = p.created_at || "—";
+  const reasons = Array.isArray(p.by_reason) ? p.by_reason : [];
+  $("pnlReasons").textContent = reasons.length
+    ? reasons.slice(0, 2).map(r => (r && r.reason ? r.reason : "?") + " ×" + (r && r.count || 0)).join(", ")
+    : "—";
 }
 
 /* ── CHARTS ─────────────────────────────────────────────────── */
