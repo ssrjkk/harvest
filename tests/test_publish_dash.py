@@ -71,6 +71,75 @@ class TestPublishDash(unittest.TestCase):
             self.assertEqual(w["n"], i + 1)
             self.assertNotIn("address", w)
 
+    def test_pnl_block_in_state(self):
+        """Снапшот PnL попадает в state.json — агрегатами, без адресов."""
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=3)
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE pnl_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, actions_ok INTEGER, "
+                "actions_fail INTEGER, farm_delta REAL, faucet_delta REAL, sample INTEGER, "
+                "measured INTEGER, total_wallets INTEGER, window_actions INTEGER, "
+                "by_type TEXT, by_reason TEXT)"
+            )
+            con.execute(
+                "INSERT INTO pnl_snapshots (actions_ok, actions_fail, farm_delta, faucet_delta, "
+                "sample, measured, total_wallets, window_actions, by_type, by_reason) "
+                "VALUES (9, 1, -0.25, 0.5, 3, 3, 3, 10, ?, ?)",
+                (
+                    json.dumps([{"type": "transfer", "ok": 9, "fail": 1}]),
+                    json.dumps([{"reason": "reverted", "count": 1}]),
+                ),
+            )
+            con.commit()
+            con.close()
+            state = self._collect(db)
+        pnl = state["pnl"]
+        self.assertIsNotNone(pnl)
+        self.assertEqual(pnl["actions_ok"], 9)
+        self.assertEqual(pnl["actions_fail"], 1)
+        self.assertAlmostEqual(pnl["farm_delta"], -0.25)
+        self.assertAlmostEqual(pnl["faucet_delta"], 0.5)
+        self.assertEqual(pnl["by_type"], [{"type": "transfer", "ok": 9, "fail": 1}])
+        self.assertEqual(pnl["by_reason"], [{"reason": "reverted", "count": 1}])
+        # адреса в публикуемое состояние не попадают
+        blob = json.dumps(state)
+        self.assertNotIn("enc:", blob)
+        self.assertNotIn("private_key", blob)
+
+    def test_pnl_absent_without_snapshots(self):
+        """Без таблицы/снапшотов PnL в state.json — None, публикация не падает."""
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=2)
+            state = self._collect(db)
+        self.assertIsNone(state["pnl"])
+
+    def test_pnl_bad_json_tolerated(self):
+        """Битый JSON в снапшоте не должен ронять публикацию."""
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=2)
+            con = sqlite3.connect(db)
+            con.execute(
+                "CREATE TABLE pnl_snapshots (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, actions_ok INTEGER, "
+                "actions_fail INTEGER, farm_delta REAL, faucet_delta REAL, sample INTEGER, "
+                "measured INTEGER, total_wallets INTEGER, window_actions INTEGER, "
+                "by_type TEXT, by_reason TEXT)"
+            )
+            con.execute(
+                "INSERT INTO pnl_snapshots (actions_ok, actions_fail, by_type, by_reason) "
+                "VALUES (1, 0, 'не json', '{{{')"
+            )
+            con.commit()
+            con.close()
+            state = self._collect(db)
+        self.assertEqual(state["pnl"]["by_type"], [])
+        self.assertEqual(state["pnl"]["by_reason"], [])
+
     def test_cells_capped_with_overflow_count(self):
         with tempfile.TemporaryDirectory() as td:
             db = os.path.join(td, "t.db")

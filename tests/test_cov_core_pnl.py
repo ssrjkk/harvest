@@ -1,6 +1,7 @@
 """Coverage 100% for core/pnl.py — PnL-отчёт прогона (юнит-моки, без живого RPC)."""
 
 import asyncio
+import json
 import sys
 import tempfile
 import unittest
@@ -36,6 +37,9 @@ class _FakeNet:
 class _FakeDB:
     """Фейк БД с предзаданными действиями (уважает since_id)."""
 
+    def __init__(self):
+        self.snapshots = []
+
     async def get_actions_since(self, since_id: int = 0, limit: int = 5000):
         rows = [
             {"id": 1, "address": "0x0000000000000000000000000000000000000001",
@@ -52,6 +56,9 @@ class _FakeDB:
              "timestamp": "2026-01-01 00:00:03", "details": ""},
         ]
         return [r for r in rows if r["id"] > since_id][:limit]
+
+    async def save_pnl_snapshot(self, snap: dict) -> None:
+        self.snapshots.append(snap)
 
 
 AFT1 = "0x0000000000000000000000000000000000000001"
@@ -333,6 +340,71 @@ class PnlTest(unittest.TestCase):
         # id>2 → только записи 3 и 4: два успешных, ни одной ошибки
         self.assertEqual(summary["ok"], 2)
         self.assertEqual(summary["fail"], 0)
+
+    def test_build_report_saves_snapshot_without_addresses(self):
+        """Снапшот для дашборда: агрегаты, без адресов кошельков."""
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+            db = _FakeDB()
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                await build_report(
+                    tracker=t,
+                    db=db,
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                )
+            return db.snapshots
+
+        snaps = asyncio.run(run())
+        self.assertEqual(len(snaps), 1)
+        snap = snaps[0]
+        self.assertEqual(snap["actions_ok"], 3)
+        self.assertEqual(snap["actions_fail"], 1)
+        self.assertEqual(snap["window_actions"], 4)
+        self.assertEqual(snap["by_reason"], [{"reason": "reverted", "count": 1}])
+        self.assertEqual(snap["by_type"][0]["type"], "transfer")
+        # ни одного адреса в снапшоте быть не должно
+        blob = json.dumps(snap, ensure_ascii=False)
+        for addr in ADDRS:
+            self.assertNotIn(addr, blob)
+
+    def test_build_report_survives_snapshot_failure(self):
+        """Ошибка записи снапшота не должна ломать отчёт."""
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+
+            class _BrokenDB(_FakeDB):
+                async def save_pnl_snapshot(self, snap: dict) -> None:
+                    raise RuntimeError("db down")
+
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                summary = await build_report(
+                    tracker=t,
+                    db=_BrokenDB(),
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                )
+                self.assertTrue(tmp.exists())
+                return summary
+
+        summary = asyncio.run(run())
+        self.assertEqual(summary["ok"], 3)
 
 
 if __name__ == "__main__":

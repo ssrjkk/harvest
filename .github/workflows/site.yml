@@ -1,0 +1,66 @@
+name: Site
+
+# Приёмка сайта в настоящем браузере: адаптивность на 375/768/1440 × 3 темы
+# × 2 языка, отсутствие горизонтального скролла, бургер на мобильных,
+# состав навигации и ошибки JS. Без этого шага многостраничность и новые
+# блоки (например, PnL на «Поле») проверяются только вручную.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "docs/**"
+      - "tools/shoot_site.py"
+      - "tools/verify_site.py"
+      - ".github/workflows/site.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "tools/shoot_site.py"
+      - "tools/verify_site.py"
+      - ".github/workflows/site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install deps
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install playwright
+          python -m playwright install chromium --only-shell
+
+      - name: Static checks (verify_site)
+        run: python tools/verify_site.py
+
+      - name: Serve site
+        run: |
+          python -m http.server 8765 --directory docs >/dev/null 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8765/index.html >/dev/null && break
+            sleep 1
+          done
+          curl -sf http://127.0.0.1:8765/index.html >/dev/null
+
+      - name: Browser matrix (375/768/1440 × themes × langs)
+        run: python tools/shoot_site.py --matrix --url http://127.0.0.1:8765/ --out /tmp/shots
+
+      - name: Upload matrix screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: site-matrix
+          path: /tmp/shots/matrix
+          retention-days: 7

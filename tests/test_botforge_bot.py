@@ -224,6 +224,27 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("RUN", bot.fmt_doctor(s))
         self.assertIn("История пуста", bot.fmt_history({}))
 
+    def test_fmt_pnl(self):
+        # без блока pnl в state.json
+        self.assertIn("PnL пока нет", bot.fmt_pnl({}))
+        s = {
+            "pnl": {
+                "actions_ok": 9, "actions_fail": 3,
+                "farm_delta": -0.25, "faucet_delta": 0.5,
+                "measured": 25, "total_wallets": 1000, "window_actions": 12,
+                "created_at": "2026-01-01 10:00:00",
+                "by_reason": [{"reason": "reverted", "count": 3}],
+            }
+        }
+        out = bot.fmt_pnl(s)
+        self.assertIn("75.0%", out)
+        self.assertIn("-0.250000", out)
+        self.assertIn("reverted", out)
+        # битые значения не ломают вывод
+        out2 = bot.fmt_pnl({"pnl": {"actions_ok": 1, "actions_fail": 0,
+                                    "farm_delta": "нет", "faucet_delta": None}})
+        self.assertIn("Δ фарма", out2)
+
     def test_negative_allow_id_kept(self):
         # "-100..." — валидный ID канала, не должен отбрасываться.
         os.environ["TELEGRAM_ALLOW_IDS"] = "-100123, 456"

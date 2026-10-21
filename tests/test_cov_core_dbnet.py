@@ -753,6 +753,74 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(await db.get_metrics_history(5), [])
             await db.close()
 
+    async def test_pnl_snapshot_roundtrip(self):
+        """Снапшот PnL: запись → чтение последнего (агрегаты, без адресов)."""
+        import gc
+
+        with tempfile.TemporaryDirectory() as d:
+            db = await self._db(d)
+            # пусто — снапшота нет
+            self.assertIsNone(await db.get_last_pnl_snapshot())
+            await db.save_pnl_snapshot({
+                "actions_ok": 7, "actions_fail": 3,
+                "farm_delta": -0.25, "faucet_delta": 0.5,
+                "sample": 10, "measured": 10, "total_wallets": 100,
+                "window_actions": 10,
+                "by_type": [{"type": "transfer", "ok": 7, "fail": 3}],
+                "by_reason": [{"reason": "reverted", "count": 3}],
+            })
+            snap = await db.get_last_pnl_snapshot()
+            self.assertIsNotNone(snap)
+            self.assertEqual(snap["actions_ok"], 7)
+            self.assertEqual(snap["actions_fail"], 3)
+            self.assertAlmostEqual(snap["farm_delta"], -0.25)
+            self.assertAlmostEqual(snap["faucet_delta"], 0.5)
+            self.assertEqual(snap["sample"], 10)
+            self.assertEqual(snap["total_wallets"], 100)
+            self.assertEqual(snap["window_actions"], 10)
+            self.assertEqual(snap["by_type"], [{"type": "transfer", "ok": 7, "fail": 3}])
+            self.assertEqual(snap["by_reason"], [{"reason": "reverted", "count": 3}])
+            # второй снапшот — читается свежий
+            await db.save_pnl_snapshot({"actions_ok": 1, "actions_fail": 0, "by_type": [], "by_reason": []})
+            snap2 = await db.get_last_pnl_snapshot()
+            self.assertEqual(snap2["actions_ok"], 1)
+            await db.close()
+            gc.collect()
+            for suf in ("", ".wal", ".shm", "-journal"):
+                p = Path(d) / f"s.db{suf}"
+                if p.exists():
+                    p.unlink()
+
+    async def test_pnl_snapshot_bad_json_tolerated(self):
+        """Битый JSON в снапшоте не должен ломать чтение."""
+        import gc
+
+        with tempfile.TemporaryDirectory() as d:
+            db = await self._db(d)
+            await db.save_pnl_snapshot({"actions_ok": 1, "actions_fail": 0, "by_type": [], "by_reason": []})
+            # execute/commit есть только у сырого соединения, не у Database
+            conn = await db._connect()
+            async with conn.execute(
+                "UPDATE pnl_snapshots SET by_type = 'не json', by_reason = 'тоже не json'"
+            ) as cur:
+                await cur.close()
+            await conn.commit()
+            snap = await db.get_last_pnl_snapshot()
+            self.assertEqual(snap["by_type"], [])
+            self.assertEqual(snap["by_reason"], [])
+            await db.close()
+            gc.collect()
+            for suf in ("", ".wal", ".shm", "-journal"):
+                p = Path(d) / f"s.db{suf}"
+                if p.exists():
+                    p.unlink()
+
+    async def test_pnl_snapshot_errors_swallowed(self):
+        """Ошибка БД при записи/чтении не поднимается наружу."""
+        db = Database("/nonexistent/dir/s.db", master_key=_key())
+        await db.save_pnl_snapshot({"actions_ok": 1})
+        self.assertIsNone(await db.get_last_pnl_snapshot())
+
     async def test_max_action_id(self):
         """Точка отсчёта для PnL: max(id) в actions_log."""
         import gc

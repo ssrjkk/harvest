@@ -51,6 +51,17 @@ def _scrub_addrs(text: str) -> str:
     return re.sub(r"0x[0-9a-fA-F]{40}", "0x…", text or "")[:120]
 
 
+def _json_loads(raw) -> list:
+    """JSON из БД → список. Битое значение не должно ломать публикацию."""
+    import json
+
+    try:
+        val = json.loads(raw or "[]")
+    except Exception:  # noqa: BLE001
+        return []
+    return val if isinstance(val, list) else []
+
+
 def _plural_files(n: int) -> str:
     """файл/файла/файлов для счётчика (публикация, чтобы не править руками)."""
     if n % 10 == 1 and n % 100 != 11:
@@ -198,6 +209,31 @@ async def collect() -> dict:
                     r = await cur.fetchone()
             except Exception:  # noqa: BLE001
                 r = (0, 0, 0, 0)
+            # PnL последнего прогона: агрегаты без адресов (см. core/pnl.py).
+            pnl = None
+            try:
+                async with db.execute(
+                    "SELECT created_at, actions_ok, actions_fail, farm_delta, faucet_delta, "
+                    "sample, measured, total_wallets, window_actions, by_type, by_reason "
+                    "FROM pnl_snapshots ORDER BY id DESC LIMIT 1"
+                ) as cur:
+                    prow = await cur.fetchone()
+                if prow:
+                    pnl = {
+                        "created_at": str(prow[0] or ""),
+                        "actions_ok": int(prow[1] or 0),
+                        "actions_fail": int(prow[2] or 0),
+                        "farm_delta": prow[3],
+                        "faucet_delta": prow[4],
+                        "sample": int(prow[5] or 0),
+                        "measured": int(prow[6] or 0),
+                        "total_wallets": int(prow[7] or 0),
+                        "window_actions": int(prow[8] or 0),
+                        "by_type": _json_loads(prow[9]),
+                        "by_reason": _json_loads(prow[10]),
+                    }
+            except Exception:  # noqa: BLE001 — нет таблицы/снапшота: без PnL
+                pnl = None
     except Exception as e:  # noqa: BLE001 — locked/corrupt: пустой state вместо краха
         raise RuntimeError(f"db read failed: {e}") from e
 
@@ -227,6 +263,7 @@ async def collect() -> dict:
         "db": {"cycles": r[2], "actions": r[0], "errors": r[1]},
         "top_wallets": top,
         "wallet_cells": {"v": 2, "n": wallet_count, "cells": cells, "details": details},
+        "pnl": pnl,
         "history": history,
         "chart": {"actions": [], "errors": [], "processed": []},
         "updated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),

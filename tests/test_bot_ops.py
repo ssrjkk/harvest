@@ -189,6 +189,28 @@ class TestOpsFormat(unittest.TestCase):
         self.assertIn("[ok] #1", h)
         self.assertIn("Пусто", ops.fmt_history([]))
 
+    def test_fmt_pnl(self):
+        # пусто — прогона ещё не было
+        self.assertIn("Пусто", ops.fmt_pnl(None))
+        self.assertIn("Пусто", ops.fmt_pnl({}))
+        snap = {
+            "actions_ok": 9, "actions_fail": 3,
+            "farm_delta": -0.25, "faucet_delta": 0.5,
+            "measured": 25, "total_wallets": 1000, "window_actions": 12,
+            "created_at": "2026-01-01 10:00:00",
+            "by_reason": [{"reason": "reverted", "count": 3}, "мусор", {"ok": 1}],
+        }
+        out = ops.fmt_pnl(snap)
+        self.assertIn("75.0%", out)
+        self.assertIn("-0.250000", out)
+        self.assertIn("+0.500000", out)
+        self.assertIn("reverted", out)
+        self.assertIn("25/1000", out)
+        # битые значения дельты не должны ломать вывод
+        out2 = ops.fmt_pnl({"actions_ok": 1, "actions_fail": 0,
+                             "farm_delta": "не число", "faucet_delta": None})
+        self.assertIn("—", out2)
+
     def test_networks_marks(self):
         s = ops.fmt_networks([
             {"slug": "a", "name": "A", "running": True, "tagline": "t"},

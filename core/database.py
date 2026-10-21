@@ -589,6 +589,27 @@ class Database:
             """
         )
         await db.execute("CREATE INDEX IF NOT EXISTS idx_cycle_history_started ON cycle_history(started_at)")
+        # Снапшоты PnL по прогонам: агрегаты без адресов (в дашборд уходят
+        # только счётчики — публичная ветка не должна раскрывать кошельки).
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS pnl_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                actions_ok INTEGER DEFAULT 0,
+                actions_fail INTEGER DEFAULT 0,
+                farm_delta REAL,
+                faucet_delta REAL,
+                sample INTEGER DEFAULT 0,
+                measured INTEGER DEFAULT 0,
+                total_wallets INTEGER DEFAULT 0,
+                window_actions INTEGER DEFAULT 0,
+                by_type TEXT DEFAULT '',
+                by_reason TEXT DEFAULT ''
+            )
+            """
+        )
+        await db.execute("CREATE INDEX IF NOT EXISTS idx_pnl_created ON pnl_snapshots(created_at)")
         # Миграция: колонки RPC-телеметрии (для БД, созданных до цикла «адаптивная мощность»)
         if self.is_postgres:
             async with db.execute(
@@ -1236,6 +1257,80 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка чтения истории метрик: {e}")
         return rows
+
+    async def save_pnl_snapshot(self, snap: dict) -> None:
+        """Сохраняет агрегаты PnL по прогону (без адресов).
+
+        Снапшот нужен публикатору: он кладёт агрегаты в state.json, а сайт
+        показывает их на «Поле». Адреса сюда не попадают — публичная ветка
+        не должна раскрывать кошельки.
+        """
+        import json as _json
+
+        try:
+            db = await self._connect()
+            await db.execute(
+                """
+                INSERT INTO pnl_snapshots
+                    (actions_ok, actions_fail, farm_delta, faucet_delta, sample, measured,
+                     total_wallets, window_actions, by_type, by_reason)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    int(snap.get("actions_ok") or 0),
+                    int(snap.get("actions_fail") or 0),
+                    snap.get("farm_delta"),
+                    snap.get("faucet_delta"),
+                    int(snap.get("sample") or 0),
+                    int(snap.get("measured") or 0),
+                    int(snap.get("total_wallets") or 0),
+                    int(snap.get("window_actions") or 0),
+                    _json.dumps(snap.get("by_type") or [], ensure_ascii=False),
+                    _json.dumps(snap.get("by_reason") or [], ensure_ascii=False),
+                ),
+            )
+            await db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка сохранения снапшота PnL: {e}")
+
+    async def get_last_pnl_snapshot(self) -> dict | None:
+        """Последний снапшот PnL (для state.json). None — если прогонов не было."""
+        import json as _json
+
+        try:
+            db = await self._connect()
+            async with db.execute(
+                "SELECT created_at, actions_ok, actions_fail, farm_delta, faucet_delta, "
+                "sample, measured, total_wallets, window_actions, by_type, by_reason "
+                "FROM pnl_snapshots ORDER BY id DESC LIMIT 1"
+            ) as cur:
+                row = await cur.fetchone()
+        except Exception as e:
+            logger.error(f"Ошибка чтения снапшота PnL: {e}")
+            return None
+        if not row:
+            return None
+        try:
+            by_type = _json.loads(row[9] or "[]")
+        except Exception:  # noqa: BLE001 — битый JSON не должен ломать публикацию
+            by_type = []
+        try:
+            by_reason = _json.loads(row[10] or "[]")
+        except Exception:  # noqa: BLE001
+            by_reason = []
+        return {
+            "created_at": str(row[0] or ""),
+            "actions_ok": int(row[1] or 0),
+            "actions_fail": int(row[2] or 0),
+            "farm_delta": row[3],
+            "faucet_delta": row[4],
+            "sample": int(row[5] or 0),
+            "measured": int(row[6] or 0),
+            "total_wallets": int(row[7] or 0),
+            "window_actions": int(row[8] or 0),
+            "by_type": by_type,
+            "by_reason": by_reason,
+        }
 
     async def get_max_action_id(self) -> int:
         """Максимальный id в actions_log — точка отсчёта для отчёта по прогону.

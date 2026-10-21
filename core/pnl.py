@@ -410,6 +410,31 @@ async def build_report(
         out_path=out_path,
     )
     Path(out_path).write_text(doc, encoding="utf-8")
+    # Агрегаты в БД: публикатор положит их в state.json, сайт покажет на «Поле».
+    # Только счётчики — без адресов (публичная ветба не раскрывает кошельки).
+    try:
+        await db.save_pnl_snapshot({
+            "actions_ok": actions["total_ok"],
+            "actions_fail": actions["total_fail"],
+            "farm_delta": farm["sum_delta"],
+            "faucet_delta": faucet["sum_delta"],
+            "sample": len(tracker.addresses),
+            "measured": farm["measured"],
+            "total_wallets": tracker.total_wallets,
+            "window_actions": actions["total_ok"] + actions["total_fail"],
+            "by_type": [
+                {"type": t, "ok": d["ok"], "fail": d["fail"]}
+                for t, d in sorted(
+                    actions["by_type"].items(), key=lambda kv: -(kv[1]["ok"] + kv[1]["fail"])
+                )
+            ],
+            "by_reason": [
+                {"reason": r, "count": c}
+                for r, c in sorted(actions.get("by_reason", {}).items(), key=lambda kv: -kv[1])
+            ],
+        })
+    except Exception as e:  # noqa: BLE001 — снапшот не должен ломать отчёт
+        logger.warning(f"Снапшот PnL не сохранён: {e}")
     return {
         "path": out_path,
         "faucet_delta": faucet["sum_delta"],

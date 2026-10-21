@@ -519,6 +519,12 @@ class FarmDaemon:
             return []
         return await self.db.get_cycle_history(limit)
 
+    async def pnl_snapshot(self) -> dict | None:
+        """Агрегаты PnL последнего прогона (None — прогона ещё не было)."""
+        if self.db is None:
+            return None
+        return await self.db.get_last_pnl_snapshot()
+
     async def wallet_count(self) -> int:
         """Общее число строк кошельков в БД (включая нерасшифрованные)."""
         if self.db is None:

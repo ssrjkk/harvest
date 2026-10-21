@@ -71,6 +71,21 @@ def main() -> int:
         check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
         for n in list(PAGES) + ["assets/common.js", "assets/field.js", "assets/demo.js"]:
             check(f"sw precaches {n}", f'"./{n}"' in swtxt, "")
+    # Блок PnL на «Поле»: разметка, рендер и словарь — вместе, иначе блок
+    # либо не отрисуется, либо останется с английскими подписями.
+    field_html = pages.get("field.html", "")
+    field_js = js.get("field.js", "")
+    common_js = js.get("common.js", "")
+    check("field.html: pnl block", 'id="pnlBox"' in field_html)
+    check("field.html: pnl tables", 'id="tPnlTypes"' in field_html and 'id="tPnlReasons"' in field_html)
+    check("field.js: pnl render", "function renderPnl" in field_js and "renderPnl(s.pnl)" in field_js)
+    for key in ("pnl_h", "pnl_ok", "pnl_farm", "pnl_faucet", "pnl_fail", "pnl_types",
+                "pnl_reasons", "pnl_note"):
+        check(f"i18n key {key}", f"{key}:" in common_js)
+    # Ссылка на эксплорер в отчёте не должна попадать в публичное состояние:
+    # адреса кошельков в публичную ветку не идут.
+    check("field.js: no explorer address link", "/address/" not in field_js)
+
     # Деплой-архив бота не должен отставать от исходников.
     zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
     zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]

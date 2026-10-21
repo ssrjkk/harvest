@@ -641,6 +641,51 @@ if HAS_BOT:
             self.assertIn("#5", text)
             self.assertIn("[ok]", text)
 
+        async def test_pnl_text_command(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.pnl_snapshot = _async_result({
+                "actions_ok": 9, "actions_fail": 3,
+                "farm_delta": -0.25, "faucet_delta": 0.5,
+                "measured": 25, "total_wallets": 1000, "window_actions": 12,
+                "created_at": "2026-09-18 10:00:00",
+                "by_reason": [{"reason": "reverted", "count": 3}],
+            })
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123, text="/pnl")
+            await dp.message.handlers[1].callback(msg)
+            text = msg.answers[0][0][0]
+            self.assertIn("PnL ПРОГОНА", text)
+            self.assertIn("75.0%", text)
+            self.assertIn("reverted", text)
+
+        async def test_pnl_text_command_empty(self):
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.pnl_snapshot = _async_result(None)
+            dp = bot_telegram.build_dispatcher(cfg, daemon)
+            msg = _TgMessage(user_id=123, text="/pnl")
+            await dp.message.handlers[1].callback(msg)
+            self.assertIn("Пусто", msg.answers[0][0][0])
+
+        async def test_pnl_text_command_antiflood(self):
+            """Второй /pnl подряд упирается в антифлуд."""
+            cfg = _make_cfg()
+            cfg.telegram_allow_ids = [123]
+            daemon = mock.Mock()
+            daemon.pnl_snapshot = _async_result({"actions_ok": 1, "actions_fail": 0})
+            bot_telegram._flood_last.clear()
+            try:
+                dp = bot_telegram.build_dispatcher(cfg, daemon)
+                await dp.message.handlers[1].callback(_TgMessage(user_id=123, text="/pnl"))
+                msg = _TgMessage(user_id=123, text="/pnl")
+                await dp.message.handlers[1].callback(msg)
+            finally:
+                bot_telegram._flood_last.clear()
+            self.assertIn("антифлуд", msg.answers[0][0][0])
+
         async def test_wallets_text_command(self):
             cfg = _make_cfg()
             cfg.telegram_allow_ids = [123]

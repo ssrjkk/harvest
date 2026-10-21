@@ -30,7 +30,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
 <header class="topbar">
   <div class="titlebar">
-    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.3.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
     <span style="display:flex;gap:8px;align-items:center">
       <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
       <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
@@ -47,7 +47,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 </header>
 <div class="nav-scrim" id="navScrim" hidden></div>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.3.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <span id="live" aria-hidden="true"></span>
@@ -98,6 +98,26 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
       <div class="kpi"><div class="k" data-i18n="k_cyc">Циклов</div><div class="v" id="cCycles">—</div><div class="sub" id="sCycles">—</div></div>
       <div class="kpi"><div class="k" data-i18n="k_wal">Кошельков</div><div class="v" id="cWallets">—</div><div class="sub" id="sRate">—</div></div>
     </div>
+    <div id="pnlBox" hidden>
+      <div class="label" style="margin:18px 0 6px" data-i18n="pnl_h">PnL последнего прогона</div>
+      <div class="grid4">
+        <div class="kpi"><div class="k" data-i18n="pnl_ok">Успешных действий</div><div class="v" id="pnlOk">—</div><div class="sub" id="pnlRate">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_farm">Δ фарма</div><div class="v" id="pnlFarm">—</div><div class="sub" id="pnlSample">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_faucet">Δ крана</div><div class="v" id="pnlFaucet">—</div><div class="sub" id="pnlWindow">—</div></div>
+        <div class="kpi"><div class="k" data-i18n="pnl_fail">Отказов</div><div class="v" id="pnlFail">—</div><div class="sub" id="pnlWhen">—</div></div>
+      </div>
+      <div class="grid2" style="margin-top:12px">
+        <div>
+          <div class="label" style="margin-bottom:6px" data-i18n="pnl_types">По типам действий</div>
+          <div class="table-wrap"><table class="t"><tr><th data-i18n="pnl_type">Действие</th><th>ok</th><th data-i18n="pnl_fail_short">ошибок</th></tr><tbody id="tPnlTypes"><tr><td colspan="3" class="note">—</td></tr></tbody></table></div>
+        </div>
+        <div>
+          <div class="label" style="margin-bottom:6px" data-i18n="pnl_reasons">Причины отказов</div>
+          <div class="table-wrap"><table class="t"><tr><th data-i18n="pnl_reason">Причина</th><th data-i18n="pnl_cnt">случаев</th></tr><tbody id="tPnlReasons"><tr><td colspan="2" class="note">—</td></tr></tbody></table></div>
+        </div>
+      </div>
+      <p class="note" data-i18n="pnl_note">Только агрегаты: адреса кошельков в публичную ветку не попадают. Полный отчёт с разбивкой по кошелькам и ссылками на эксплорер ферма пишет локально (pnl_report.html).</p>
+    </div>
     <div class="grid2" style="margin-top:14px">
       <div><div class="label" data-i18n="ch1">Действия / ошибки по истории</div><canvas class="chart" id="chartMain" width="600" height="150" role="img" aria-label="Действия и ошибки"></canvas></div>
       <div><div class="label" data-i18n="ch2">Обработано кошельков</div><canvas class="chart" id="chartProc" width="600" height="150" role="img" aria-label="Обработано"></canvas></div>
@@ -137,7 +157,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
 <footer>
   <div class="wrap cols">
-    <div><b class="mono">harvest v2.3.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><b class="mono">harvest v2.4.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
     <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
