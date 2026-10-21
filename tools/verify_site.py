@@ -286,8 +286,8 @@ def main() -> int:
     if os.path.exists(portal_index):
         phtml = open(portal_index, encoding="utf-8").read()
         check("portal: pnl panel", 'id="pnlPanel"' in phtml)
-        check("portal: pnl fields", all(f'id="pnl{k}"' in phtml for k in
-                                         ("Ok", "Farm", "Faucet", "Fail", "Rate", "Sample", "Window", "When", "Reasons")))
+        pnl_fields = ("Ok", "Farm", "Faucet", "Fail", "Rate", "Sample", "Window", "When", "Reasons")
+        check("portal: pnl fields", all(f'id="pnl{k}"' in phtml for k in pnl_fields))
     if os.path.exists(portal_js):
         pjs = open(portal_js, encoding="utf-8").read()
         check("portal: renderPnl", "function renderPnl" in pjs and "renderPnl(s.pnl)" in pjs)
