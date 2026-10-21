@@ -368,6 +368,22 @@ class MiniappCov(unittest.IsolatedAsyncioTestCase):
         except Exception:
             pass
 
+    async def test_state_payload_carries_pnl(self):
+        """В payload мини-аппа едут агрегаты PnL (без адресов кошельков)."""
+        daemon = mock.AsyncMock()
+        daemon.networks_info = mock.MagicMock(return_value=[])
+        daemon.statistics = mock.AsyncMock(return_value={
+            "running": True, "pool": {}, "wallet_count": 10,
+            "pnl": {"actions_ok": 7, "actions_fail": 1, "farm_delta": -0.25},
+        })
+        daemon.wallet_cells = mock.AsyncMock(return_value=("iwo", 10))
+        daemon.db_path = None
+        payload = await _m._state_payload(daemon, 123, None)
+        self.assertEqual(payload["pnl"]["actions_ok"], 7)
+        self.assertEqual(payload["pnl"]["farm_delta"], -0.25)
+        # адресов в payload быть не должно
+        self.assertNotIn("0x", str(payload.get("pnl")))
+
     async def _mini_client(self, daemon=None):
         cfg = _cfg()
         cfg.telegram_token = "tok123"

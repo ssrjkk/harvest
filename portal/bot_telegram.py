@@ -960,6 +960,7 @@ async def _home_state(daemon: FarmDaemon) -> dict:
         "uptime_s": uptime_s,
         "health_factor": stats.get("health_factor", 0.0),
         "workers": pool.get("dyn_workers", 0), "rpc_ok": "—", "gas_limit": "—",
+        "pnl": stats.get("pnl"),
         "_cells": cells, "_total": total or count,
     }
 
