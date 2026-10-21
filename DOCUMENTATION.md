@@ -556,8 +556,25 @@ TradeIntent ключом tradeSigner → authorization bytes), `call_trade()`
 (registerLounge, REGISTRAR_ROLE). `read_authorization_epoch()` тянет
 текущий epoch из контракта для digest.
 
-### 3.18. `behavior.py` — анти-сибил профили
+### 3.17a. `pnl.py` — PnL-отчёт по прогону
 
+`build_report(tracker, db, network, currency, explorer, out_path, since_id)` —
+пишет самодостаточный HTML (`pnl_report.html`, без внешних файлов) и
+**сохраняет агрегаты** в БД (`pnl_snapshots`). «PnL» на тестнете — не прибыль,
+а движение нативного баланса: Δ по крану и по фарму, разбивка по типам
+действий и по **причинам отказов**.
+
+- `PnlTracker` — снимает балансы выборки кошельков (`--pnl-sample`, 0 = все)
+  в ключевых точках прогона: `pre_faucet` → `pre_farm` → `post_run`.
+  1000 кошельков × 2 снимка — это 2000 RPC-вызовов ради отчёта, поэтому
+  выборка по умолчанию 25 и равномерная (не «топ по активности»)
+- `since_id` — окно отчёта: только действия текущего прогона (`max(id)`
+  в actions_log на момент старта)
+- **Адреса кошельков — только в локальном отчёте.** В публичную ветку уходят
+  счётчики: `state.json["pnl"]` → блок PnL на «Поле», `/api/stats` → дашборд
+  портала, `/api/miniapp/state` → мини-апп, `/pnl` → боты, PNG-карточка статуса
+
+### 3.18. `behavior.py` — анти-сибил профили
 `WalletProfile` — dataclass-множители (activity, rest_prob, rest_cycles,
 delay_actions_scale, delay_cycles_scale, actions_lo/width, action_multipliers,
 amount_min/max_mul, gas_deviation, odd_amount_prob, faucet_skip_prob,
