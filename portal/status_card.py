@@ -61,6 +61,18 @@ def _font(size: int):
     return ImageFont.load_default(size=size)
 
 
+def _safe_int(value) -> int:
+    """Число из снапшота PnL. Битое значение — ноль, а не исключение.
+
+    Снапшот лежит в БД и может быть повреждён: карточка должна рисоваться
+    всегда, а не падать из-за одного испорченного поля.
+    """
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def render_card(state: dict, cells: str = "", total: int = 0) -> bytes:
     """PNG-карточка 760×~560: заголовок, сеть, метрики, сетка, health."""
     pal = _palette()
@@ -70,7 +82,10 @@ def render_card(state: dict, cells: str = "", total: int = 0) -> bytes:
     mark_color = pal["warn"] if paused and running else (pal["ok"] if running else pal["err"])
 
     shown = (cells or "")[:100]
-    cols, cell, pad, top = 10, 34, 28, 250
+    # PnL рисуется двумя строками — сетку сдвигаем ниже, чтобы не наезжала.
+    pnl = state.get("pnl")
+    has_pnl = isinstance(pnl, dict) and bool(pnl)
+    cols, cell, pad, top = 10, 34, 28, (306 if has_pnl else 250)
     rows_n = max(1, (len(shown) + cols - 1) // cols)
     width = pad * 2 + cols * cell
     height = top + rows_n * cell + 96
@@ -94,6 +109,19 @@ def render_card(state: dict, cells: str = "", total: int = 0) -> bytes:
     except (TypeError, ValueError):
         health = 0.0
     draw.text((pad, 198), f"health {health:.2f}", font=f_med, fill=pal["ink"])
+
+    # PnL последнего прогона: успешных действий и дельта фарма.
+    if has_pnl:
+        ok = _safe_int(pnl.get("actions_ok"))
+        fail = _safe_int(pnl.get("actions_fail"))
+        try:
+            farm = float(pnl.get("farm_delta"))
+        except (TypeError, ValueError):
+            farm = None
+        draw.text((pad, 226), f"PnL  успешных {ok} · отказов {fail}", font=f_med, fill=pal["ink"])
+        if farm is not None:
+            col = pal["ok"] if farm > 0 else (pal["err"] if farm < 0 else pal["muted"])
+            draw.text((pad, 254), f"Δ фарма  {farm:+.6f}", font=f_med, fill=col)
 
     glyphs = {"i": ("·", pal["muted"]), "w": ("■", pal["gold"]), "o": ("▣", pal["ok"]),
               "e": ("x", pal["err"]), "r": ("~", pal["warn"])}

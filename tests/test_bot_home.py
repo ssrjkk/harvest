@@ -592,6 +592,36 @@ class TestStatusCard(unittest.IsolatedAsyncioTestCase):
         png = _card.render_card({})
         self.assertTrue(png.startswith(b"\x89PNG"))
 
+    def test_render_with_pnl(self):
+        """Карточка показывает PnL прогона и не ломает сетку."""
+        from PIL import Image
+
+        from portal import status_card as _card
+
+        base = {"running": True, "network": "vibe/vibe", "chain_id": 46630,
+                "wallet_count": 3, "cycle": 5, "errors": 2, "health_factor": 1.0,
+                "updated": "10:00 UTC"}
+        without = _card.render_card(base, cells="oiwe" + "r" * 12, total=20)
+        with_pnl = _card.render_card(
+            {**base, "pnl": {"actions_ok": 1284, "actions_fail": 37,
+                             "farm_delta": -0.184213}},
+            cells="oiwe" + "r" * 12, total=20)
+        self.assertTrue(with_pnl.startswith(b"\x89PNG"))
+        # с PnL карточка выше — две дополнительные строки
+        h0 = Image.open(__import__("io").BytesIO(without)).size[1]
+        h1 = Image.open(__import__("io").BytesIO(with_pnl)).size[1]
+        self.assertGreater(h1, h0)
+
+    def test_render_pnl_bad_values(self):
+        """Битые значения PnL не должны ронять отрисовку карточки."""
+        from portal import status_card as _card
+
+        png = _card.render_card(
+            {"network": "n", "health_factor": "xx", "updated": "t",
+             "pnl": {"actions_ok": "нет", "actions_fail": None, "farm_delta": "не число"}},
+            cells="o", total=10)
+        self.assertTrue(png.startswith(b"\x89PNG"))
+
     def test_palette_and_font_fallback(self):
         from portal import status_card as _card
 
