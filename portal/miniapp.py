@@ -226,6 +226,7 @@ async def _state_payload(
         "wallet_count": total,
         "cells": cells,
         "cells_total": total,
+        "pnl": stats.get("pnl"),
         "mode": mode,
         "lang": lang,
         "updated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),

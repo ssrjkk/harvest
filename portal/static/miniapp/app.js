@@ -70,6 +70,10 @@
     langBtn: { ru: "Язык", en: "Lang" },
     backBtn: { ru: "Назад", en: "Back" },
     netSwitched: { ru: "Сеть переключена", en: "Network switched" },
+    pnlTitle: { ru: "PnL прогона", en: "Run PnL" },
+    pnlOk: { ru: "успешных", en: "ok" },
+    pnlFail: { ru: "отказов", en: "failed" },
+    pnlFarm: { ru: "Δ фарма", en: "farm Δ" },
   };
   function tr(key, idx) {
     var e = T[key];
@@ -230,6 +234,15 @@
       '<div class="tma-kv"><span>' + esc(tr("rpcShort")) + '</span><b id="tmaRpc">…</b></div>';
     h += "</div>" + gridHtml(s.cells, s.cells_total) +
       '<p>' + esc(tr("updated")) + ' ' + esc(s.updated_at) + "</p>";
+    // PnL последнего прогона (агрегаты, без адресов кошельков).
+    if (s.pnl && typeof s.pnl === "object") {
+      var farm = Number(s.pnl.farm_delta);
+      var dFarm = isFinite(farm) ? (farm > 0 ? "+" : "") + farm.toFixed(6) : "—";
+      h += '<div class="tma-card"><div class="tma-kv"><span>' + esc(tr("pnlTitle")) + "</span><b>" +
+        esc(s.pnl.actions_ok || 0) + " " + esc(tr("pnlOk")) + " · " +
+        esc(s.pnl.actions_fail || 0) + " " + esc(tr("pnlFail")) + "</b></div>" +
+        '<div class="tma-kv"><span>' + esc(tr("pnlFarm")) + "</span><b>" + esc(dFarm) + "</b></div></div>";
+    }
     if (!s.running) h += '<div class="tma-card">' + esc(tr("stopped")) + "</div>";
     h += '<div class="tma-row"><button class="tma-btn" data-act="refresh">' + esc(tr("refresh")) + "</button>" +
       '<button class="tma-btn" data-act="drip">' + esc(tr("dripBtn")) + "</button>" +
