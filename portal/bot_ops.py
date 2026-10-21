@@ -167,6 +167,45 @@ def fmt_history(rows: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def fmt_pnl(snap: dict | None) -> str:
+    """PnL последнего прогона: агрегаты, без адресов кошельков."""
+    lines = ["<b>harvest // PnL ПРОГОНА</b>", ""]
+    if not snap:
+        lines.append("Пусто — прогона с отчётом ещё не было.")
+        lines.append(_FOOT)
+        return "\n".join(lines)
+    ok = int(snap.get("actions_ok") or 0)
+    fail = int(snap.get("actions_fail") or 0)
+    total = ok + fail
+    rate = (ok / total * 100) if total else 0.0
+    lines.append(f"Успешных действий: {_esc(ok)} · отказов: {_esc(fail)} ({rate:.1f}%)")
+
+    def _delta(v):
+        try:
+            return f"{float(v):+.6f}"
+        except (TypeError, ValueError):
+            return "—"
+
+    lines.append(f"Δ фарма: {_esc(_delta(snap.get('farm_delta')))}")
+    lines.append(f"Δ крана: {_esc(_delta(snap.get('faucet_delta')))}")
+    lines.append(
+        f"Выборка: {_esc(snap.get('measured'))}/{_esc(snap.get('total_wallets'))} кошельков · "
+        f"окно: {_esc(snap.get('window_actions'))} действий"
+    )
+    reasons = snap.get("by_reason") or []
+    if reasons:
+        lines.append("")
+        lines.append("<b>Причины отказов</b>")
+        for r in reasons[:5]:
+            if not isinstance(r, dict):
+                continue
+            lines.append(f"· {_esc(r.get('reason', '?'))} — {_esc(r.get('count', 0))}")
+    lines.append("")
+    lines.append(f"Обновлено: {_esc(str(snap.get('created_at') or '-')[:19])}")
+    lines.append(_FOOT)
+    return "\n".join(lines)
+
+
 def fmt_balances(bals: list[dict]) -> str:
     if not bals:
         return "<b>harvest // БАЛАНСЫ</b>\n\nКошельков пока нет — создайте кнопкой [+ СОЗДАТЬ] в /wallets."

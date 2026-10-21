@@ -67,6 +67,7 @@ DENY_MSG = "⛔ Нет доступа. Напиши автору: https://t.me/s
 COMMANDS = [
     ("start", "Поле — меню"),
     ("status", "Статус фермы"),
+    ("pnl", "PnL последнего прогона"),
     ("history", "История циклов"),
     ("doctor", "Диагностика"),
     ("wallets", "Кошельки"),
@@ -242,9 +243,46 @@ def fmt_doctor(s):
     return "\n".join(lines)
 
 
+def fmt_pnl(s):
+    """PnL последнего прогона: агрегаты из state.json (без адресов)."""
+    p = s.get("pnl") if isinstance(s, dict) else None
+    if not isinstance(p, dict) or not p:
+        return "PnL пока нет — прогон ещё не публиковал отчёт."
+    ok = p.get("actions_ok", 0)
+    fail = p.get("actions_fail", 0)
+    total = ok + fail
+    rate = (ok / total * 100) if total else 0
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    farm = _num(p.get("farm_delta"))
+    faucet = _num(p.get("faucet_delta"))
+    lines = ["<b>harvest // PnL прогона</b>"]
+    lines.append(f"• Успешных действий: <b>{esc(ok)}</b> · отказов: <b>{esc(fail)}</b> ({rate:.1f}%)")
+    lines.append(f"• Δ фарма: <b>{farm:+.6f}</b>" if farm is not None else "• Δ фарма: <b>—</b>")
+    lines.append(f"• Δ крана: <b>{faucet:+.6f}</b>" if faucet is not None else "• Δ крана: <b>—</b>")
+    lines.append(f"• Выборка: {esc(p.get('measured', 0))}/{esc(p.get('total_wallets', 0))} кошельков")
+    reasons = p.get("by_reason") or []
+    if reasons:
+        lines.append("")
+        lines.append("<b>Причины отказов</b>")
+        for r in reasons[:5]:
+            if not isinstance(r, dict):
+                continue
+            lines.append(f"• {esc(r.get('reason', '?'))} — {esc(r.get('count', 0))}")
+    lines.append("")
+    lines.append(f"• Обновлено: {esc(p.get('created_at', '-'))}")
+    return "\n".join(lines)
+
+
 HELP_TEXT = (
     "Возможности:\n"
     "• /status — состояние фермы + прогресс\n"
+    "• /pnl — PnL последнего прогона\n"
     "• /history — последние циклы\n"
     "• /doctor — диагностика\n"
     "• /wallets — кошельки (ключи и сид-фразы)\n"
@@ -314,6 +352,7 @@ async def main():
         await m.answer(
             "Привет! Это <b>harvest</b> — поле фермы.\n"
             "• /status — текущее состояние + прогресс\n"
+            "• /pnl — PnL последнего прогона\n"
             "• /history — последние циклы\n"
             "• /doctor — диагностика\n"
             "• /wallets — кошельки с ключами и сид-фразами\n"
@@ -333,6 +372,11 @@ async def main():
                 await m.answer(fmt_status(await fetch_state()), parse_mode=ParseMode.HTML)
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить состояние фермы.", parse_mode=ParseMode.HTML)
+        elif text == "/pnl":
+            try:
+                await m.answer(fmt_pnl(await fetch_state()), parse_mode=ParseMode.HTML)
+            except Exception:  # noqa: BLE001
+                await m.answer("⚠️ Не удалось получить PnL.", parse_mode=ParseMode.HTML)
         elif text == "/history":
             try:
                 await m.answer(fmt_history(await fetch_state()), parse_mode=ParseMode.HTML)

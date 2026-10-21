@@ -668,6 +668,9 @@ class _FakeDb:
     async def get_cycle_history(self, limit: int) -> list:
         return [{"id": 1}]
 
+    async def get_last_pnl_snapshot(self) -> dict:
+        return {"actions_ok": 5, "actions_fail": 1}
+
 
 def _db_mock():
     """Экземпляр AsyncMock, играющий роль Database (свободные атрибуты-awaitables)."""
@@ -963,6 +966,15 @@ class TestFarmViews(FarmDaemonTestBase, unittest.IsolatedAsyncioTestCase):
         daemon = FarmDaemon("cfg.yaml", self.db_path)
         daemon.db = _FakeDb()
         self.assertEqual(await daemon.cycle_history(3), [{"id": 1}])
+
+    async def test_pnl_snapshot_without_db(self):
+        daemon = FarmDaemon("cfg.yaml", self.db_path)
+        self.assertIsNone(await daemon.pnl_snapshot())
+
+    async def test_pnl_snapshot_with_db(self):
+        daemon = FarmDaemon("cfg.yaml", self.db_path)
+        daemon.db = _FakeDb()
+        self.assertEqual(await daemon.pnl_snapshot(), {"actions_ok": 5, "actions_fail": 1})
 
 
 if __name__ == "__main__":

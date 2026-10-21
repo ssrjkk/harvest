@@ -62,6 +62,9 @@ from portal.bot_ops import (
     fmt_networks as _fmt_networks,
 )
 from portal.bot_ops import (
+    fmt_pnl as _fmt_pnl,
+)
+from portal.bot_ops import (
     fmt_stats as _fmt_stats,
 )
 from portal.bot_ops import (
@@ -82,7 +85,7 @@ from portal.farm import FarmDaemon
 # Реэкспорт ops-форматтеров: тесты и внешний код используют имена
 # portal.bot_telegram (реализация — portal/bot_ops.py).
 __all__ = [
-    "_fmt_balances", "_fmt_doctor", "_fmt_history", "_fmt_networks",
+    "_fmt_balances", "_fmt_doctor", "_fmt_history", "_fmt_networks", "_fmt_pnl",
     "_fmt_stats", "_fmt_status", "_fmt_wallets_page", "_progress_bar",
     "build_dispatcher", "run_bot", "notify_owner", "send_wallets_file",
     "LiveMonitor", "CmdWizard", "CfgWizard",
@@ -462,6 +465,7 @@ BOT_COMMANDS_RU: list[tuple[str, str]] = [
     ("doctor", "Диагностика"),
     ("diag", "Диагностика подробно"),
     ("history", "История циклов"),
+    ("pnl", "PnL последнего прогона"),
     ("balance", "Балансы кошельков"),
     ("wallets", "Список кошельков"),
     ("profiles", "Профили флота"),
@@ -719,6 +723,7 @@ _HELP_TEXT = (
     "• /monitor — живой мониторинг с алертами\n"
     "• /doctor — диагностика, /diag — подробно\n"
     "• /history — история циклов\n"
+    "• /pnl — PnL последнего прогона\n"
     "• /balance — балансы кошельков\n"
     "• /faucet — проверка крана (pre-flight)\n"
     "• /rpc — здоровье RPC\n\n"
@@ -1903,6 +1908,12 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
                 parse_mode=ParseMode.HTML,
             )
+        elif text == "/pnl":
+            ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "pnl")
+            if not ok:
+                await message.answer(f"[жди {wait}с] PnL — антифлуд 5с.")
+                return
+            await message.answer(_fmt_pnl(await daemon.pnl_snapshot()), parse_mode=ParseMode.HTML)
         elif text == "/history":
             ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "history")
             if not ok:
