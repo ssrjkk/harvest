@@ -507,6 +507,7 @@ class FarmDaemon:
             "health_factor": round(health, 2),
             "db": cycle,
             "wallet_count": await self.wallet_count(),
+            "pnl": await self.pnl_snapshot(),
         }
 
     async def top_wallets(self, limit: int = 8) -> list[dict]:
@@ -523,7 +524,16 @@ class FarmDaemon:
         """Агрегаты PnL последнего прогона (None — прогона ещё не было)."""
         if self.db is None:
             return None
-        return await self.db.get_last_pnl_snapshot()
+        # БД может быть старым/заглушкой без метода — тогда просто без PnL,
+        # а не падение всего /api/stats.
+        getter = getattr(self.db, "get_last_pnl_snapshot", None)
+        if getter is None:
+            return None
+        try:
+            return await getter()
+        except Exception as e:  # noqa: BLE001
+            logger.debug(f"Снапшот PnL не прочитан: {e}")
+            return None
 
     async def wallet_count(self) -> int:
         """Общее число строк кошельков в БД (включая нерасшифрованные)."""
