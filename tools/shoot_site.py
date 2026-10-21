@@ -54,6 +54,13 @@ METRICS = """() => ({
 })"""
 
 
+# Ожидание готовности страницы. networkidle ждёт 500 мс «тишины» в сети, а
+# сайт поллит state.json раз в минуту — из-за этого прогоны и медленные, и
+# флакающие. 'load' + явное ожидание узла даёт тот же результат стабильнее.
+WAIT_UNTIL = "load"
+READY_TIMEOUT = 15000
+
+
 def _url(base: str, page: str) -> str:
     """Страница сайта относительно базы: .../harvest → .../harvest/field.html."""
     root = base.rstrip("/")
@@ -94,8 +101,8 @@ def main() -> int:
         page = ctx.new_page()
 
         def snap(name: str, page_name: str, anchor: str | None, setup: str | None) -> None:
-            page.goto(_url(args.url, page_name), wait_until="networkidle")
-            page.wait_for_selector(PAGE_READY, timeout=15000)
+            page.goto(_url(args.url, page_name), wait_until=WAIT_UNTIL)
+            page.wait_for_selector(PAGE_READY, timeout=READY_TIMEOUT)
             if setup:
                 page.evaluate(setup)
                 page.wait_for_timeout(300)
@@ -148,14 +155,14 @@ def _matrix(browser, args, out: Path) -> int:
                 # _errs=errors — привязка к текущему списку, а не к переменной цикла.
                 page.on("pageerror", lambda e, _errs=errors: _errs.append(str(e)))
                 if width == 375:  # главный кадр снимаем один раз на тему/язык
-                    page.goto(_url(args.url, "index.html"), wait_until="networkidle")
-                    page.wait_for_selector(PAGE_READY, timeout=15000)
+                    page.goto(_url(args.url, "index.html"), wait_until=WAIT_UNTIL)
+                    page.wait_for_selector(PAGE_READY, timeout=READY_TIMEOUT)
                     page.wait_for_timeout(400)
                     page.screenshot(path=str(mdir / name))
                 for pg in SITE_PAGES:
                     errors.clear()
-                    page.goto(_url(args.url, pg), wait_until="networkidle")
-                    page.wait_for_selector(PAGE_READY, timeout=15000)
+                    page.goto(_url(args.url, pg), wait_until=WAIT_UNTIL)
+                    page.wait_for_selector(PAGE_READY, timeout=READY_TIMEOUT)
                     page.wait_for_timeout(250)
                     metrics = page.evaluate(METRICS)
                     ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
