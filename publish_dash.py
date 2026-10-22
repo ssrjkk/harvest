@@ -103,9 +103,19 @@ def _fresh_ts(raw) -> bool:
     """
     if not raw:
         return False
-    try:
-        ts = datetime.strptime(str(raw).strip()[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
-    except (ValueError, TypeError):
+    stamp = str(raw).strip()
+    for suf in (" UTC", "UTC", " GMT", "GMT"):
+        if stamp.endswith(suf):
+            stamp = stamp[: -len(suf)].strip()
+            break
+    ts = None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            ts = datetime.strptime(stamp, fmt).replace(tzinfo=UTC)
+            break
+        except (ValueError, TypeError):
+            continue
+    if ts is None:
         return False
     age = (datetime.now(UTC) - ts).total_seconds()
     return 0 <= age <= _METRICS_STALE_S

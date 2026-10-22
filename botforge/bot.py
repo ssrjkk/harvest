@@ -19,6 +19,7 @@ publish_dash.py с твоего ПК). Кошельки с ключами и с�
 import asyncio
 import os
 import sys
+from datetime import datetime, timezone
 
 import aiohttp
 from aiogram import Bot, Dispatcher
@@ -199,6 +200,48 @@ def _hf_text(s) -> str:
         return "—"
 
 
+def _snapshot_age_min(updated_at) -> float | None:
+    """Возраст снимка state.json в минутах. None — не распарсили.
+
+    Принимает и полный штамп SQLite («… HH:MM:SS»), и короткий stamp
+    публикации («… HH:MM UTC», секунд нет).
+    """
+    raw = str(updated_at or "").strip()
+    for suf in (" UTC", "UTC", " GMT", "GMT"):
+        if raw.endswith(suf):
+            raw = raw[: -len(suf)].strip()
+            break
+    ts = None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
+        try:
+            ts = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            break
+        except (TypeError, ValueError):
+            continue
+    if ts is None:
+        return None
+    return (datetime.now(timezone.utc) - ts).total_seconds() / 60
+
+
+def _freshness_note(s) -> str:
+    """Свежесть снимка для статусов: «5 мин назад» + флаг протухания.
+
+    Порог тот же, что на сайте (45 мин): старше — честное «ферма молчит»,
+    а не вид живой витрины.
+    """
+    age = _snapshot_age_min(s.get("updated_at"))
+    if age is None or age < 0:
+        return ""
+    if age < 1:
+        ago = "только что"
+    elif age < 60:
+        ago = f"{int(age)} мин назад"
+    else:
+        ago = f"{int(age // 60)} ч {int(age % 60):02d} мин назад"
+    stale = " · ⚠️ снимок старый, ферма молчит" if age > 45 else ""
+    return f"({ago}{stale})"
+
+
 def fmt_status(s):
     pool = s.get("pool", {}) if isinstance(s, dict) else {}
     state = "▶ работает" if s.get("running") else "⏹ остановлена"
@@ -212,7 +255,7 @@ def fmt_status(s):
         f"• Обработано: <b>{pool.get('processed', 0)}</b> · циклов: <b>{pool.get('cycles', 0)}</b>\n"
         f"• Кошельков: <b>{s.get('wallet_count', '-')}</b> · health: <b>{hf}</b>\n"
         f"Прогресс: <b>{progress_bar(pool.get('processed', 0), s.get('wallet_count', 0))}</b>\n"
-        f"• Обновлено: <b>{esc(s.get('updated_at', '-'))}</b>\n\n"
+        f"• Обновлено: <b>{esc(s.get('updated_at', '-'))}</b> {esc(_freshness_note(s))}\n\n"
         f"{AUTHOR}"
     )
 
@@ -240,7 +283,7 @@ def fmt_doctor(s):
     lines.append(f"ферма: {'RUN' if s.get('running') else 'STOP'}{' + PAUSE' if pool.get('paused') else ''}")
     lines.append(f"ошибок: {errs} · health: {hf}")
     lines.append(f"кошельков: {s.get('wallet_count', '-')}")
-    lines.append(f"обновлено: {esc(s.get('updated_at', '-'))}")
+    lines.append(f"обновлено: {esc(s.get('updated_at', '-'))} {esc(_freshness_note(s))}")
     if errs and hf != "—":
         try:
             bad = float(hf) < 0.5

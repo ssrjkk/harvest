@@ -232,6 +232,29 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("0.90", bot.fmt_status({**s, "health_factor": 0.9}))
         self.assertIn("health: —", bot.fmt_doctor({**s, "health_factor": "xx"}))
 
+    def test_freshness_note(self):
+        import datetime
+
+        def ts(minutes_ago):
+            return (datetime.datetime.now(datetime.timezone.utc)
+                    - datetime.timedelta(minutes=minutes_ago)).strftime("%Y-%m-%d %H:%M UTC")
+
+        self.assertIn("только что", bot._freshness_note({"updated_at": ts(0)}))
+        self.assertIn("мин назад", bot._freshness_note({"updated_at": ts(5)}))
+        old = bot._freshness_note({"updated_at": ts(180)})
+        self.assertIn("ч ", old)
+        self.assertIn("ферма молчит", old)
+        self.assertEqual("", bot._freshness_note({"updated_at": "битое"}))
+        self.assertEqual("", bot._freshness_note({}))
+        fresh = {"running": True, "wallet_count": 3, "health_factor": 0.9,
+                 "pool": {"actions": 1, "errors": 0, "processed": 1, "cycles": 1},
+                 "updated_at": ts(5)}
+        self.assertIn("мин назад", bot.fmt_status(fresh))
+        self.assertNotIn("ферма молчит", bot.fmt_status(fresh))
+        stale = dict(fresh, updated_at=ts(180))
+        self.assertIn("ферма молчит", bot.fmt_status(stale))
+        self.assertIn("ферма молчит", bot.fmt_doctor(stale))
+
     def test_fmt_pnl(self):
         # без блока pnl в state.json
         self.assertIn("PnL пока нет", bot.fmt_pnl({}))
