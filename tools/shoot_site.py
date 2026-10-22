@@ -74,7 +74,7 @@ def main() -> int:
     ap.add_argument("--url", default="https://ssrjkk.github.io/harvest/")
     ap.add_argument("--out", default=str(OUT_DEFAULT))
     ap.add_argument("--width", type=int, default=1440)
-    ap.add_argument("--theme", default="ink", choices=["paper", "ink", "moss"])
+    ap.add_argument("--theme", default="terminal", choices=["paper", "ink", "moss", "terminal"])
     ap.add_argument("--lang", default="ru", choices=["ru", "en"])
     ap.add_argument("--matrix", action="store_true",
                     help="матрица 375/768/1440 × темы × языки + проверка скролла")
@@ -138,7 +138,7 @@ def _matrix(browser, args, out: Path) -> int:
     mdir.mkdir(parents=True, exist_ok=True)
     fails = 0
     for width in (375, 768, 1440):
-        for theme in ("paper", "ink", "moss"):
+        for theme in ("paper", "ink", "moss", "terminal"):
             for lang in ("ru", "en"):
                 name = f"shot-{width}-{theme}-{lang}.png"
                 ctx = browser.new_context(

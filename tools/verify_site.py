@@ -58,7 +58,7 @@ def main() -> int:
                os.path.join(DOCS, "offline.html"), os.path.join(DOCS, "terminal.html")])
     for p in want:
         check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
-    check("legacy terminal.css removed", not os.path.exists(os.path.join(DOCS, "assets", "terminal.css")))
+    check("terminal.css restored as theme", os.path.exists(os.path.join(DOCS, "assets", "terminal.css")))
     pages = {n: open(os.path.join(DOCS, n), encoding="utf-8").read() for n in PAGES}
     js = {n: open(os.path.join(DOCS, "assets", n), encoding="utf-8").read()
           for n in ("common.js", "field.js", "demo.js")}
@@ -76,8 +76,9 @@ def main() -> int:
     if os.path.exists(sw):
         swtxt = open(sw, encoding="utf-8").read()
         check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
-        check("sw: terminal.css not precached", "terminal.css" not in swtxt, "")
+        check("sw: terminal.css precached", "terminal.css" in swtxt, "")
         for n in list(PAGES) + ["assets/common.js", "assets/field.js", "assets/demo.js",
+                                "assets/terminal.css",
                                 "404.html", "offline.html", "terminal.html"]:
             check(f"sw precaches {n}", f'"./{n}"' in swtxt, "")
     # Блок PnL на «Поле»: разметка, рендер и словарь — вместе, иначе блок
@@ -222,6 +223,9 @@ def main() -> int:
         html_keys |= set(re.findall(r'data-i18n(?:-ph|-aria)?="([a-z0-9_]+)"', html))
     missing_en = sorted(html_keys - en_keys)
     check("i18n keys covered by EN", not missing_en, str(missing_en))
+    check("terminal theme wired",
+          '"terminal"' in js["common.js"] and "terminal.css" in pages["index.html"]
+          and 'data-theme="terminal"' in pages["index.html"], "")
 
     # Ссылки на несуществующие ветки GitHub: master удалён, канон — main.
     # Проверяем весь docs/, а не только страницы из PAGES (футеры, 404).

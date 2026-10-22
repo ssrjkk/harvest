@@ -12,16 +12,17 @@ window.hv={toast,esc,fmt,version:VERSION};
 try{console.log("%c harvest "+VERSION+" %c EVM testnet farmer · ключи остаются в браузере ","background:#D4A72C;color:#14110A;font-weight:bold","color:#9A8F73")}catch(e){}
 
 /* ---------- theme ---------- */
-const themes=["paper","ink","moss"];
+const themes=["paper","ink","moss","terminal"];
+const _themeGlyph={paper:"◐",ink:"◑",moss:"◒",terminal:"◓"};
 const _store=(()=>{
   try{
     const t={get:(k,f)=>{try{const v=localStorage.getItem(k);return v===null?f:v;}catch(e){return f;}},set:(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}}};
     t.get("hv-theme");return t;
   }catch(e){return{get:(k,f)=>f,set:()=>{}};}
 })();
-let theme=_store.get("hv-theme","ink");
-if(!themes.includes(theme)){theme="ink";_store.set("hv-theme",theme);}
-function applyTheme(){document.documentElement.dataset.theme=theme;const b=$("#themeBtn");if(!b)return;b.textContent=theme==="paper"?"◐":theme==="ink"?"◑":"◒";b.setAttribute("aria-label","Theme: "+theme);b.setAttribute("aria-pressed",theme==="paper"?"false":"true");}
+let theme=_store.get("hv-theme","terminal");
+if(!themes.includes(theme)){theme="terminal";_store.set("hv-theme",theme);}
+function applyTheme(){document.documentElement.dataset.theme=theme;const b=$("#themeBtn");if(!b)return;b.textContent=_themeGlyph[theme]||"◓";b.setAttribute("aria-label","Theme: "+theme);b.setAttribute("aria-pressed",theme==="paper"?"false":"true");}
 const _themeBtn=$("#themeBtn");
 if(_themeBtn)_themeBtn.addEventListener("click",()=>{theme=themes[(themes.indexOf(theme)+1)%themes.length];_store.set("hv-theme",theme);applyTheme();if(window.hvRedraw)try{window.hvRedraw();}catch(e){}});
 applyTheme();
@@ -36,7 +37,7 @@ cta_live:"Open the field",cta_demo:"Try the demo",cta_bot:"Telegram bot",
 hero_kicker:"TESTNETS · PYTHON 3.12 · MIT",hero_kicker_r:"NO DROP PROMISES",
 hero_note:"Testnets only. Demo keys stay in your browser; the farm runs on your computer. No drop or profit guarantees: it's a tool, not a lottery ticket.",
 contacts:"Author:",
-hg_t:"What's inside",hg_nets:"Networks",hg_nets_v:"4 testnets · Robinhood, Flop, Arc, vibe/vibe",hg_control:"Control",hg_control_v:"Python CLI · menu · web portal · Telegram",hg_themes:"Themes / languages",hg_license:"License",hg_license_v:"MIT · read it, change it",hg_term:"Three commands to the menu",
+hg_t:"What's inside",hg_nets:"Networks",hg_nets_v:"4 testnets · Robinhood, Flop, Arc, vibe/vibe",hg_control:"Control",hg_control_v:"Python CLI · menu · web portal · Telegram",hg_themes:"Themes / languages",hg_themes_v:"Paper · Ink · Moss · Terminal / RU · EN",hg_license:"License",hg_license_v:"MIT · read it, change it",hg_term:"Three commands to the menu",
 net_vibe_note:"— launchpad on Robinhood",net_vibe_act:"transfer · buy/sell — with signer_key",
 code_menu:"# menu: network → farm",code_dry:"# dry run, no transactions",code_portal:"# aiohttp + API + bot",code_tests:"# local check",code_publish:"# state.json → gh-pages → site field",
 sl_h:"The field — what's happening now",sl_sub:"The farm publishes a snapshot here: metrics, history and the wallet grid. The site re-reads state.json once a minute; a publish usually happens every 30 minutes. If there's no snapshot yet, the page will be empty — that's normal, not a broken site.",

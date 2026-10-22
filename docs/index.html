@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ru" data-theme="ink">
+<html lang="ru" data-theme="terminal">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -22,6 +22,7 @@
 try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
+<link rel="stylesheet" href="assets/terminal.css">
 <noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
 </head>
 <body class="is-loading">
@@ -41,7 +42,7 @@ if(map[h])location.replace(map[h]+"#"+h);
     <span style="display:flex;gap:8px;align-items:center">
       <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
       <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
-      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss">◐</button>
+      <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss / Terminal">◐</button>
       <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
     </span>
   </div>
@@ -75,7 +76,7 @@ if(map[h])location.replace(map[h]+"#"+h);
         <tr><th colspan="2" data-i18n="hg_t">Что внутри</th></tr>
         <tr><td data-i18n="hg_nets">Сети</td><td class="num" data-i18n="hg_nets_v">4 тестовые · Robinhood, Flop, Arc, vibe/vibe</td></tr>
         <tr><td data-i18n="hg_control">Управление</td><td class="num" data-i18n="hg_control_v">Python CLI · меню · веб-портал · Telegram</td></tr>
-        <tr><td data-i18n="hg_themes">Темы / языки</td><td class="num">Paper · Ink · Moss / RU · EN</td></tr>
+        <tr><td data-i18n="hg_themes">Темы / языки</td><td class="num" data-i18n="hg_themes_v">Paper · Ink · Moss · Terminal / RU · EN</td></tr>
         <tr><td data-i18n="hg_license">Лицензия</td><td class="num" data-i18n="hg_license_v">MIT · код можно читать и менять</td></tr>
       </table></div>
       <div class="terminal"><div class="terminal-bar"><i></i><i></i><i></i><span data-i18n="hg_term">Три команды до меню</span></div><pre>git clone https://github.com/ssrjkk/harvest.git

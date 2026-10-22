@@ -1,0 +1,118 @@
+/* harvest terminal theme — Y2K command center: синий фон, циан, кислота, янтарь.
+   Подключён ПОСЛЕ site.css, но ничего чужого не перебивает: все правила
+   висят на html[data-theme="terminal"] — специфичность (0,1,1) выигрывает
+   у :root (0,1,0) только внутри своей темы. Именно так terminal.css
+   когда-то ломал paper/moss (голый :root последним) — больше не повторится.
+   Палитра живёт здесь же: build_tokens.py знает только общие ключи,
+   acid/cyan — собственность этой темы. */
+html[data-theme="terminal"]{
+  --bg:#05060a; --bg2:#0a0d16; --panel:#0a0d16; --panel2:#111625; --inset:#020306;
+  --ink:#f1f5f9; --ink2:#94a3b8; --muted:#7d8aa0; --line:#475569; --line2:#94a3b8;
+  --dots:#0d1526;
+  --gold:#e5b842; --gold-ink:#000000;
+  --paper:#efead8; --chip:#f1f5f9; --chip-ink:#05060a;
+  --ok:#ccff00; --warn:#f59e0b; --err:#ff0055; --blue:#00f0ff;
+  --acid:#ccff00; --cyan:#00f0ff; --red:#ff0055; --amber:#f59e0b;
+  --cream:#efead8; --edge:#94a3b8; --dim:#94a3b8;
+  color-scheme:dark;
+  background:var(--bg);
+}
+html[data-theme="terminal"] body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"Courier New",ui-monospace,Menlo,Consolas,monospace;
+  font-size:14px; line-height:1.55;
+}
+html[data-theme="terminal"] body::before{
+  content:""; position:fixed; inset:0; pointer-events:none; z-index:0;
+  background-size:28px 28px;
+  background-image:
+    linear-gradient(to right,rgba(0,240,255,.08) 1px,transparent 1px),
+    linear-gradient(to bottom,rgba(204,255,0,.06) 1px,transparent 1px);
+}
+html[data-theme="terminal"] a{color:var(--cyan)}
+html[data-theme="terminal"] .win{
+  background:var(--panel); position:relative; z-index:1;
+  border-top:2px solid var(--edge); border-left:2px solid var(--edge);
+  border-right:2px solid #000; border-bottom:2px solid #000;
+  box-shadow:inset 1px 1px 0 #cbd5e1,5px 5px 0 #000;
+}
+html[data-theme="terminal"] .titlebar{
+  background:linear-gradient(90deg,#002b80 0%,#006699 55%,#00b8a9 100%);
+  border-bottom:2px solid #000; color:#fff;
+  padding:6px 12px; font-weight:900; font-size:12px; letter-spacing:.5px;
+  display:flex; align-items:center; justify-content:space-between; gap:8px;
+  text-shadow:1px 1px 0 #000;
+}
+html[data-theme="terminal"] .titlebar.gold{background:linear-gradient(90deg,#b37d00 0%,#e5b842 45%,#ccff00 100%); color:#000; text-shadow:none}
+html[data-theme="terminal"] .inset{
+  background:var(--inset);
+  border-top:2px solid #000; border-left:2px solid #000;
+  border-right:2px solid var(--line); border-bottom:2px solid var(--line);
+}
+html[data-theme="terminal"] .btn{
+  background:#1e2538; color:#fff; font:inherit; font-size:12px; font-weight:700;
+  border-top:2px solid var(--edge); border-left:2px solid var(--edge);
+  border-right:2px solid #000; border-bottom:2px solid #000;
+  box-shadow:2px 2px 0 #000; padding:7px 12px; cursor:pointer;
+}
+html[data-theme="terminal"] .btn:hover{background:#28324b; color:var(--acid); border-top-color:var(--acid); border-left-color:var(--acid)}
+html[data-theme="terminal"] .btn:active{border-top:2px solid #000; border-left:2px solid #000; border-right:2px solid var(--edge); border-bottom:2px solid var(--edge); box-shadow:none; transform:translate(2px,2px)}
+html[data-theme="terminal"] .btn.acid{background:var(--acid); color:#000; border-top-color:#fff; border-left-color:#fff; font-weight:900}
+html[data-theme="terminal"] .btn.on{color:var(--acid); border-top-color:var(--acid); border-left-color:var(--acid)}
+html[data-theme="terminal"] .wrap{max-width:1400px; margin:0 auto; padding:16px 12px 48px; position:relative; z-index:1}
+html[data-theme="terminal"] .topbar{position:sticky; top:0; z-index:30; background:#080a12; border-bottom:2px solid var(--edge)}
+html[data-theme="terminal"] .ticker{overflow:hidden; white-space:nowrap; background:#020305; border-top:1px solid #334155; padding:6px 0; font-size:12px; font-weight:700; color:var(--acid)}
+html[data-theme="terminal"] .ticker-in{display:inline-block; padding-left:0; animation:tick 30s linear infinite}
+html[data-theme="terminal"] .ticker-in:hover{animation-play-state:paused}
+@keyframes tick{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+html[data-theme="terminal"] .hero{padding:26px 22px}
+html[data-theme="terminal"] .hero h1{margin:10px 0 8px; font-family:"Arial Black",Impact,sans-serif; font-size:clamp(28px,5vw,54px); line-height:1.02; text-transform:uppercase; border-left:8px solid var(--acid); padding-left:14px; text-shadow:4px 4px 0 #000}
+html[data-theme="terminal"] .hero h1 .a{color:var(--acid)}
+html[data-theme="terminal"] .kicker{display:inline-block; background:#020306; border:2px solid var(--cyan); color:var(--cyan); font-size:12px; font-weight:900; padding:4px 10px}
+html[data-theme="terminal"] .pane{padding:14px}
+html[data-theme="terminal"] .pane h2{margin:0 0 10px; font-size:13px}
+html[data-theme="terminal"] table.t{width:100%; border-collapse:collapse; font-size:12px}
+html[data-theme="terminal"] table.t th{background:var(--cream); color:#090a0f; text-align:left; padding:7px 10px; font-size:11px; text-transform:uppercase}
+html[data-theme="terminal"] table.t td{padding:7px 10px; border-top:1px solid #252b3f; vertical-align:top}
+html[data-theme="terminal"] .num{font-weight:700}
+html[data-theme="terminal"] .pill{display:inline-block; padding:1px 8px; font-size:11px; font-weight:900; border:2px solid currentColor}
+html[data-theme="terminal"] .pill.ok{color:var(--acid)} html[data-theme="terminal"] .pill.warn{color:var(--amber)} html[data-theme="terminal"] .pill.err{color:var(--red)} html[data-theme="terminal"] .pill.dim{color:var(--dim)}
+html[data-theme="terminal"] .dot{display:inline-block; width:10px; height:10px; border:1px solid #000; margin-right:6px; vertical-align:baseline}
+html[data-theme="terminal"] .cells{display:grid; gap:3px; grid-template-columns:repeat(auto-fill,minmax(13px,1fr)); padding:10px; max-height:300px; overflow-y:auto}
+html[data-theme="terminal"] .cell{height:14px; border:1px solid #000; cursor:pointer; padding:0}
+html[data-theme="terminal"] .cell.si{background:#3a4356} html[data-theme="terminal"] .cell.sw{background:var(--cyan)} html[data-theme="terminal"] .cell.so{background:var(--acid)}
+html[data-theme="terminal"] .cell.se{background:var(--red)} html[data-theme="terminal"] .cell.sr{background:var(--amber)}
+html[data-theme="terminal"] .cell.sel{outline:2px solid #fff; outline-offset:0}
+html[data-theme="terminal"] .cells.detail{grid-template-columns:repeat(auto-fill,minmax(44px,1fr))}
+html[data-theme="terminal"] .cells.detail .cell{height:26px; font-size:10px; font-weight:900; color:#000; display:flex; align-items:center; justify-content:center}
+html[data-theme="terminal"] .toolbar{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0}
+html[data-theme="terminal"] .kv{display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:12px}
+html[data-theme="terminal"] .kv dt{color:var(--dim)} html[data-theme="terminal"] .kv dd{margin:0; font-weight:700; word-break:break-all}
+html[data-theme="terminal"] .log{font-size:11px; max-height:180px; overflow-y:auto; padding:8px 10px}
+html[data-theme="terminal"] .log div{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+html[data-theme="terminal"] .note{color:var(--dim); font-size:12px}
+html[data-theme="terminal"] .secttl{font-size:12px; color:var(--cyan); font-weight:900; margin:0 0 8px; text-transform:uppercase}
+html[data-theme="terminal"] pre.yaml{font-size:11px; color:var(--acid); padding:10px 12px; overflow-x:auto; max-height:220px}
+html[data-theme="terminal"] footer{color:var(--dim); font-size:11px; text-align:center; padding:18px}
+html[data-theme="terminal"] canvas.chart{width:100%;height:auto;background:#020306;border:2px solid #1e293b}
+@media(max-width:640px){html[data-theme="terminal"] .hero{padding:18px 14px}}
+
+/* ---- скин поверх компонентов site.css: только тема terminal.
+   Раньше этот скин висел на ink; оставлен и там — не отнимать у тех,
+   кто привык. На paper/moss — плоские поверхности site.css. */
+html[data-theme="terminal"] body{font-family:"Courier New",ui-monospace,Menlo,Consolas,monospace;background-color:var(--bg);background-image:none}
+html[data-theme="terminal"] .topbar{background:#080a12}
+html[data-theme="terminal"] .hero{padding:26px 0 10px}
+html[data-theme="terminal"] .hero h1{font-family:"Arial Black",Impact,sans-serif;text-transform:uppercase;letter-spacing:0;text-shadow:4px 4px 0 #000}
+html[data-theme="terminal"] section.block{padding:20px 0;border-bottom:2px solid #000}
+html[data-theme="terminal"] section.block>.wrap{background:#0a0d16;border-top:2px solid #94a3b8;border-left:2px solid #94a3b8;border-right:2px solid #000;border-bottom:2px solid #000;box-shadow:inset 1px 1px 0 #cbd5e1,5px 5px 0 #000;padding-top:0;padding-bottom:18px}
+html[data-theme="terminal"] .sec-head{background:linear-gradient(90deg,#002b80 0%,#006699 55%,#00b8a9 100%);border-bottom:2px solid #000;margin:0 0 12px;padding:6px 12px}
+html[data-theme="terminal"] .sec-head h2{color:#fff;font-size:13px;margin:0;letter-spacing:.5px}
+html[data-theme="terminal"] .sec-no{background:#000 !important;color:#ccff00 !important;font-size:12px !important;padding:2px 10px !important}
+html[data-theme="terminal"] .sec-head .pill{border-color:#fff;color:#fff}
+html[data-theme="terminal"] .card,html[data-theme="terminal"] .table-wrap{background:#0a0d16;border-radius:0}
+html[data-theme="terminal"] pre.code{border-radius:0}
+html[data-theme="terminal"] .btn{border-radius:0}
+html[data-theme="terminal"] #fieldGrid.zoom .cell{min-width:36px;min-height:24px;aspect-ratio:auto;font-size:10px;font-weight:900;color:#000;display:flex;align-items:center;justify-content:center}
+html[data-theme="terminal"] #fxInspector b{color:#ccff00}
+html[data-theme="terminal"] #mainNav .btn{font-size:11px}
