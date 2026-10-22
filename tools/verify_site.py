@@ -413,6 +413,22 @@ def main() -> int:
                 break
     check("state.json schema contract", not _bad, str(sorted(set(_bad))))
 
+    # Вес витрины: всё, что реально уезжает в gh-pages (SITE_FILES + SITE_DIRS
+    # из publish_dash — тот же список, что паблишит прод). Бюджет с запасом:
+    # ловит случайно закоммиченный несжатый ассет, а не нормальный рост.
+    from publish_dash import SITE_DIRS as _SITE_DIRS
+    from publish_dash import SITE_FILES as _SITE_FILES
+    _shipped = 0
+    for _rel in _SITE_FILES:
+        _p = os.path.join(DOCS, _rel)
+        if os.path.exists(_p):
+            _shipped += os.path.getsize(_p)
+    for _d in _SITE_DIRS:
+        for _dp, _, _fns in os.walk(os.path.join(DOCS, _d)):
+            for _fn in _fns:
+                _shipped += os.path.getsize(os.path.join(_dp, _fn))
+    check("shipped site under 400KB", _shipped < 400 * 1024, f"{_shipped // 1024}KB")
+
     # exe-spec ссылается на существующие файлы: протухшие datas/entry —
     # битый дистрибутив, а CI exe не собирает и не заметит.
     spec = open(os.path.join(ROOT, "harvest.spec"), encoding="utf-8").read()

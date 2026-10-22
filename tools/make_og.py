@@ -67,7 +67,7 @@ def main() -> int:
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out)
+    img.save(out, optimize=True)
     print(f"ok: {out} ({os.path.getsize(out)} bytes)")
     return 0
 
