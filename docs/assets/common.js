@@ -24,7 +24,7 @@ applyTheme();
 
 /* ---------- i18n ---------- */
 const EN={
-skip:"Skip to content",nav_home:"Home",nav_field:"Field",nav_demo:"Demo",nav_docs:"Docs",nav_live:"Field",nav_faucet:"Faucet",nav_bot:"Bot",nav_specs:"Facts",nav_overview:"Overview",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
+skip:"Skip to content",nav_home:"Home",nav_field:"Field",nav_demo:"Demo",nav_docs:"Docs",ft_map:"Map",nav_live:"Field",nav_faucet:"Faucet",nav_bot:"Bot",nav_specs:"Facts",nav_overview:"Overview",nav_start:"Start",nav_app:"Demo",nav_arch:"Inside",nav_portal:"Portal",nav_sec:"Security",nav_license:"License",
 h1:'Testnet farmer,<br><em>not a lottery.</em>',
 lede:"Mass wallet generation, faucets, async transaction farming with human-like behavior profiles, multi-RPC with EMA scoring, web portal and Telegram bot. The live field lives on the Field page, builders and simulator — on Demo, the reference — on Docs.",
 th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_net_cfg:"Network",f_tests:"Tests",f_tests_v:"1467 · 57 files · green run",f_wallet:"Generation",f_rpc:"RPC layer",f_rpc_cfg:"RPC URL",f_portal:"Control",f_dist:"Distribution",

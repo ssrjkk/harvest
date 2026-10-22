@@ -20,6 +20,7 @@ section.block,.hero{scroll-margin-top:76px}
 /* ticker */
 .ticker{border-bottom:2px solid var(--gold);background:var(--bg2);overflow:hidden;white-space:nowrap}
 .ticker-in{display:inline-block;font-family:var(--mono);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);padding:6px 0;animation:tick 38s linear infinite}
+.ticker:hover .ticker-in{animation-play-state:paused}
 @keyframes tick{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 @media (prefers-reduced-motion:reduce){.ticker-in{animation:none}html{scroll-behavior:auto}}
 
@@ -304,4 +305,25 @@ footer a{color:var(--ink2)}
   .card:hover,.net:hover{transform:none}
 }
 
-@media print{.topbar,.ticker,.hero-cta,.play-tabs,.toolbar,.toast,.cmdk{display:none}body{background:#fff}}
+@media print{
+  /* Печать справочника: белый фон вместо тёмной темы — не жжём тонер.
+     Прячем интерактив и навигацию, оставляем контент и таблицы.
+     terminal.css грузится последним и переопределяет цвета body и фоны,
+     поэтому здесь везде !important и явные значения, а не переменные. */
+  .topbar,.ticker,.nav-scrim,.toast,.cmdk,.hero-cta,.toolbar,.copy-btn,
+  .nav-toggle,#themeBtn,#langRu,#langEn,.field-grid,.cell-tip,.play-tabs{display:none!important}
+  body{background:#fff!important;color:#000!important}
+  body::before{display:none!important}
+  *{text-shadow:none!important;box-shadow:none!important;background-image:none!important}
+  *{color:#000!important}
+  section.block,.hero{border:0;padding:14px 0}
+  .card,.kpi,.net,.stat-table,.table-wrap,.terminal,.termline,pre.code,.play,
+  .win,footer{border:1px solid #000!important;background:#fff!important}
+  table,table.t{background:#fff!important}
+  .sec-head,.titlebar,.titlebar.gold{background:#fff!important}
+  section.block>.wrap{background:#fff!important;border:0!important;box-shadow:none!important}
+  table.t th,.stat-table th,.hero .stat-table th{background:#eee!important}
+  a{text-decoration:underline}
+  canvas.chart{display:none}
+  pre.code{white-space:pre-wrap}
+}
