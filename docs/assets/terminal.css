@@ -64,6 +64,7 @@ html[data-theme="terminal"] .topbar{position:sticky; top:0; z-index:30; backgrou
 html[data-theme="terminal"] .ticker{overflow:hidden; white-space:nowrap; background:#020305; border-top:1px solid #334155; padding:6px 0; font-size:12px; font-weight:700; color:var(--acid)}
 html[data-theme="terminal"] .ticker-in{display:inline-block; padding-left:0; animation:tick 30s linear infinite}
 html[data-theme="terminal"] .ticker-in:hover{animation-play-state:paused}
+@media (prefers-reduced-motion:reduce){html[data-theme="terminal"] .ticker-in{animation:none}}
 @keyframes tick{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 html[data-theme="terminal"] .hero{padding:26px 22px}
 html[data-theme="terminal"] .hero h1{margin:10px 0 8px; font-family:"Arial Black",Impact,sans-serif; font-size:clamp(28px,5vw,54px); line-height:1.02; text-transform:uppercase; border-left:8px solid var(--acid); padding-left:14px; text-shadow:4px 4px 0 #000}

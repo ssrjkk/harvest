@@ -166,6 +166,41 @@ class TestPoolHealthSnapshot(unittest.IsolatedAsyncioTestCase):
             await db.close()
 
 
+class TestPairHi(unittest.TestCase):
+    """Скалярные [min, max]: валидатор их пропускает — рантайм обязан понять."""
+
+    def test_scalar_and_pair(self):
+        from core.pool import _pair_hi, _pair_range
+
+        self.assertEqual(_pair_hi(10, 8), 10.0)
+        self.assertEqual(_pair_hi([3, 8], 0), 8.0)
+        self.assertEqual(_pair_hi(None, 7), 7)
+        self.assertEqual(_pair_hi(True, 7), 7)
+        self.assertEqual(_pair_hi("x", 7), 7)
+        self.assertEqual(_pair_range(5, (1.0, 2.0)), (5.0, 5.0))
+        self.assertEqual(_pair_range([3, 8], (1.0, 2.0)), (3.0, 8.0))
+        self.assertEqual(_pair_range([8, 3], (1.0, 2.0)), (3.0, 8.0))
+        self.assertEqual(_pair_range(None, (1.0, 2.0)), (1.0, 2.0))
+        self.assertEqual(_pair_range(True, (1.0, 2.0)), (1.0, 2.0))
+        self.assertEqual(_pair_range("x", (1.0, 2.0)), (1.0, 2.0))
+
+    def test_scalar_actions_change_timeout(self):
+        from core import pool as pool_mod
+
+        cfg = _minimal_config()
+        cfg["farming"] = {**cfg["farming"], "actions_per_cycle": 40,
+                          "delay_between_actions": 5}
+        cfg["behavior"] = {"enabled": False}
+        # Скаляры вместо [min, max] раньше ломались: actions молча =8,
+        # задержки — TypeError в max().
+        with mock.patch.object(pool_mod, "NetworkManager", return_value=mock.Mock()), \
+                mock.patch.object(pool_mod, "VibeVibeInterface", mock.Mock()), \
+                mock.patch.object(pool_mod, "Faucet", return_value=mock.Mock()), \
+                mock.patch.object(pool_mod, "ActionExecutor", return_value=mock.Mock()):
+            pool = pool_mod.FarmerPool(cfg, mock.Mock())
+        self.assertEqual(pool.timeout, int(40 * (5 + 10) + 30))
+
+
 class TestCycleStateSaveDebounce(unittest.IsolatedAsyncioTestCase):
     """mark_done не переписывает state-файл O(n) на каждом 50-м адресе."""
 

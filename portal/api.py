@@ -1096,19 +1096,31 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
 
 
 async def broadcast_ws(app: web.Application, event_type: str, data: dict) -> None:
-    """Рассылает событие всем подключённым WebSocket-клиентам."""
+    """Рассылает событие всем подключённым WebSocket-клиентам.
+
+    Итерируем копию множества: connect/disconnect из других тасков иначе
+    роняют итерацию (RuntimeError: Set changed size during iteration).
+    Отправка — конкурентно с таймаутом: один зависший клиент не должен
+    держать ответ API, который зовёт broadcast перед return.
+    """
     clients: set = app.get(KEY_WS_CLIENTS, set())
     if not clients:
         return
     msg = json.dumps({"type": event_type, **data})
-    dead = []
-    for ws in clients:
+
+    async def _send(ws) -> tuple[bool, object]:
         try:
-            await ws.send_str(msg)
-        except Exception:
-            dead.append(ws)
-    for ws in dead:
-        clients.discard(ws)
+            await asyncio.wait_for(ws.send_str(msg), timeout=5)
+            return True, ws
+        except Exception:  # noqa: BLE001 — мёртвый/виснущий сокет: выкинуть из пула
+            return False, ws
+
+    for ok, ws in await asyncio.gather(*(_send(ws) for ws in list(clients))):
+        if not ok:
+            try:
+                clients.discard(ws)
+            except Exception:  # noqa: BLE001
+                pass
 
 
 async def healthz(request: web.Request) -> web.Response:

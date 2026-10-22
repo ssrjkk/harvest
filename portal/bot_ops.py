@@ -314,8 +314,8 @@ def parse_cycles(text: str) -> int | None:
 CMD_USAGE = (
     "<b>harvest // КОМАНДА</b>\n"
     "Собирает готовую команду auto.py. Формат:\n"
-    "<code>/cmd &lt;сеть&gt; [кошельки] [циклы] [nofaucet]</code>\n"
-    "сети: <code>vibevibe</code> <code>robinhood</code> <code>flop</code> "
+    "<code>/cmd &lt;сеть&gt; [кошельки] [циклы] [nofaucet|skip-faucet|без-крана]</code>\n"
+    "сети: <code>vibe|vibevibe</code> <code>robinhood</code> <code>flop</code> "
     "<code>arc</code> <code>simple</code>\n"
     "пример: <code>/cmd vibe 50 5</code> (/cfg даст готовый YAML)"
 )

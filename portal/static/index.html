@@ -352,10 +352,10 @@
                     <input type="checkbox" id="chkBalanceAlerts" style="width:20px;height:20px;accent-color:var(--purple)">
                     <span style="font-size:12.5px">Включить мониторинг балансов</span>
                   </label>
-                  <label style="display:flex;flex-direction:column;gap:4px">
-                    <span style="font-size:12px;color:var(--text-2)"><label for="inpBalanceThreshold" style="font-size:12px;color:var(--text-2)">Порог баланса (ETH):</label></span>
-                    <input type="number" id="inpBalanceThreshold" step="0.0001" min="0" max="100" value="0.001" style="width:140px;padding:7px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-0);font-family:var(--font-data);font-size:12px;outline:none">
-                  </label>
+                  <div style="display:flex;flex-direction:column;gap:4px">
+                    <span style="font-size:12px;color:var(--text-2)" id="inpBalanceLabel">Порог баланса (ETH):</span>
+                    <input type="number" id="inpBalanceThreshold" aria-labelledby="inpBalanceLabel" step="0.0001" min="0" max="100" value="0.001" style="width:140px;padding:7px 10px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-0);font-family:var(--font-data);font-size:12px;outline:none">
+                  </div>
                   <button class="btn btn-primary btn-sm" id="btnSaveAlerts" style="align-self:flex-start"><i class="ti ti-check"></i> Сохранить</button>
                 </div>
               </div>

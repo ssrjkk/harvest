@@ -211,16 +211,13 @@ def _snapshot_age_min(updated_at) -> float | None:
         if raw.endswith(suf):
             raw = raw[: -len(suf)].strip()
             break
-    ts = None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            ts = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
-            break
-        except (TypeError, ValueError):
-            continue
-    if ts is None:
+    try:
+        ts = datetime.fromisoformat(raw.removesuffix("Z"))
+    except ValueError:
         return None
-    return (datetime.now(timezone.utc) - ts).total_seconds() / 60
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - ts.astimezone(timezone.utc)).total_seconds() / 60
 
 
 def _freshness_note(s) -> str:

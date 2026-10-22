@@ -43,7 +43,7 @@ code_menu:"# menu: network → farm",code_dry:"# dry run, no transactions",code_
 sl_h:"The field — what's happening now",sl_sub:"The farm publishes a snapshot here: metrics, history and the wallet grid. The site re-reads state.json once a minute; a publish usually happens every 30 minutes. If there's no snapshot yet, the page will be empty — that's normal, not a broken site.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
 fe_t:"No data yet. When the farm publishes its first snapshot, the field will come alive. You can start it by hand:",fe_pub:"then <code>python publish_dash.py</code>.",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
-ch1:"Actions / errors over history",ch2:"Wallets processed",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
+ch1:"Actions / errors over history",ch2:"Wallets processed",aria_ch1:"Actions and errors chart",aria_ch2:"Wallets processed chart",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
 pnl_h:"PnL of the last run",pnl_ok:"Successful actions",pnl_farm:"Farm Δ",pnl_faucet:"Faucet Δ",pnl_fail:"Failures",
 pnl_types:"By action type",pnl_type:"Action",pnl_fail_short:"failed",pnl_reasons:"Failure reasons",pnl_reason:"Reason",pnl_cnt:"cases",
 pnl_note:"Aggregates only: wallet addresses never reach the public branch. The full report with a per-wallet breakdown and explorer links is written locally by the farm (pnl_report.html).",
@@ -80,7 +80,7 @@ cmd_out:"Ready command",build:"Build",cmd_sim:"What will happen",cmd_sim_p:"The 
 w_warn:"Testnets only. Keys are generated in your browser and are never sent anywhere. The first time you press Generate, the page loads ethers from esm.sh — that's the demo zone's only external request. Without a network it switches to an honest demo mode with a label.",
 w_n:"How many to generate",w_gen:"Generate",w_clear:"Clear",w_act:"actions",
 s_w:"Wallets",s_c:"Cycles",s_skip:"skip_cycle_probability",s_a:"Actions [min,max]",s_fail:"Action failure chance",s_speed:"Log speed",
-sim_run:"Run simulation",sim_stop:"Stop",sim_exp:"Export history CSV",sim_log:"Live log (like the operator terminal)",sim_chart:"Actions per cycle",
+sim_run:"Run simulation",sim_stop:"Stop",sim_exp:"Export history CSV",sim_log:"Live log (like the operator terminal)",sim_chart:"Actions per cycle",aria_sim:"Simulator: actions per cycle",
 v_h:"Paste a config YAML — checks like config_validate.py",v_run:"Validate",
 p_h:"Parallelism calculator (core/performance.py)",p_w:"max_workers (empty = auto)",p_run:"Calculate",
 p_n:"Formulas: workers=min(max(20,cpu·2),128) · rpc=min(max(8,cpu·4),128) · gen=min(8,max(2,cpu)) · chunk=max(workers·4,100). RPC cap 128, gen cap 8.",
@@ -153,7 +153,7 @@ rd_cm_b:"0x address + method name; 0x0…0 = stub",
 rd_amt_b:"≥ 0, min ≤ max",rd_apc_b:"[min, max], min ≤ max",rd_apc_d:"[3,8] vibe/robinhood · [5,15] flop · [5,12] arc · [2,4] simple",
 rd_del_b:"[min, max] seconds",rd_skip_d:"0.05 · scaled by activity and time of day (night ×~1.5)",
 rd_gas_b:"≥ 1; ≥ 50000 for real contracts",rd_gas_d:"300000 robinhood/flop · 200000 arc · 100000 vibe · 21000 simple",
-rd_mgas_d:"0.003 · below — action skipped",rd_rc_b:"seconds",
+rd_mgas_d:"0.003 · below — action skipped",rd_rc_b:"≥ 1 second",
 rd_workers_d:"20 vibe/robinhood · 30 flop/arc · 24 simple; empty = auto min(max(20,cpu·2),128)",
 rd_db_b:"no '..'; 64-hex key or file",rd_log_b:"level name",
 re_chain:"chain_id / wallets.count",re_threads:"threading.*",re_faucetc:"faucet / cache",
@@ -326,6 +326,7 @@ pollOnce().catch(()=>{});
     out.forEach((it,i)=>{
       const b=document.createElement("button");
       b.type="button";b.className="cmdk-item";b.setAttribute("role","option");
+      b.title=it.t;
       b.setAttribute("aria-selected",i===cur?"true":"false");
       const t=document.createElement("span");t.className="t";t.textContent=it.t;
       const k=document.createElement("span");k.className="k";k.textContent=it.k;

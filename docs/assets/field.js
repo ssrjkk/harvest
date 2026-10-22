@@ -25,7 +25,9 @@ let gridPainted=false;
 const _noMotion=()=>typeof matchMedia!=="undefined"&&matchMedia("(prefers-reduced-motion: reduce)").matches;
 const _hasRAF=()=>typeof requestAnimationFrame==="function";
 function setNum(id,raw){
-  const el=$("#"+id);if(!el)return;const v=Number(raw)||0;
+  const el=$("#"+id);if(!el)return;
+  const v=Number(raw);
+  if(!isFinite(v)){el.textContent="—";el.dataset.raw="0";return;}
   const from=parseFloat(el.dataset.raw||"0")||0;el.dataset.raw=String(v);
   if(_noMotion()||!_hasRAF()||!isFinite(from)){el.textContent=fmt(v);return;}
   const t0=performance.now();

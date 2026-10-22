@@ -204,6 +204,49 @@ class TestRunOnceStopsWithoutFunds(unittest.IsolatedAsyncioTestCase):
             pos, _ = pool.record_health_snapshot.call_args
             self.assertEqual(pos, (2,))
 
+    async def test_batch_zero_falls_back_to_default(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg = _config(d)
+            addrs = [w["address"] for w in _wallets(2)]
+            net = _FakeNet({a: 0.05 for a in addrs})
+            db = mock.AsyncMock()
+            db.get_all_wallets = mock.AsyncMock(return_value=[{"address": a} for a in addrs])
+            db.count_wallets = mock.AsyncMock(return_value=2)
+            db.get_stats = mock.AsyncMock(return_value={
+                "total_wallets": 2, "total_actions": 0, "success_actions": 0,
+            })
+            db.close = mock.AsyncMock()
+            faucet = mock.AsyncMock()
+            faucet.validate = mock.AsyncMock(return_value=1)
+            faucet.probe_report = mock.Mock(return_value=[])
+            faucet.request_batch = mock.AsyncMock(return_value=(2, 0))
+            faucet.concurrent_batch = mock.Mock(return_value=4)
+            faucet.close = mock.AsyncMock()
+            pool = mock.AsyncMock()
+            pool.run_once = mock.AsyncMock(return_value=[])
+            pool.close = mock.AsyncMock()
+            pool.network = mock.MagicMock()
+            pool.network.diagnostics = mock.Mock(return_value={})
+
+            with mock.patch.object(auto, "load_config", return_value=cfg), \
+                mock.patch.object(auto, "setup_logging"), \
+                mock.patch.object(auto, "banner"), \
+                mock.patch.object(auto, "enforce_license_async", new=mock.AsyncMock()), \
+                mock.patch.object(auto, "SingleInstance") as guard_cls, \
+                mock.patch.object(auto, "Database", return_value=db), \
+                mock.patch.object(auto, "NetworkManager", return_value=net), \
+                mock.patch.object(auto, "Faucet", return_value=faucet), \
+                mock.patch.object(auto, "FarmerPool", return_value=pool), \
+                mock.patch.object(auto, "export_csv"), \
+                mock.patch.object(auto, "export_json"):
+                guard_cls.return_value.acquire = mock.Mock(return_value=True)
+                guard_cls.return_value.release = mock.Mock()
+                code = await auto.run_once(_args(force_farm=True, batch=0))
+
+            self.assertEqual(code, 0)
+            # --batch 0 вместо ValueError из range(): клэмп до дефолта 50.
+            self.assertEqual(faucet.request_batch.call_args[0][1], 50)
+
 
 if __name__ == "__main__":
     unittest.main()

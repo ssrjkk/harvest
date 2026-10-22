@@ -358,6 +358,10 @@ def validate_config(config: dict) -> None:
         errors.append(f"advanced.gas_limit: {gl} слишком мал для контрактных действий (нужно >= 50000)")
     mga = adv.get("min_gas_for_action", 0.003)
     _check_range("advanced.min_gas_for_action", mga, 0, errors=errors)
+    # Нулевой/отрицательный бюджет ожидания ресипта превращает wait_for_receipt
+    # в мгновенный None без ожидания — молчаливый пропуск ожидания.
+    if "receipt_timeout" in adv:
+        _check_range("advanced.receipt_timeout", adv.get("receipt_timeout"), 1, errors=errors)
 
     # --- threading ---
     th = config.get("threading", {})

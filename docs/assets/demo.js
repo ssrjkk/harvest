@@ -48,8 +48,9 @@ function copyText(t){
     catch(_){ta.remove();throw 0;}
   });
 }
+const TcfgNeed=()=>lang==="en"?"generate first":"сначала сгенерируйте";
 const _cc=$("#cfgCopy");
-if(_cc)_cc.addEventListener("click",()=>{const t=$("#cfgOut").textContent;copyText(t).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
+if(_cc)_cc.addEventListener("click",()=>{const o=$("#cfgOut");if(o&&o.dataset.empty==="1")return toast(TcfgNeed());const t=o.textContent;copyText(t).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
 const _cm=$("#cmdCopy");
 if(_cm)_cm.addEventListener("click",()=>{const t=$("#cmdOut").textContent;copyText(t).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
 
@@ -258,7 +259,9 @@ if(_vRun)_vRun.addEventListener("click",()=>{
   const missing=req.filter(s=>!has(s));
   out.push(missing.length?["bad",(RU?"нет секций: ":"missing sections: ")+missing.join(", ")]:["ok",RU?"все обязательные секции на месте":"all required sections present"]);
   const rpc=(t.match(/rpc_url:\s*(\S+)/)||[])[1]||"";
-  out.push(/^https:\/\//.test(rpc)?["ok","rpc TLS ok"]:["bad",RU?`rpc_url должен быть https (http — только 127.0.0.1/localhost), получили: ${rpc||"—"}`:`rpc_url must be https (http only for 127.0.0.1/localhost) — got: ${rpc||"—"}`]);
+  const rpcHost=(rpc.match(/^https?:\/\/([^/:]+)/)||[])[1]||"";
+  const rpcOk=/^https:\/\//.test(rpc)||["127.0.0.1","localhost","::1"].indexOf(rpcHost.toLowerCase())!==-1;
+  out.push(rpcOk?["ok","rpc TLS ok"]:["bad",RU?`rpc_url должен быть https (http — только 127.0.0.1/localhost), получили: ${rpc||"—"}`:`rpc_url must be https (http only for 127.0.0.1/localhost) — got: ${rpc||"—"}`]);
   const chain=parseInt((t.match(/chain_id:\s*(\d+)/)||[])[1]||"0",10);
   out.push(chain>=1?["ok","chain_id = "+chain]:["bad",RU?"chain_id отсутствует или < 1":"chain_id missing or < 1"]);
   if(chain===99999)out.push(["warn",RU?"chain_id 99999 — маркер-заглушка (config_flop)":"chain_id 99999 is a stub marker (config_flop)"]);

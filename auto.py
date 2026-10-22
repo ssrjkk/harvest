@@ -355,13 +355,16 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                         faucet_dead = True
                     else:
                         addresses = [w["address"] for w in wallets]
+                        batch = args.batch if isinstance(args.batch, int) and args.batch >= 1 else 50
+                        if batch != args.batch:
+                            print(f"  {Fore.YELLOW}--batch {args.batch} вне диапазона — беру 50.{Style.RESET_ALL}")
                         funded, failed = await faucet.request_batch(
                             addresses,
-                            args.batch,
+                            batch,
                             network=network,
                             progress=lambda done, total: progress(done, total, prefix="  Кран"),
                             pause=3.0,
-                            max_concurrent=faucet.concurrent_batch(args.batch),
+                            max_concurrent=faucet.concurrent_batch(batch),
                         )
                         print(
                             f"  {Fore.GREEN}OK={funded}, FAIL={failed}, "

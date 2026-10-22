@@ -163,6 +163,45 @@ class _CycleState:
             logger.error(f"Crash state clear failed (удаление и перезапись): {e}")
 
 
+def _pair_hi(value: object, default: float) -> float:
+    """Верхняя граница [min, max] или само число для скаляра.
+
+    Валидатор разрешает обе формы (см. _check_range_pair), поэтому рантайм
+    обязан понимать обе: раньше скаляр actions_per_cycle молча заменялся
+    на 8, а скаляр задержек ронял max() с TypeError.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, (list, tuple)) and value:
+        try:
+            return float(max(value))
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
+def _pair_range(value: object, default: tuple[float, float]) -> tuple[float, float]:
+    """Пара [min, max] или скаляр (= [v, v]) для задержек между циклами.
+
+    Валидатор разрешает обе формы (_check_range_pair), unpacking вида
+    `min_d, max_d = ...` — нет: скаляр ронял run_forever с TypeError.
+    """
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        v = float(value)
+        return (v, v)
+    if isinstance(value, (list, tuple)) and len(value) == 2:
+        try:
+            lo, hi = float(value[0]), float(value[1])
+        except (TypeError, ValueError):
+            return default
+        return (lo, hi) if lo <= hi else (hi, lo)
+    return default
+
+
 class FarmerPool:
     def __init__(self, config: dict, db: Database, network: NetworkManager | None = None) -> None:
         self.config = config
@@ -181,23 +220,22 @@ class FarmerPool:
         self.timeout = config["threading"].get("timeout_per_wallet", 0)
         if not self.timeout or self.timeout <= 0:
             farm = config["farming"]
-            max_actions = (
-                max(farm["actions_per_cycle"]) if isinstance(farm.get("actions_per_cycle"), (list, tuple)) else 8
-            )
-            max_delay = (
-                max(farm["delay_between_actions"])
-                if isinstance(farm.get("delay_between_actions"), (list, tuple))
-                else 20
-            )
+            max_actions = _pair_hi(farm.get("actions_per_cycle"), 8)
+            max_delay = _pair_hi(farm.get("delay_between_actions"), 20)
             # Профили поведения дают всплески действий и растянутые задержки:
             # закладываем запас по burst/scale, чтобы не ловить ложные таймауты.
             beh = config.get("behavior") or {}
             if beh.get("enabled", True):
                 burst = max(1.0, cfg_hi(config, "burst_multiplier", 1.6))
-                scale_hi = 1.0
                 raw_scale = beh.get("action_delay_scale", (1.0, 1.5))
-                if isinstance(raw_scale, (list, tuple)) and len(raw_scale) == 2:
+                if isinstance(raw_scale, bool):
+                    scale_hi = 1.0
+                elif isinstance(raw_scale, (int, float)):
+                    scale_hi = max(1.0, float(raw_scale))
+                elif isinstance(raw_scale, (list, tuple)) and len(raw_scale) == 2:
                     scale_hi = max(1.0, float(raw_scale[1]))
+                else:
+                    scale_hi = 1.0
                 max_actions_eff = max_actions * max(2.0, burst)
                 max_delay_eff = max_delay * scale_hi * 1.2
             else:
@@ -555,7 +593,8 @@ class FarmerPool:
         await self.network.close()
 
     async def run_forever(self, stop_event: asyncio.Event, max_cycles: int = 0) -> None:
-        min_d, max_d = self.config["farming"]["delay_between_cycles"]
+        min_d, max_d = _pair_range(
+            self.config["farming"].get("delay_between_cycles"), (3600.0, 7200.0))
         cycle_count = 0
         try:
             while not stop_event.is_set() and (max_cycles <= 0 or cycle_count < max_cycles):

@@ -314,7 +314,7 @@ footer a{color:var(--ink2)}
 .cmdk-box{position:relative;width:min(620px,100%);background:var(--bg);border:2px solid var(--ink);box-shadow:8px 8px 0 var(--line2);animation:cmdkin .16s ease-out}
 @keyframes cmdkin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
 .cmdk-in{width:100%;border:0;border-bottom:2px solid var(--ink);background:var(--bg);color:var(--ink);font-family:var(--mono);font-size:15px;padding:13px 15px}
-.cmdk-in:focus{outline:none}
+.cmdk-in:focus{outline:3px solid var(--gold);outline-offset:-3px}
 .cmdk-list{max-height:min(50vh,400px);overflow-y:auto}
 .cmdk-item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);padding:10px 15px;font-family:var(--mono);font-size:12.5px;color:var(--ink);cursor:pointer}
 .cmdk-item .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -335,6 +335,9 @@ footer a{color:var(--ink2)}
   .cmdk-box{animation:none}
   .card,.kpi,.net{transition:none}
   .card:hover,.net:hover{transform:none}
+  .termline .cursor{animation:none}
+  .ticker-in{animation:none}
+  html{scroll-behavior:auto}
 }
 
 @media print{

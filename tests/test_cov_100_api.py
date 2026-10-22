@@ -167,6 +167,42 @@ class ApiCov(unittest.IsolatedAsyncioTestCase):
                 r = await c.get("/")
                 self.assertEqual(r.status, 500)
 
+    async def test_broadcast_ws_concurrent_mutation(self):
+        import asyncio as _aio
+
+        sent = []
+
+        class _Ws:
+            def __init__(self, fail=False, mutate=None):
+                self.fail = fail
+                self.mutate = mutate
+                self.got = []
+
+            async def send_str(self, msg):
+                if self.mutate is not None:
+                    self.mutate()
+                if self.fail:
+                    raise ConnectionResetError("gone")
+                self.got.append(msg)
+
+        good, bad = _Ws(), _Ws(fail=True)
+        pool = {good, bad}
+        app = {api.KEY_WS_CLIENTS: pool}
+
+        def _late_join():
+            pool.add(_Ws())
+
+        racing = _Ws(mutate=_late_join)
+        pool.add(racing)
+        # Не должно бросить RuntimeError при конкурентном connect/disconnect:
+        # итерируем копию, мёртвых выкидываем.
+        await api.broadcast_ws(app, "farm", {"action": "x"})
+        self.assertNotIn(bad, pool)
+        self.assertTrue(any("farm" in m for m in good.got))
+        # Пустой пул — no-op без ошибок.
+        await api.broadcast_ws({api.KEY_WS_CLIENTS: set()}, "farm", {})
+        await api.broadcast_ws({}, "farm", {})
+
     async def test_login_non_dict(self):
         c = await self._client()
         async with c:

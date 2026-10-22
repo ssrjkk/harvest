@@ -98,8 +98,8 @@ def _network_slug(db_path: str) -> str:
 def _fresh_ts(raw) -> bool:
     """Снимок метрик свежий (не старше _METRICS_STALE_S)? Иначе — неизвестно.
 
-    ts пишет SQLite (CURRENT_TIMESTAMP, UTC без зоны). Битое/будущее
-    значение — тоже «неизвестно»: fail-closed в сторону «—», а не цифры.
+    ts пишет SQLite (CURRENT_TIMESTAMP, UTC без зоны); будущие/битые
+    значения — тоже «неизвестно»: fail-closed в сторону «—», а не цифры.
     """
     if not raw:
         return False
@@ -108,16 +108,13 @@ def _fresh_ts(raw) -> bool:
         if stamp.endswith(suf):
             stamp = stamp[: -len(suf)].strip()
             break
-    ts = None
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M"):
-        try:
-            ts = datetime.strptime(stamp, fmt).replace(tzinfo=UTC)
-            break
-        except (ValueError, TypeError):
-            continue
-    if ts is None:
+    try:
+        ts = datetime.fromisoformat(stamp.removesuffix("Z"))
+    except ValueError:
         return False
-    age = (datetime.now(UTC) - ts).total_seconds()
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=UTC)
+    age = (datetime.now(UTC) - ts.astimezone(UTC)).total_seconds()
     return 0 <= age <= _METRICS_STALE_S
 
 

@@ -237,6 +237,18 @@ class TestPublishDash(unittest.TestCase):
             self.assertIsNone(state["health_factor"])
             self.assertIsNone(state["pool"]["dyn_workers"])
 
+    def test_fresh_ts_accepts_variants(self):
+        import datetime
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        ok = now.strftime("%Y-%m-%d %H:%M:%S")
+        self.assertTrue(publish_dash._fresh_ts(ok))
+        self.assertTrue(publish_dash._fresh_ts(ok + "+00:00"))
+        self.assertTrue(publish_dash._fresh_ts(now.strftime("%Y-%m-%d %H:%M")))
+        self.assertFalse(publish_dash._fresh_ts("битое"))
+        self.assertFalse(publish_dash._fresh_ts(None))
+        self.assertFalse(publish_dash._fresh_ts("2099-01-01 00:00:00"))
+
     def test_site_files_cover_all_docs_pages(self):
         """Новая страница в docs/ не должна молча остаться неопубликованной."""
         docs = Path(publish_dash.DOCS)

@@ -227,7 +227,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
           <div class="grid2">
             <div><div class="label" data-i18n="sim_log">Живой лог (как operator terminal)</div><div class="log" id="simLog">harvest-sim ready.
 </div></div>
-            <div><div class="label" data-i18n="sim_chart">Действия по циклам</div><canvas class="chart" id="simChart" width="600" height="220" role="img" aria-label="Симулятор: действия по циклам"></canvas>
+            <div><div class="label" data-i18n="sim_chart">Действия по циклам</div><canvas class="chart" id="simChart" width="600" height="220" role="img" data-i18n-aria="aria_sim" aria-label="Симулятор: действия по циклам"></canvas>
               <dl class="kv" style="margin-top:10px"><dt>wallets_ok</dt><dd id="kW">—</dd><dt>actions_ok</dt><dd id="kA">—</dd><dt>errors</dt><dd id="kE">—</dd><dt>avg/cycle</dt><dd id="kAvg">—</dd></dl>
             </div>
           </div>
@@ -293,7 +293,7 @@ advanced:
             <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num" data-i18n="rd_skip_d">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
             <tr><td class="mono">advanced.gas_limit</td><td class="num" data-i18n="rd_gas_b">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num" data-i18n="rd_gas_d">300000 robinhood/flop · 200000 arc · 100000 vibe · 21000 simple</td></tr>
             <tr><td class="mono">advanced.min_gas_for_action</td><td class="num">≥ 0</td><td class="num" data-i18n="rd_mgas_d">0.003 · ниже — действие пропускается</td></tr>
-            <tr><td class="mono">advanced.receipt_timeout</td><td class="num" data-i18n="rd_rc_b">секунды</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
+            <tr><td class="mono">advanced.receipt_timeout</td><td class="num" data-i18n="rd_rc_b">≥ 1 секунда</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
             <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num" data-i18n="rd_workers_d">20 vibe/robinhood · 30 flop/arc · 24 simple; пусто = авто min(max(20,cpu·2),128)</td></tr>
             <tr><td class="mono">threading.rpc_threads / gen_workers / chunk_size</td><td class="num">1..256 / 1..32 / ≥ 1</td><td data-i18n="rd_th">Авто: max(4,min(workers·3,128)) · min(8,max(2,cpu)) · max(workers·4,100)</td></tr>
             <tr><td class="mono">cache.rpc_rate_limit / rpc_rate_floor</td><td class="num">1..10000 / 0.05..1</td><td data-i18n="rd_ca">Token-bucket на RPC; ставка плавает от здоровья нод, остаток переносится при смене ноды</td></tr>
