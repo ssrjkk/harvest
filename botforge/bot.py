@@ -361,17 +361,29 @@ _PANELS = {
 }
 
 
+def panel_kind(data) -> str | None:
+    """Какой раздел просит кнопка `pg:*`. None — не наша кнопка.
+
+    Вынесено из обработчика колбэков, чтобы молчаливый игнор
+    (кнопка ничего не делает) ловился тестом, а не пользователями.
+    """
+    if not isinstance(data, str) or not data.startswith("pg:"):
+        return None
+    kind = data.split(":", 1)[1]
+    if kind == "refresh":
+        return "status"
+    if kind.startswith("refresh:"):
+        kind = kind.split(":", 1)[1]
+    return kind if kind in _PANELS else None
+
+
 async def render_panel(kind: str):
     """Готовый ответ панели (текст, клавиатура) или (None, None) при сбое."""
-    if kind == "refresh":
-        kind = "status"
-    elif kind.startswith("refresh:"):
-        kind = kind.split(":", 1)[1]
-    fn = _PANELS.get(kind)
-    if fn is None:
+    kind = panel_kind(kind if kind.startswith("pg:") else f"pg:{kind}")
+    if kind is None:
         return None, None
     try:
-        return fn(await fetch_state()), nav_kb(kind)
+        return _PANELS[kind](await fetch_state()), nav_kb(kind)
     except Exception:  # noqa: BLE001 — сеть легла: ответит вызыватель
         return None, None
 
@@ -504,8 +516,7 @@ async def main():
             await cb.answer(DENY_MSG, show_alert=True)
             return
         if cb.data and cb.data.startswith("pg:"):
-            kind = cb.data.split(":", 1)[1]
-            text, kb = await render_panel(kind)
+            text, kb = await render_panel(cb.data)
             if text is None:
                 await cb.answer("Не удалось обновить", show_alert=True)
                 return

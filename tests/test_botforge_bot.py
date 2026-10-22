@@ -264,6 +264,15 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("pg:history", cbs)
         self.assertIn("pg:doctor", cbs)
 
+    def test_panel_kind_routing(self):
+        self.assertEqual(bot.panel_kind("pg:status"), "status")
+        self.assertEqual(bot.panel_kind("pg:refresh:doctor"), "doctor")
+        self.assertEqual(bot.panel_kind("pg:refresh"), "status")
+        self.assertIsNone(bot.panel_kind("wl:3"))
+        self.assertIsNone(bot.panel_kind("pg:nope"))
+        self.assertIsNone(bot.panel_kind(""))
+        self.assertIsNone(bot.panel_kind(None))
+
     def test_render_panel(self):
         import asyncio
         from unittest import mock
@@ -279,6 +288,8 @@ class TestFormatting(unittest.TestCase):
             self.assertIn("диагностика", text.lower())
             text, _ = asyncio.run(bot.render_panel("refresh"))
             self.assertIn("harvest", text)
+            text, _ = asyncio.run(bot.render_panel("pg:history"))
+            self.assertIn("история", text.lower())
             self.assertEqual((None, None), asyncio.run(bot.render_panel("nope")))
         with mock.patch.object(bot, "fetch_state", new=mock.AsyncMock(side_effect=RuntimeError("down"))):
             self.assertEqual((None, None), asyncio.run(bot.render_panel("status")))
