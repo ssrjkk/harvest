@@ -337,8 +337,43 @@ HELP_TEXT = (
     "• /history — последние циклы\n"
     "• /doctor — диагностика\n"
     "• /wallets — кошельки (ключи и сид-фразы)\n"
-    "• /start — меню\n\n" + AUTHOR
+    "• /start — меню\n\n"
+    "Кнопки под сообщениями — переход между разделами без набора команд.\n\n" + AUTHOR
 )
+
+
+def nav_kb(current: str = "status") -> InlineKeyboardMarkup:
+    """Быстрая навигация по панелям. Тап по открытой — обновить её же."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="⟳ Обновить", callback_data=f"pg:refresh:{current}")],
+        [InlineKeyboardButton(text="Статус", callback_data="pg:status"),
+         InlineKeyboardButton(text="PnL", callback_data="pg:pnl")],
+        [InlineKeyboardButton(text="История", callback_data="pg:history"),
+         InlineKeyboardButton(text="Доктор", callback_data="pg:doctor")],
+    ])
+
+
+_PANELS = {
+    "status": fmt_status,
+    "pnl": fmt_pnl,
+    "history": fmt_history,
+    "doctor": fmt_doctor,
+}
+
+
+async def render_panel(kind: str):
+    """Готовый ответ панели (текст, клавиатура) или (None, None) при сбое."""
+    if kind == "refresh":
+        kind = "status"
+    elif kind.startswith("refresh:"):
+        kind = kind.split(":", 1)[1]
+    fn = _PANELS.get(kind)
+    if fn is None:
+        return None, None
+    try:
+        return fn(await fetch_state()), nav_kb(kind)
+    except Exception:  # noqa: BLE001 — сеть легла: ответит вызыватель
+        return None, None
 
 
 def fmt_wallets_page(wallets, page=1, built_at=None):
@@ -420,22 +455,26 @@ async def main():
         text = (m.text or "").strip()
         if text == "/status":
             try:
-                await m.answer(fmt_status(await fetch_state()), parse_mode=ParseMode.HTML)
+                await m.answer(fmt_status(await fetch_state()), parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("status"))
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить состояние фермы.", parse_mode=ParseMode.HTML)
         elif text == "/pnl":
             try:
-                await m.answer(fmt_pnl(await fetch_state()), parse_mode=ParseMode.HTML)
+                await m.answer(fmt_pnl(await fetch_state()), parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("pnl"))
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить PnL.", parse_mode=ParseMode.HTML)
         elif text == "/history":
             try:
-                await m.answer(fmt_history(await fetch_state()), parse_mode=ParseMode.HTML)
+                await m.answer(fmt_history(await fetch_state()), parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("history"))
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить историю.", parse_mode=ParseMode.HTML)
         elif text == "/doctor":
             try:
-                await m.answer(fmt_doctor(await fetch_state()), parse_mode=ParseMode.HTML)
+                await m.answer(fmt_doctor(await fetch_state()), parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("doctor"))
             except Exception:  # noqa: BLE001
                 await m.answer("⚠️ Не удалось получить диагностику.", parse_mode=ParseMode.HTML)
         elif text == "/wallets":
@@ -463,6 +502,19 @@ async def main():
     async def on_cb(cb) -> None:
         if not allowed(cb.from_user.id if cb.from_user else None):
             await cb.answer(DENY_MSG, show_alert=True)
+            return
+        if cb.data and cb.data.startswith("pg:"):
+            kind = cb.data.split(":", 1)[1]
+            text, kb = await render_panel(kind)
+            if text is None:
+                await cb.answer("Не удалось обновить", show_alert=True)
+                return
+            try:
+                await cb.message.edit_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+            except Exception:  # noqa: BLE001 — тот же текст: нечего обновлять
+                await cb.answer("Уже свежо")
+                return
+            await cb.answer()
             return
         if not cb.data or not cb.data.startswith("wl:"):
             return

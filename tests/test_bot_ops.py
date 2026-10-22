@@ -13,6 +13,20 @@ from portal import bot_ops as ops
 
 
 class TestParseHelpers(unittest.TestCase):
+    def test_ref_bounds_match_docs(self):
+        """Границы в /ref, на сайте и в доке — одни и те же цифры.
+
+        Три витрины одного набора ограничений: разъехались — правим все три.
+        """
+        root = Path(__file__).resolve().parent.parent
+        demo = (root / "docs" / "demo.html").read_text(encoding="utf-8")
+        doc = (root / "DOCUMENTATION.md").read_text(encoding="utf-8")
+        for token in ("50000", "0.05", "1..1000", "99999", "7 дней"):
+            with self.subTest(token=token):
+                self.assertIn(token, ops.REF_TEXT)
+                self.assertIn(token, demo)
+                self.assertIn(token, doc)
+
     def test_parse_count(self):
         self.assertEqual(ops.parse_count("50"), 50)
         for bad in ["", "xx", "0", "-1", "5001", "1.5", None]:

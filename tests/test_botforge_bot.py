@@ -255,6 +255,34 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("ферма молчит", bot.fmt_status(stale))
         self.assertIn("ферма молчит", bot.fmt_doctor(stale))
 
+    def test_nav_kb_buttons(self):
+        kb = bot.nav_kb("pnl")
+        cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("pg:refresh:pnl", cbs)
+        self.assertIn("pg:status", cbs)
+        self.assertIn("pg:pnl", cbs)
+        self.assertIn("pg:history", cbs)
+        self.assertIn("pg:doctor", cbs)
+
+    def test_render_panel(self):
+        import asyncio
+        from unittest import mock
+
+        state = {"running": True, "wallet_count": 1, "health_factor": 1.0,
+                 "pool": {"actions": 1, "errors": 0, "processed": 1, "cycles": 1},
+                 "updated_at": "2026-01-01 10:00"}
+        with mock.patch.object(bot, "fetch_state", new=mock.AsyncMock(return_value=state)):
+            text, kb = asyncio.run(bot.render_panel("pnl"))
+            self.assertIn("PnL", text)
+            self.assertIsNotNone(kb)
+            text, _ = asyncio.run(bot.render_panel("refresh:doctor"))
+            self.assertIn("диагностика", text.lower())
+            text, _ = asyncio.run(bot.render_panel("refresh"))
+            self.assertIn("harvest", text)
+            self.assertEqual((None, None), asyncio.run(bot.render_panel("nope")))
+        with mock.patch.object(bot, "fetch_state", new=mock.AsyncMock(side_effect=RuntimeError("down"))):
+            self.assertEqual((None, None), asyncio.run(bot.render_panel("status")))
+
     def test_fmt_pnl(self):
         # без блока pnl в state.json
         self.assertIn("PnL пока нет", bot.fmt_pnl({}))
