@@ -96,21 +96,24 @@ def main() -> int:
     # адреса кошельков в публичную ветку не идут.
     check("field.js: no explorer address link", "/address/" not in field_js)
 
-    # Деплой-архив бота детерминированный (фиксированные метки записей):
-    # сравниваем байты пересборки, а не mtime — mtime на свежем клоне
-    # зависит от порядка распаковки файлов и ложно краснеет.
+    # Деплой-архив бота детерминированный, но байты zip зависят от zlib
+    # тулчейна (3.12 vs 3.14 дают разный deflate): сравниваем СОДЕРЖИМОЕ
+    # записей, а не архив целиком и не mtime (mtime на свежем клоне врёт).
+    import tempfile as _tf
+    import zipfile as _zf
+    from pathlib import Path as _P
     zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
     zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]
     if os.path.exists(zipp) and all(os.path.exists(p) for p in zsrc):
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         try:
             from build_botforge_zip import build as _zb
-            import tempfile as _tf
-            from pathlib import Path as _P
             with _tf.TemporaryDirectory() as _td:
                 _tmp = os.path.join(_td, "harvest-botforge.zip")
                 _zb(_P(_tmp))
-                _same = open(_tmp, "rb").read() == open(zipp, "rb").read()
+                with _zf.ZipFile(_tmp) as _a, _zf.ZipFile(zipp) as _b:
+                    _same = ({n: _a.read(n) for n in _a.namelist()} ==
+                             {n: _b.read(n) for n in _b.namelist()})
             check("botforge zip matches sources", _same, "")
         except Exception as e:  # noqa: BLE001 — сборка не должна ронять проверку
             check("botforge zip matches sources", False, f"rebuild failed: {e}")

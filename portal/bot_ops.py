@@ -24,7 +24,7 @@ from portal.networks import NETWORKS
 
 try:
     from core.version import VERSION as _VERSION
-except Exception:  # noqa: BLE001 — урезанное окружение без core
+except Exception:  # pragma: no cover — урезанное окружение без core (BLE001 не в ruff-select CI)
     _VERSION = "2.4.1"
 _FOOT = f"ssrjkk · t.me/ssrjkk_bot · MIT · v{_VERSION}"
 
