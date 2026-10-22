@@ -64,6 +64,9 @@ nav.main a:hover{border-color:var(--ink)}
 }
 @media(max-width:480px){
   .brand-ver,.topbar .live{display:none}
+  /* Вторая половина hero-titlebar дублирует тикер — на телефоне прячем,
+     остаётся одна строка вместо трёх. */
+  .hero .titlebar span:last-child{display:none}
   .brand-name{font-size:18px}
   .seg button{padding:8px 8px}
   .topbar-in{gap:8px}
@@ -100,6 +103,10 @@ h1 em{font-style:normal;color:var(--gold)}
 .stat-table td,.stat-table th{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left}
 .stat-table tr:last-child td{border-bottom:0}
 .stat-table th{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--ink);font-weight:700}
+/* Шапка таблицы в hero: явные фирменные цвета. Без этого th наследует
+   --bg/--ink, которые переопределяет поздний terminal.css :root, —
+   и шапка выходит светлой на светлом. */
+.hero .stat-table th{background:var(--gold);color:var(--gold-ink)}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .terminal{border:2px solid var(--ink);background:#0D0B06;color:#D8D2BE;overflow:hidden;box-shadow:5px 5px 0 var(--line2)}
 .terminal-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:2px solid var(--gold);font-family:var(--mono);font-size:12px;color:#9A8F73}

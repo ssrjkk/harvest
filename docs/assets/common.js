@@ -31,6 +31,7 @@ th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_net_cfg:"Network",f_tes
 cta_live:"Live field",cta_demo:"Demo zone",
 hero_note:"The field reads state.json published by the farm. The rest is fully static: demo keys never leave your browser. Testnets only.",
 contacts:"Author:",
+hg_t:"Farm in numbers",hg_nets:"Networks",hg_tests:"Tests",hg_themes:"Themes / langs",hg_faucet:"Faucet",hg_term:"Up in 3 commands",
 sl_h:"Field — live farm state",sl_sub:"Metrics are published by publish_dash.py from the farm machine into the gh-pages branch. The site re-reads state.json every minute (60 s); the publisher runs on its own schedule — every 30 min by default (HarvestDashPublish task, 15–60 min allowed). If nothing was published yet, the site still fully works — data appears on its own.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
 fe_t:"Farm is stopped. Run",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
