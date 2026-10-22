@@ -96,27 +96,29 @@ def main() -> int:
     # адреса кошельков в публичную ветку не идут.
     check("field.js: no explorer address link", "/address/" not in field_js)
 
-    # Деплой-архив бота детерминированный, но байты zip зависят от zlib
-    # тулчейна (3.12 vs 3.14 дают разный deflate): сравниваем СОДЕРЖИМОЕ
-    # записей, а не архив целиком и не mtime (mtime на свежем клоне врёт).
-    import tempfile as _tf
+    # Архив бота обязан содержать свежие исходники. Сравниваем байты
+    # записей в zip с файлами worktree напрямую — без пересборки: deflate
+    # зависит от zlib тулчейна, а mtime на свежем клоне врёт.
     import zipfile as _zf
-    from pathlib import Path as _P
     zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
-    zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]
-    if os.path.exists(zipp) and all(os.path.exists(p) for p in zsrc):
+    if os.path.exists(zipp):
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         try:
-            from build_botforge_zip import build as _zb
-            with _tf.TemporaryDirectory() as _td:
-                _tmp = os.path.join(_td, "harvest-botforge.zip")
-                _zb(_P(_tmp))
-                with _zf.ZipFile(_tmp) as _a, _zf.ZipFile(zipp) as _b:
-                    _same = ({n: _a.read(n) for n in _a.namelist()} ==
-                             {n: _b.read(n) for n in _b.namelist()})
-            check("botforge zip matches sources", _same, "")
-        except Exception as e:  # noqa: BLE001 — сборка не должна ронять проверку
-            check("botforge zip matches sources", False, f"rebuild failed: {e}")
+            from build_botforge_zip import SOURCES as _srcs
+            with _zf.ZipFile(zipp) as _z:
+                _archived = {n: _z.read(n) for n in _z.namelist()}
+            _expected = {}
+            for _src_name, _arc_name in _srcs:
+                _p = os.path.join(ROOT, "botforge", _src_name)
+                _expected[_arc_name] = open(_p, "rb").read() if os.path.exists(_p) else None
+            _same = _archived == _expected
+            _detail = "" if _same else (
+                "missing=" + str(sorted(set(_expected) - set(_archived))) +
+                " extra=" + str(sorted(set(_archived) - set(_expected))) +
+                " stale=" + str(sorted(k for k in _expected if k in _archived and _archived[k] != _expected[k])))
+            check("botforge zip matches sources", _same, _detail)
+        except Exception as e:  # noqa: BLE001 — проверка не должна ронять verify
+            check("botforge zip matches sources", False, f"read failed: {e}")
 
     # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
     # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).

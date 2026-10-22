@@ -38,7 +38,7 @@ jobs:
       - name: Install deps
         run: |
           pip install --upgrade pip
-          pip install -r requirements-dev.txt
+          pip install -r requirements.txt -r requirements-dev.txt
           pip install "playwright==1.60.0" "pillow==13.0.0"
           python -m playwright install chromium --only-shell
 
