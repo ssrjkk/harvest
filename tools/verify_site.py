@@ -104,13 +104,13 @@ def main() -> int:
     if os.path.exists(zipp):
         sys.path.insert(0, os.path.join(ROOT, "tools"))
         try:
-            from build_botforge_zip import SOURCES as _srcs
+            from build_botforge_zip import SOURCES as _srcs, _canonical as _canon
             with _zf.ZipFile(zipp) as _z:
-                _archived = {n: _z.read(n) for n in _z.namelist()}
+                _archived = {n: _canon(_z.read(n)) for n in _z.namelist()}
             _expected = {}
             for _src_name, _arc_name in _srcs:
                 _p = os.path.join(ROOT, "botforge", _src_name)
-                _expected[_arc_name] = open(_p, "rb").read() if os.path.exists(_p) else None
+                _expected[_arc_name] = _canon(open(_p, "rb").read()) if os.path.exists(_p) else None
             _same = _archived == _expected
             _detail = "" if _same else (
                 "missing=" + str(sorted(set(_expected) - set(_archived))) +

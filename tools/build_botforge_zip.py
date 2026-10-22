@@ -40,6 +40,16 @@ SOURCES: tuple[tuple[str, str], ...] = (
 FIXED_TIME = (2024, 1, 1, 0, 0, 0)
 
 
+def _canonical(data: bytes) -> bytes:
+    """Канонический вид записи: LF вместо CRLF/CR.
+
+    Репозиторий ездят между Windows и Linux, а checkout умеет
+    нормализовывать окончания строк. Архив должен зависеть только
+    от содержимого, иначе проверка свежести ложно краснеет.
+    """
+    return data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
 def build(zip_path: Path = ZIP_PATH) -> list[str]:
     """Пересобирает архив. Возвращает список записей."""
     entries: list[tuple[str, bytes]] = []
@@ -47,7 +57,7 @@ def build(zip_path: Path = ZIP_PATH) -> list[str]:
         src = BFDIR / src_name
         if not src.exists():
             raise FileNotFoundError(f"нет исходника: {src}")
-        entries.append((arc_name, src.read_bytes()))
+        entries.append((arc_name, _canonical(src.read_bytes())))
 
     tmp = zip_path.with_suffix(".zip.tmp")
     with zipfile.ZipFile(tmp, "w", compression=zipfile.ZIP_DEFLATED) as zf:

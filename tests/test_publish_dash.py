@@ -367,11 +367,13 @@ class TestBotforgeZip(unittest.TestCase):
             names = bz.build(zpath)
             self.assertEqual(names, ["main.py", "bot.py", "requirements.txt", "README.md"])
             with zipfile.ZipFile(zpath) as zf:
-                bot = (bz.BFDIR / "bot.py").read_bytes()
+                bot = bz._canonical((bz.BFDIR / "bot.py").read_bytes())
                 self.assertEqual(zf.read("main.py"), bot)
                 self.assertEqual(zf.read("bot.py"), bot)
-                self.assertEqual(zf.read("requirements.txt"), (bz.BFDIR / "requirements.txt").read_bytes())
-                self.assertEqual(zf.read("README.md"), (bz.BFDIR / "README.md").read_bytes())
+                for arc, src in (("requirements.txt", "requirements.txt"),
+                                  ("README.md", "README.md")):
+                    self.assertEqual(
+                        zf.read(arc), bz._canonical((bz.BFDIR / src).read_bytes()))
 
     def test_build_is_deterministic(self):
         from tools import build_botforge_zip as bz
