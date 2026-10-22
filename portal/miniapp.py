@@ -261,8 +261,11 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
     async def app_page(request: web.Request) -> web.Response:
         from pathlib import Path as _Path
 
+        from portal import substitute_version
+
         page = _Path(__file__).parent / "static" / "miniapp" / "app.html"
-        return web.Response(text=page.read_text(encoding="utf-8"), content_type="text/html")
+        return web.Response(text=substitute_version(page.read_text(encoding="utf-8")),
+                            content_type="text/html")
 
     async def api_state(request: web.Request) -> web.Response:
         ctx = await _auth(request)
@@ -629,6 +632,8 @@ def register_miniapp(app: web.Application, *, cfg_key, daemon_key) -> None:
         return web.json_response({"ok": True, **daemon.run_state()})
 
     app.router.add_get("/app/", app_page)
+    # Сырой /static-вариант иначе обошёл бы подстановку версии.
+    app.router.add_get("/static/miniapp/app.html", app_page)
     app.router.add_get("/api/miniapp/state", api_state)
     app.router.add_get("/api/miniapp/history", api_history)
     app.router.add_get("/api/miniapp/scheduler", api_scheduler)

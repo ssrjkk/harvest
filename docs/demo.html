@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Демо — harvest</title>
-<meta name="description" content="Демо-зона harvest: конструктор конфига и команд, генератор кошельков, симулятор, проверка YAML. Всё в браузере.">
+<meta name="description" content="Демо-зона harvest: конструктор конфига и команд, генератор кошельков, симулятор и проверка YAML. Всё считается в браузере.">
 <meta name="theme-color" content="#14110A">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Демо — harvest">
-<meta property="og:description" content="Демо-зона harvest: конструктор конфига и команд, генератор кошельков, симулятор, проверка YAML. Всё в браузере.">
+<meta property="og:description" content="Демо-зона harvest: конструктор конфига и команд, генератор кошельков, симулятор и проверка YAML. Всё считается в браузере.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
 <meta property="og:url" content="https://ssrjkk.github.io/harvest/demo.html">
 <meta name="twitter:card" content="summary_large_image">
@@ -22,7 +22,6 @@
 try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
-<link rel="stylesheet" href="assets/terminal.css">
 <noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
 </head>
 <body class="is-loading">
@@ -30,9 +29,9 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
 <header class="topbar">
   <div class="titlebar">
-    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
     <span style="display:flex;gap:8px;align-items:center">
-      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
       <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
       <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss">◐</button>
       <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
@@ -47,19 +46,19 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 </header>
 <div class="nav-scrim" id="navScrim" hidden></div>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- 05 APP -->
 <section class="block" data-reveal id="app">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">05</span><h2 data-i18n="s4_h">Пользоваться здесь — демо-зона</h2></div>
-    <p class="sec-sub" data-i18n="s4_sub">Два режима: «Новичок» проведёт за руку за 3 шага, «Про» даст все ручки и справочник параметров. Всё выполняется локально в вашем браузере, без сервера. Ончейн-исполнение остаётся за Python-фермером.</p>
+    <div class="sec-head"><span class="sec-no">05</span><h2 data-i18n="s4_h">Демо — попробовать без фермы</h2></div>
+    <p class="sec-sub" data-i18n="s4_sub">Два режима: «Новичок» — три шага без терминала, «Про» — конструкторы, генератор, симулятор и справочник. Сайт статический: всё считается в браузере, сервера нет.</p>
     <div class="toolbar" style="margin-bottom:14px">
-      <div class="seg" role="group" aria-label="Режим">
+      <div class="seg" role="group" data-i18n-aria="aria_mode" aria-label="Режим">
         <button id="modeNew" class="on" type="button" data-i18n="mode_new">Новичок</button><button id="modePro" type="button" data-i18n="mode_pro">Про</button>
       </div>
-      <span class="note" data-i18n="mode_hint">Новичок — 3 шага простыми словами. Про — конструкторы, симулятор и справочник.</span>
+      <span class="note" data-i18n="mode_hint">Новичок — три шага простыми словами. Про — конструкторы, симулятор и справочник.</span>
     </div>
 
     <div id="newView">
@@ -71,11 +70,11 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
       <div class="wstep" id="w1">
         <p class="wtitle" data-i18n="w_q1">Что будем фармить?</p>
-        <p class="note" data-i18n="w_q1s">Фарм — это автоматические учебные транзакции в тестовой сети. Деньги ненастоящие, всё бесплатно и безопасно.</p>
+        <p class="note" data-i18n="w_q1s">Фарм здесь — учебные транзакции в тестовой сети. Деньги ненастоящие, ничего не стоит.</p>
         <div class="optgrid">
-          <button class="opt sel" data-net="vibevibe" type="button"><b>vibe/vibe</b><span class="meta">chain 46630 · ETH</span><span class="odesc" data-i18n="wd_v">Токены и запуски. Лучший выбор для старта.</span><span class="pill ok" data-i18n="w_rec">рекомендуем</span></button>
+          <button class="opt sel" data-net="vibevibe" type="button"><b>vibe/vibe</b><span class="meta">chain 46630 · ETH</span><span class="odesc" data-i18n="wd_v">Токены и запуски. Обычно с неё и начинают.</span><span class="pill ok" data-i18n="w_rec">спокойный старт</span></button>
           <button class="opt" data-net="robinhood" type="button"><b>Robinhood Chain</b><span class="meta">chain 46630 · ETH</span><span class="odesc" data-i18n="wd_r">Основная тестовая сеть: переводы и обмены.</span></button>
-          <button class="opt" data-net="arc" type="button"><b>Arc (Minara)</b><span class="meta">chain 5042002 · ARC</span><span class="odesc" data-i18n="wd_a">Запуски токенов и торговля. Поживее и побыстрее.</span></button>
+          <button class="opt" data-net="arc" type="button"><b>Arc (Minara)</b><span class="meta">chain 5042002 · ARC</span><span class="odesc" data-i18n="wd_a">Запуски токенов и торговля. Активнее, больше событий в логе.</span></button>
           <button class="opt" data-net="flop" type="button"><b>Flop Labs</b><span class="meta">chain 99999 · FLOP</span><span class="odesc" data-i18n="wd_f">Вычисления и стейкинг. Сеть-заглушка для опытов.</span></button>
         </div>
       </div>
@@ -120,7 +119,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
     </div>
 
     <div class="play" id="proView" hidden>
-      <div class="play-tabs" role="tablist" aria-label="Pro tabs">
+      <div class="play-tabs" role="tablist" data-i18n-aria="aria_protabs" aria-label="Pro tabs">
         <button class="on" id="tabbtn-config" data-tab="t-config" type="button" role="tab" aria-selected="true" aria-controls="t-config" data-i18n="tab1">1 · Конфиг</button>
         <button data-tab="t-cmd" id="tabbtn-cmd" type="button" role="tab" aria-selected="false" aria-controls="t-cmd" tabindex="-1" data-i18n="tab2">2 · Команда</button>
         <button data-tab="t-wallet" id="tabbtn-wallet" type="button" role="tab" aria-selected="false" aria-controls="t-wallet" tabindex="-1" data-i18n="tab3">3 · Кошельки</button>
@@ -152,14 +151,15 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
             <div class="field"><label for="cfgActions" data-i18n="f_actions">Действий за цикл [min, max]</label><input type="text" id="cfgActions" value="[3, 8]"></div>
             <div class="field"><label for="cfgGas" data-i18n="f_gas">gas_limit / min_gas_for_action</label><input type="text" id="cfgGas" value="100000 / 0.003"></div>
           </div>
-          <div class="field"><label data-i18n="preset_h">Профиль человечности (секция behavior в YAML)</label>
-            <div class="seg" id="cfgPreset"><button data-p="stealth" class="on" type="button">Stealth</button><button data-p="balanced" type="button">Balanced</button><button data-p="degen" type="button">Degen</button></div></div>
+          <div class="field"><label data-i18n="preset_h">Характер кошелька (секция behavior в YAML)</label>
+            <div class="seg" id="cfgPreset"><button data-p="stealth" class="on" type="button" data-i18n="preset_stealth">Тихий</button><button data-p="balanced" type="button" data-i18n="preset_balanced">Ровный</button><button data-p="degen" type="button" data-i18n="preset_degen">Живой</button></div>
+            <p class="note" data-i18n="preset_note">Меняет только behavior: паузы, активность, разброс сумм. На команду запуска не влияет.</p></div>
           <div class="toolbar">
             <button class="btn accent" id="cfgGen" type="button" data-i18n="gen_cfg">Сгенерировать YAML</button>
             <button class="btn" id="cfgDl" type="button" data-i18n="dl">Скачать файл</button>
             <button class="btn" id="cfgCopy" type="button" data-i18n="copy">копировать</button>
           </div>
-<pre class="code" id="cfgOut"># нажмите «Сгенерировать YAML»</pre>
+<pre class="code" id="cfgOut" data-empty="1"># нажмите «Сгенерировать YAML»</pre>
         </div>
 
         <div id="t-cmd" hidden role="tabpanel" aria-labelledby="tabbtn-cmd">
@@ -175,9 +175,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
               <label class="check"><input type="checkbox" id="cmdFast"> <span><code class="inline">--fast</code> — <span data-i18n="o_fast">минимальные задержки</span></span></label>
               <label class="check"><input type="checkbox" id="cmdDry"> <span><code class="inline">--dry-run</code> — <span data-i18n="o_dry">холостой прогон</span></span></label>
               <label class="check"><input type="checkbox" id="cmdEnc"> <span><code class="inline">--encrypt</code> — <span data-i18n="o_enc">зашифровать экспорт</span></span></label>
-              <div class="field"><label data-i18n="preset_h">Профиль человечности (секция behavior в YAML)</label>
-                <div class="seg" id="cmdPreset"><button data-p="stealth" type="button">Stealth</button><button data-p="balanced" class="on" type="button">Balanced</button><button data-p="degen" type="button">Degen (= --fast)</button></div></div>
-              <div class="field" style="margin-top:12px"><label for="cmdSched">--schedule (часов, пусто — разовый прогон)</label><input type="text" id="cmdSched" value="" placeholder="6"></div>
+              <div class="field" style="margin-top:12px"><label for="cmdSched" data-i18n="cmd_sched">--schedule (часов, пусто — разовый прогон)</label><input type="text" id="cmdSched" value="" placeholder="6"></div>
             </div>
             <div>
               <div class="label" data-i18n="cmd_out">Готовая команда</div>
@@ -186,14 +184,14 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
                 <button class="btn accent" id="cmdBuild" type="button" data-i18n="build">Собрать</button>
                 <button class="btn" id="cmdCopy" type="button" data-i18n="copy">копировать</button>
               </div>
-              <div class="label" data-i18n="cmd_sim">Пояснение фаз</div>
-              <p class="note" data-i18n="cmd_sim_p">Команда выполняет 4 фазы run_once: добор кошельков → pre-flight крана и request_batch → FarmerPool (чанки, воркеры, crash recovery) → export_csv/json. Повтор запуска продолжает state.json с места обрыва.</p>
+              <div class="label" data-i18n="cmd_sim">Что произойдёт</div>
+              <p class="note" data-i18n="cmd_sim_p">Команда пройдёт четыре фазы: добор кошельков → проверка крана и запрос монет → пул фарма с чанками и восстановлением → экспорт CSV/JSON. Повторный запуск продолжит state.json с места обрыва.</p>
             </div>
           </div>
         </div>
 
         <div id="t-wallet" hidden role="tabpanel" aria-labelledby="tabbtn-wallet">
-          <p class="note" data-i18n="w_warn">Тестнеты only. Генерация — WebCrypto; адрес выводится из ключа локально (ethers через CDN, при офлайне — демо-режим с честной пометкой). Ничего не отправляется в сеть.</p>
+          <p class="note" data-i18n="w_warn">Только тестнеты. Ключи считаются в браузере и никуда не отправляются. При первом нажатии «Сгенерировать» страница загрузит ethers с esm.sh — это единственный внешний запрос демо-зоны. Без сети включится честный демо-режим с пометкой.</p>
           <div class="row">
             <div class="field"><label for="wCount" data-i18n="w_n">Сколько сгенерировать</label><input type="number" id="wCount" value="5" min="1" max="200"></div>
             <div class="field"><label for="wEngine">Engine</label><input type="text" id="wEngine" value="…" readonly></div>
@@ -239,7 +237,7 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
           <div class="grid2">
             <div>
               <div class="label" data-i18n="v_h">Вставьте YAML конфига — проверка как в config_validate.py</div>
-              <div class="field"><textarea id="vText" aria-label="YAML конфига для проверки" spellcheck="false">network:
+              <div class="field"><textarea id="vText" data-i18n-aria="aria_vtext" aria-label="YAML конфига для проверки" spellcheck="false">network:
   rpc_url: https://rpc.testnet.chain.robinhood.com
   chain_id: 46630
 wallets:
@@ -280,37 +278,37 @@ advanced:
           <p class="note" data-i18n="r_cfg_s">Нарушение границ = отказ валидатора и SystemExit(1). Заглушки 0x0 и chain 99999 — не ошибки, а замечания: transfers работают, контрактное пропускается.</p>
           <div class="table-wrap"><table class="t">
             <tr><th data-i18n="r_f">Поле</th><th data-i18n="r_b">Границы</th><th data-i18n="r_d">По умолчанию / что делает</th></tr>
-            <tr><td class="mono">network.rpc_url</td><td>https URL или список; http — только 127.0.0.1/localhost/::1</td><td data-i18n="rd_rpc">Мульти-RPC: монитор каждые 30 с выбирает лучшую живую ноду</td></tr>
-            <tr><td class="mono">network.chain_id</td><td class="num">≥ 1; 99999 = маркер-заглушка</td><td>Robinhood/vibe 46630 · Arc 5042002</td></tr>
+            <tr><td class="mono">network.rpc_url</td><td data-i18n="rd_rpc_b">https URL или список; http — только 127.0.0.1/localhost/::1</td><td data-i18n="rd_rpc">Мульти-RPC: монитор каждые 30 с выбирает лучшую живую ноду</td></tr>
+            <tr><td class="mono">network.chain_id</td><td class="num" data-i18n="rd_chain_b">≥ 1; 99999 = маркер-заглушка</td><td data-i18n="rd_chain_d">Robinhood/vibe 46630 · Arc 5042002</td></tr>
             <tr><td class="mono">wallets.count</td><td class="num">≥ 0</td><td data-i18n="rd_w">Сколько добрать при generate_if_missing; 0 в --wallets = взять из конфига</td></tr>
-            <tr><td class="mono">faucet.min_balance → target_balance</td><td>min ≤ target</td><td class="num">ensure_balance докупает до target · vibe/robinhood 0.005→0.05 · flop/arc 0.01→0.1 · simple 0.003→0.015</td></tr>
-            <tr><td class="mono">faucet.retries / max_concurrent</td><td class="num">1..20 / 1..64</td><td class="num">2 · пачка крана --batch 50, пауза 3 с</td></tr>
-            <tr><td class="mono">actions[].type / weight</td><td>тип из набора; weight ≥ 0</td><td data-i18n="rd_aw">transfer, vibevibe_*, flop_*, arc_*. Нулевой вес = действие отключено</td></tr>
-            <tr><td class="mono">transfer.target</td><td>адрес или random_wallet</td><td data-i18n="rd_tt">Обязателен для transfer. Случайный — из пула своих кошельков</td></tr>
-            <tr><td class="mono">contract.action contract/method</td><td>0x-адрес + имя метода; 0x0…0 = заглушка</td><td data-i18n="rd_cm">Заглушка = тихий фолбэк на transfer, buy/sell без signer_key пропускаются адаптивными весами</td></tr>
-            <tr><td class="mono">actions min/max_amount</td><td class="num">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений против сибил-фильтров</td></tr>
-            <tr><td class="mono">farming.actions_per_cycle</td><td>[min, max], min ≤ max</td><td class="num">[3,8] vibe/robinhood · [5,15] flop · [5,12] arc · [2,4] simple</td></tr>
-            <tr><td class="mono">farming.delay_between_*</td><td>[min, max] секунд</td><td data-i18n="rd_del">Паузы умножаются на профильные delay_*_scale кошелька</td></tr>
-            <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
-            <tr><td class="mono">advanced.gas_limit</td><td class="num">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num">300000 robinhood/flop · 200000 arc · 100000 vibe · 21000 simple</td></tr>
-            <tr><td class="mono">advanced.min_gas_for_action</td><td class="num">≥ 0</td><td class="num">0.003 · ниже — действие пропускается</td></tr>
-            <tr><td class="mono">advanced.receipt_timeout</td><td class="num">секунды</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
-            <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num">20 vibe/robinhood · 30 flop/arc · 24 simple; пусто = авто min(max(20,cpu·2),128)</td></tr>
+            <tr><td class="mono">faucet.min_balance → target_balance</td><td data-i18n="rd_fbal_b">min ≤ target</td><td class="num" data-i18n="rd_fbal_d">ensure_balance докупает до target · vibe/robinhood 0.005→0.05 · flop/arc 0.01→0.1 · simple 0.003→0.015</td></tr>
+            <tr><td class="mono">faucet.retries / max_concurrent</td><td class="num" data-i18n="rd_fret_b">1..20 / 1..64</td><td class="num" data-i18n="rd_fret_d">2 · пачка крана --batch 50, пауза 3 с</td></tr>
+            <tr><td class="mono">actions[].type / weight</td><td data-i18n="rd_act_b">тип из набора; weight ≥ 0</td><td data-i18n="rd_aw">transfer, vibevibe_*, flop_*, arc_*. Нулевой вес = действие отключено</td></tr>
+            <tr><td class="mono">transfer.target</td><td data-i18n="rd_tt_b">адрес или random_wallet</td><td data-i18n="rd_tt">Обязателен для transfer. Случайный — из пула своих кошельков</td></tr>
+            <tr><td class="mono">contract.action contract/method</td><td data-i18n="rd_cm_b">0x-адрес + имя метода; 0x0…0 = заглушка</td><td data-i18n="rd_cm">Заглушка = тихий фолбэк на transfer, buy/sell без signer_key пропускаются адаптивными весами</td></tr>
+            <tr><td class="mono">actions min/max_amount</td><td class="num" data-i18n="rd_amt_b">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений против сибил-фильтров</td></tr>
+            <tr><td class="mono">farming.actions_per_cycle</td><td data-i18n="rd_apc_b">[min, max], min ≤ max</td><td class="num" data-i18n="rd_apc_d">[3,8] vibe/robinhood · [5,15] flop · [5,12] arc · [2,4] simple</td></tr>
+            <tr><td class="mono">farming.delay_between_*</td><td data-i18n="rd_del_b">[min, max] секунд</td><td data-i18n="rd_del">Паузы умножаются на профильные delay_*_scale кошелька</td></tr>
+            <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num" data-i18n="rd_skip_d">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
+            <tr><td class="mono">advanced.gas_limit</td><td class="num" data-i18n="rd_gas_b">≥ 1; ≥ 50000 при реальных контрактах</td><td class="num" data-i18n="rd_gas_d">300000 robinhood/flop · 200000 arc · 100000 vibe · 21000 simple</td></tr>
+            <tr><td class="mono">advanced.min_gas_for_action</td><td class="num">≥ 0</td><td class="num" data-i18n="rd_mgas_d">0.003 · ниже — действие пропускается</td></tr>
+            <tr><td class="mono">advanced.receipt_timeout</td><td class="num" data-i18n="rd_rc_b">секунды</td><td data-i18n="rd_rc">30 · по истечении wait_for_receipt = None без отката nonce; 3+ ошибки поллинга = failover ноды</td></tr>
+            <tr><td class="mono">threading.max_workers</td><td class="num">1..1000</td><td class="num" data-i18n="rd_workers_d">20 vibe/robinhood · 30 flop/arc · 24 simple; пусто = авто min(max(20,cpu·2),128)</td></tr>
             <tr><td class="mono">threading.rpc_threads / gen_workers / chunk_size</td><td class="num">1..256 / 1..32 / ≥ 1</td><td data-i18n="rd_th">Авто: max(4,min(workers·3,128)) · min(8,max(2,cpu)) · max(workers·4,100)</td></tr>
             <tr><td class="mono">cache.rpc_rate_limit / rpc_rate_floor</td><td class="num">1..10000 / 0.05..1</td><td data-i18n="rd_ca">Token-bucket на RPC; ставка плавает от здоровья нод, остаток переносится при смене ноды</td></tr>
-            <tr><td class="mono">database.path / master_key</td><td>без «..»; 64-hex ключ или файл</td><td data-i18n="rd_db">SQLite WAL по умолчанию; DSN postgres:// включает PostgreSQL. Нет ключа при шифрованных сидах = отказ</td></tr>
-            <tr><td class="mono">logging.level</td><td>имя уровня</td><td data-i18n="rd_log">Файл + консоль, ротация с ограничением прав, JSON-формат опционально</td></tr>
+            <tr><td class="mono">database.path / master_key</td><td data-i18n="rd_db_b">без «..»; 64-hex ключ или файл</td><td data-i18n="rd_db">SQLite WAL по умолчанию; DSN postgres:// включает PostgreSQL. Нет ключа при шифрованных сидах = отказ</td></tr>
+            <tr><td class="mono">logging.level</td><td data-i18n="rd_log_b">имя уровня</td><td data-i18n="rd_log">Файл + консоль, ротация с ограничением прав, JSON-формат опционально</td></tr>
           </table></div>
 
           <div class="label" style="margin-top:16px" data-i18n="r_env_h">ENV-переопределения фермера (FARMER_*)</div>
           <div class="table-wrap"><table class="t">
             <tr><th>env</th><th data-i18n="r_over">Перекрывает</th></tr>
             <tr><td class="mono">FARMER_RPC_URL</td><td data-i18n="re_rpc">network.rpc_url; список через «;» или запятую</td></tr>
-            <tr><td class="mono">FARMER_CHAIN_ID / FARMER_WALLET_COUNT</td><td>chain_id / wallets.count</td></tr>
-            <tr><td class="mono">FARMER_WORKERS / FARMER_RPC_THREADS / FARMER_GEN_WORKERS / FARMER_CHUNK_SIZE</td><td>threading.*</td></tr>
-            <tr><td class="mono">FARMER_FAUCET_MAX_CONCURRENT / FARMER_RPC_RATE / FARMER_RPC_RATE_FLOOR</td><td>faucet / cache</td></tr>
-            <tr><td class="mono">FARMER_MIN_BALANCE / FARMER_TARGET_BALANCE</td><td>faucet балансы</td></tr>
-            <tr><td class="mono">FARMER_LOG_LEVEL / FARMER_DB_PATH / FARMER_MASTER_KEY</td><td>логи / БД / ключ шифрования</td></tr>
+            <tr><td class="mono">FARMER_CHAIN_ID / FARMER_WALLET_COUNT</td><td data-i18n="re_chain">chain_id / wallets.count</td></tr>
+            <tr><td class="mono">FARMER_WORKERS / FARMER_RPC_THREADS / FARMER_GEN_WORKERS / FARMER_CHUNK_SIZE</td><td data-i18n="re_threads">threading.*</td></tr>
+            <tr><td class="mono">FARMER_FAUCET_MAX_CONCURRENT / FARMER_RPC_RATE / FARMER_RPC_RATE_FLOOR</td><td data-i18n="re_faucetc">faucet / cache</td></tr>
+            <tr><td class="mono">FARMER_MIN_BALANCE / FARMER_TARGET_BALANCE</td><td data-i18n="re_faucetbal">faucet балансы</td></tr>
+            <tr><td class="mono">FARMER_LOG_LEVEL / FARMER_DB_PATH / FARMER_MASTER_KEY</td><td data-i18n="re_logdb">логи / БД / ключ шифрования</td></tr>
             <tr><td class="mono">FARMER_VIBE_SIGNER_KEY / CHAINSTACK_API_KEY</td><td data-i18n="re_keys">EIP-712 подпись buy/sell · Bearer-ключ MCP-крана (без него chainstack-стратегия исключается на pre-flight)</td></tr>
             <tr><td class="mono">LICENSE_PASSWORD / FARMER_CONFIG</td><td data-i18n="re_misc">пароль лицензии (иначе getpass, 3 попытки) · путь к конфигу</td></tr>
           </table></div>
@@ -318,13 +316,13 @@ advanced:
           <div class="label" style="margin-top:16px" data-i18n="r_tim_h">Жёсткие тайминги ядра</div>
           <div class="table-wrap"><table class="t">
             <tr><th data-i18n="r_what">Механизм</th><th data-i18n="r_num">Числа</th></tr>
-            <tr><td data-i18n="rt1">RPC-ретраи с круговым failover</td><td class="num">3 попытки · классификация retryable по тексту ошибки</td></tr>
-            <tr><td data-i18n="rt2">EMA ноды / zombie / circuit breaker</td><td class="num">α 0.7/0.3 · смерть после 3 ошибок · breaker 5 ошибок / 30 с</td></tr>
-            <tr><td data-i18n="rt3">Монитор RPC / проба / супервизор</td><td class="num">30 с · пинг 2500 мс · рестарт с backoff 1с→30с</td></tr>
-            <tr><td data-i18n="rt4">BatchWriter</td><td class="num">flush 2 с / 500 строк · 3 сбоя подряд = дроп батча + cooldown 30 с</td></tr>
-            <tr><td data-i18n="rt5">Лицензия</td><td class="num">таймаут hub 8 с · тело ≤ 1 МБ · офлайн-grace 7 дней · кэш .license_cache</td></tr>
-            <tr><td data-i18n="rt6">Портал: сессии / логин / TG</td><td class="num">сессия 7 дней · логин 5/10 мин per-IP + 20/10 мин глобально · initData 16 КБ, окно 10 мин</td></tr>
-            <tr><td data-i18n="rt7">Планировщик / single-instance</td><td class="num">--schedule ≥ 0.05 ч · лок db_path.lock, один фарм на БД</td></tr>
+            <tr><td data-i18n="rt1">RPC-ретраи с круговым failover</td><td class="num" data-i18n="rt1_n">3 попытки · классификация retryable по тексту ошибки</td></tr>
+            <tr><td data-i18n="rt2">EMA ноды / zombie / circuit breaker</td><td class="num" data-i18n="rt2_n">α 0.7/0.3 · смерть после 3 ошибок · breaker 5 ошибок / 30 с</td></tr>
+            <tr><td data-i18n="rt3">Монитор RPC / проба / супервизор</td><td class="num" data-i18n="rt3_n">30 с · пинг 2500 мс · рестарт с backoff 1с→30с</td></tr>
+            <tr><td data-i18n="rt4">BatchWriter</td><td class="num" data-i18n="rt4_n">flush 2 с / 500 строк · 3 сбоя подряд = дроп батча + cooldown 30 с</td></tr>
+            <tr><td data-i18n="rt5">Лицензия</td><td class="num" data-i18n="rt5_n">таймаут hub 8 с · тело ≤ 1 МБ · офлайн-grace 7 дней · кэш .license_cache</td></tr>
+            <tr><td data-i18n="rt6">Портал: сессии / логин / TG</td><td class="num" data-i18n="rt6_n">сессия 7 дней · логин 5/10 мин per-IP + 20/10 мин глобально · initData 16 КБ, окно 10 мин</td></tr>
+            <tr><td data-i18n="rt7">Планировщик / single-instance</td><td class="num" data-i18n="rt7_n">--schedule ≥ 0.05 ч · лок db_path.lock, один фарм на БД</td></tr>
           </table></div>
           <p class="note" data-i18n="r_src">Источник истины — DOCUMENTATION.md (§2–§6) и код core/. Портальные env — в разделе «Портал и Telegram» выше.</p>
         </div>
@@ -336,9 +334,9 @@ advanced:
 
 <footer>
   <div class="wrap cols">
-    <div><b class="mono">harvest v2.4.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
     <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
-    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
 <div class="cmdk" id="cmdk">

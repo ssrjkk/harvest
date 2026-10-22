@@ -1,13 +1,17 @@
-﻿# harvest v2.3.0
+﻿# harvest v2.4.1
 
 [![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 **Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk
 
-Автоматический фермер тестнет-сетей (EVM): массовая генерация кошельков,
-получение токенов через краны, асинхронный фарминг транзакций по профилям
-«человеческого» поведения (анти-сибил), веб-портал с Telegram-ботом.
+harvest — инструмент для практики в EVM-тестнетах: создаёт кошельки,
+берёт тестовые монеты из кранов, делает транзакции и показывает, что
+получилось. Есть веб-портал и Telegram-бот, чтобы не держать всё в консоли.
+
+Только тестовые сети. Проект не обещает дроп, поинты или прибыль: тестнет
+может закрыться, правила могут поменяться, активность могут не засчитать.
+Это песочница для практики, а не способ заработать.
 
 Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив через
 PyInstaller) · [полная документация](DOCUMENTATION.md)
@@ -16,13 +20,13 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 
 ## Сайт
 
-Живой сайт проекта: **[ssrjkk.github.io/harvest](https://ssrjkk.github.io/harvest/)** —
-четыре страницы: «Главная» (обзор, сети, быстрый старт), «Поле» (метрики из
-`state.json`, PnL последнего прогона, кран, бот), «Демо» (режимы «Новичок» —
-мастер за 3 шага, и «Про» —
-конструктор конфига и команд, генератор кошельков, симулятор фарма, проверка
-конфига, справочник параметров), «Доки» (факты, архитектура, портал,
-безопасность, тесты, лицензия). Темы Paper/Ink/Field, языки RU/EN.
+Сайт проекта: **[ssrjkk.github.io/harvest](https://ssrjkk.github.io/harvest/)** —
+четыре страницы: «Главная» (зачем всё это, сети, спокойный быстрый старт),
+«Поле» (метрики из `state.json`, PnL последнего прогона, кран, бот),
+«Демо» (режимы «Новичок» — мастер за три шага, и «Про» — конструктор
+конфига и команд, генератор кошельков, симулятор фарма, проверка конфига,
+справочник параметров), «Доки» (архитектура, портал, безопасность, проверки,
+лицензия). Темы Paper/Ink/Moss, языки RU/EN.
 
 ## Screenshots
 
@@ -35,7 +39,7 @@ PyInstaller) · [полная документация](DOCUMENTATION.md)
 | ![harvest — мастер за 3 шага](docs/screenshots/shot-wizard.png) | ![harvest — справочник параметров](docs/screenshots/shot-pro.png) |
 
 Метрики поля публикует `python publish_dash.py` с машины фермы в
-изолированную ветку `gh-pages` (один amend-коммит, история `master`
+изолированную ветку `gh-pages` (один amend-коммит, история `main`
 не растёт): рядом со `state.json` публикуется шифрованный
 `wallets.enc.json` (AES-256-GCM, ключ `WALLETS_KEY` только в env) —
 облачный BotForge-бот читает кошельки оттуда без нового провайдера.
@@ -74,14 +78,14 @@ python auto.py --doctor        # самодиагностика
 python auto.py --config config.simple.yaml --wallets 200 --cycles 2
 ```
 
-vibe/vibe — permissionless token launchpad на Robinhood Chain testnet
-(5% сапплая для тестнет-участников). Контракты верифицированы в Blockscout,
-ABI — в `abi/vibevibe.json` (VibePassMarket, VibeLoungeRegistry, VibeShop,
-VibeItems, VibeFuelStaking, VibeFuelRewards). Реализован EIP-712 флоу
-`buy`/`sell` на VibePassMarket (подпись TradeIntent ключом `tradeSigner` из
-`vibevibe.signer_key` / env `FARMER_VIBE_SIGNER_KEY`) и `registerLounge`
-(только `REGISTRAR_ROLE` платформы). Без ключа подписи buy/sell пропускаются
-адаптивными весами; всегда работают `transfer` / `claimRewards` / `stake`:
+vibe/vibe — permissionless token launchpad на Robinhood Chain testnet.
+Контракты верифицированы в Blockscout, ABI — в `abi/vibevibe.json`
+(VibePassMarket, VibeLoungeRegistry, VibeShop, VibeItems, VibeFuelStaking,
+VibeFuelRewards). Реализован EIP-712 флоу `buy`/`sell` на VibePassMarket
+(подпись TradeIntent ключом `tradeSigner` из `vibevibe.signer_key` / env
+`FARMER_VIBE_SIGNER_KEY`) и `registerLounge` (только `REGISTRAR_ROLE`
+платформы). Без ключа подписи buy/sell пропускаются; всегда работают
+`transfer` / `claimRewards` / `stake`:
 
 ```powershell
 python auto.py --config config_vibevibe.yaml --wallets 50 --cycles 5
@@ -144,7 +148,7 @@ core/          — ядро: config, network (мульти-RPC/EMA/1559-фолл
                  pool/farmer/workpool, vibevibe (ABI), crypto, database,
                  web_gui (локальная FastAPI-панель)
 portal/        — aiohttp-портал + API + Telegram-бот + Mini App (+networks.py)
-tests/         — pytest-набор (57 файлов; test_load_opt.py — нагрузка, opt-in)
+tests/         — pytest-набор (test_load_opt.py — нагрузка, opt-in)
 docs/          — сайт: index.html (Главная), field.html (Поле), demo.html (Демо),
                  docs.html (Доки) + assets/ (CSS и common/field/demo JS),
                  sw.js, screenshots/ → ssrjkk.github.io/harvest
@@ -168,10 +172,10 @@ portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](D
 python -m pytest tests -q
 ```
 
-2034 теста, 67 файлов — полный зелёный прогон (включая контуры `wait_for_receipt`:
-EMA-бюджет поллинга, RPC-failover при серии ошибок, деградация частоты опроса,
-`None` по истечении бюджета без отката nonce, кросс-чек статуса на вторичной ноде).
-CI-гейты: 100% portal, 100% core.
+Полный прогон, включая контуры `wait_for_receipt`: EMA-бюджет поллинга,
+RPC-failover при серии ошибок, деградация частоты опроса, `None` по истечении
+бюджета без отката nonce, кросс-чек статуса на вторичной ноде. В CI также
+идут ruff, bandit и покрытие portal/core на 100%.
 
 Нагрузка — opt-in, в обычном CI пропускается:
 
@@ -195,18 +199,3 @@ $env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q
 - Репозиторий: [github.com/ssrjkk/harvest](https://github.com/ssrjkk/harvest)
 
 Лицензия — [MIT](LICENSE), Copyright © 2026 ssrjkk.
-
-
-## Installation
-
-```bash
-git clone https://github.com/ssrjkk/harvest.git
-cd harvest
-pip install -r requirements.txt
-```
-
-## Usage
-
-```bash
-python main.py
-```

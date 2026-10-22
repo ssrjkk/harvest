@@ -224,6 +224,14 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("RUN", bot.fmt_doctor(s))
         self.assertIn("История пуста", bot.fmt_history({}))
 
+    def test_fmt_health_unknown_shows_dash(self):
+        s = {"running": False, "wallet_count": 3, "health_factor": None,
+             "pool": {"actions": 0, "errors": 0, "processed": 0, "cycles": 0}}
+        self.assertIn("health: <b>—</b>", bot.fmt_status(s))
+        self.assertIn("health: —", bot.fmt_doctor(s))
+        self.assertIn("0.90", bot.fmt_status({**s, "health_factor": 0.9}))
+        self.assertIn("health: —", bot.fmt_doctor({**s, "health_factor": "xx"}))
+
     def test_fmt_pnl(self):
         # без блока pnl в state.json
         self.assertIn("PnL пока нет", bot.fmt_pnl({}))

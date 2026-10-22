@@ -8,10 +8,14 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DEFAULT = ROOT / "docs" / "assets" / "og.png"
+sys.path.insert(0, str(ROOT))
+
+from core.version import VERSION  # noqa: E402  (путь к корню добавлен выше)
 
 BG = (20, 17, 10)
 GOLD = (212, 167, 44)
@@ -23,8 +27,6 @@ GREEN = (95, 173, 86)
 def main() -> int:
     ap = argparse.ArgumentParser(description="Сгенерировать OG-картинку сайта.")
     ap.add_argument("--out", default=str(OUT_DEFAULT))
-    ap.add_argument("--wallets", type=int, default=3)
-    ap.add_argument("--cycles", type=int, default=5)
     args = ap.parse_args()
 
     from PIL import Image, ImageDraw, ImageFont
@@ -49,10 +51,10 @@ def main() -> int:
     # Золотая плашка слева + рамка.
     d.rectangle([0, 0, 26, H], fill=GOLD)
     d.rectangle([0, 0, W - 1, H - 1], outline=GOLD, width=4)
-    d.text((90, 90), "harvest v2.3.0", font=f_mono, fill=GOLD)
-    d.text((86, 170), "ФЕРМЕР", font=f_disp, fill=CREAM)
+    d.text((90, 90), f"harvest v{VERSION}", font=f_mono, fill=GOLD)
+    d.text((86, 170), "ФЕРМА", font=f_disp, fill=CREAM)
     d.text((86, 320), "ТЕСТНЕТОВ", font=f_disp, fill=GOLD)
-    d.text((90, 500), f"EVM TESTNET FARMER · MIT · {args.wallets} WALLETS · {args.cycles} CYCLES",
+    d.text((90, 500), "EVM TESTNET FARMER · MIT · NO DROP PROMISES",
            font=f_small, fill=MUTED)
     # Мини-сетка поля справа внизу.
     cw, gap, ox, oy = 26, 8, 880, 380

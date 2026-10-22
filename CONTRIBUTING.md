@@ -1,65 +1,36 @@
-# Contributing
+# Как помочь проекту
 
-Thank you for your interest in contributing to this project! We welcome contributions from the community.
+harvest — личный проект одного человека (ssrjkk). Пулы, ишью и просто
+замечания в Telegram приветствуются — но без бюрократии.
 
-## How to Contribute
+## Баги
 
-### Reporting Bugs
+Перед тем как писать, гляньте открытые ишью — может, уже обсуждали.
+В репорте хватит трёх вещей:
 
-Before creating bug reports, please check the existing issues to avoid duplicates. When you create a bug report, please include as many details as possible:
+- что сделали (команда, конфиг, сеть),
+- что увидели (кусок лога лучше пересказа),
+- что ожидали.
 
-- Use a clear and descriptive title
-- Describe the exact steps to reproduce the problem
-- Provide specific examples to demonstrate the steps
-- Describe the behavior you observed and what you expected
-- Include system information if relevant (OS, version, etc.)
+Логи лежат рядом с БД, у портала — в `portal.log`. Приватные ключи и
+сиды в репорт не прикладывайте.
 
-### Suggesting Enhancements
+## Идеи
 
-Enhancement suggestions are welcome! When proposing an enhancement:
+Коротко: что болит и как хотелось бы. Пример конфига или кусок лога
+помогают сильнее длинного описания.
 
-- Use a clear and descriptive title
-- Provide a step-by-step description of the suggested enhancement
-- Explain why this enhancement would be useful
-- Include any relevant code snippets or mockups if applicable
+## Пулы
 
-### Pull Requests
+1. Форкните, сделайте ветку от `main`
+2. Меняйте по делу, в стиле соседнего кода
+3. Прогоните `python -m pytest tests -q` и `python tools/verify_site.py`
+4. Откройте PR с парой предложений: что и зачем
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Follow the existing code style and conventions
-5. Add tests if applicable
-6. Commit your changes (`git commit -m 'Add amazing feature'`)
-7. Push to the branch (`git push origin feature/amazing-feature`)
-8. Open a Pull Request
+Тесты — для новой логики, доки — если меняете поведение. Коммиты
+лучше маленькие и по смыслу.
 
-### Code Style
+## Вопросы
 
-- Follow the existing code style in the project
-- Use meaningful variable and function names
-- Write clear commit messages
-- Keep commits focused and atomic
-- Add comments for complex logic
-
-### Testing
-
-- Write tests for new functionality
-- Ensure all tests pass before submitting a PR
-- Include both positive and negative test cases
-
-### Documentation
-
-- Update documentation to reflect your changes
-- Add inline code comments where necessary
-- Keep README up to date
-
-## Code of Conduct
-
-This project follows a [Code of Conduct](CODE_OF_CONDUCT.md). By participating, you are expected to uphold this code.
-
-## Questions?
-
-Feel free to open an issue for any questions about contributing.
-
-Thank you for contributing!
+Телеграм автора: [@ssrjkk_bot](https://t.me/ssrjkk_bot). Отвечаю не
+мгновенно, но читаю всё.

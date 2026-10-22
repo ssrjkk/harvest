@@ -370,7 +370,10 @@ def _json(payload: dict, status: int = 200) -> web.Response:
 
 def _html(path: str) -> web.Response:
     try:
-        return web.Response(text=(STATIC_DIR / path).read_text(encoding="utf-8"), content_type="text/html")
+        from portal import substitute_version
+
+        text = substitute_version((STATIC_DIR / path).read_text(encoding="utf-8"))
+        return web.Response(text=text, content_type="text/html")
     except FileNotFoundError:
         # Контекст не нужен: клиенту не положено знать про файловую систему.
         raise web.HTTPNotFound() from None
@@ -1256,5 +1259,10 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
     from portal.miniapp import register_miniapp
 
     register_miniapp(app, cfg_key=KEY_CFG, daemon_key=KEY_DAEMON)
+    # Прямые /static/*.html иначе отдали бы сырой {{HARVEST_VERSION}} мимо
+    # подстановки (статика не проходит через _html). Явные маршруты выше
+    # статики отдают те же файлы с версией; порядок важен — add_static последний.
+    app.router.add_get("/static/index.html", index)
+    app.router.add_get("/static/login.html", login_page)
     app.router.add_static("/static", STATIC_DIR)
     return app

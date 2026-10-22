@@ -199,6 +199,10 @@ class TestRunOnceStopsWithoutFunds(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(code, 0)
             pool.run_once.assert_awaited()
+            # CLI-прогон оставляет свежий снимок метрик для витрины.
+            pool.record_health_snapshot.assert_awaited()
+            pos, _ = pool.record_health_snapshot.call_args
+            self.assertEqual(pos, (2,))
 
 
 if __name__ == "__main__":

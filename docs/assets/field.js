@@ -7,15 +7,15 @@ const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelect
 const toast=hv.toast, esc=hv.esc, fmt=hv.fmt;
 const setPill=hv.pill;
 let lang=hv.lang();
-hv.onLang(()=>{lang=hv.lang();renderLive(window.hvLast);});
+hv.onLang(()=>{lang=hv.lang();renderLive(window.hvLast);try{drawLive();}catch(e){}});
 
 /* ---------- live pulpit (state.json) ---------- */
 let live={actions:[],errors:[],proc:[]};
 const FALLBACK_NETS=[
- {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Permissionless launchpad на Robinhood Chain",description:"Любой может запустить токен и торговать им на bonding curve. Активным тестнет-участникам выделено 5% сапплая токена.",rewards:"5% сапплая VIBE · торговля, стейкинг, клейм наград",activities:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"]},
- {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:"Базовый L2-тестнет Robinhood",description:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",rewards:"Базовый тестнет-эирдроп и опыт",activities:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"]},
- {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",faucet:"",explorer:"",tagline:"Launchpad Flop Labs",description:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",rewards:"Тестнет-баллы и эирдроп",activities:["Compute / validate / stake","Трансферы"]},
- {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",faucet:"",explorer:"https://explorer.testnet.arc.network",tagline:"Launchpad Minara.Fun",description:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",rewards:"Тестнет-эирдроп за активности",activities:["Запуск / торговля / добавление ликвидности","Трансферы"]}
+ {slug:"vibevibe",name:"vibe/vibe",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com/claim",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:{ru:"Permissionless launchpad на Robinhood Chain",en:"Permissionless launchpad on Robinhood Chain"},description:{ru:"Любой может запустить токен и торговать им на bonding curve. Условия платформы меняются, гарантий нет — только практика.",en:"Anyone can launch a token and trade it on the bonding curve. Platform rules change, no guarantees — practice only."},rewards:{ru:"Правила платформы · без гарантий",en:"Platform rules · no guarantees"},activities:{ru:["Покупка/продажа на bonding curve (buy/sell)","Стейкинг и клейм наград (stake/claimRewards)","Трансферы между кошельками"],en:["Bonding-curve buy/sell","Staking and reward claims (stake/claimRewards)","Wallet-to-wallet transfers"]}},
+ {slug:"robinhood",name:"Robinhood Chain",chain_id:46630,currency:"ETH",faucet:"https://faucet.testnet.chain.robinhood.com/claim",explorer:"https://explorer.testnet.chain.robinhood.com",tagline:{ru:"Базовый L2-тестнет Robinhood",en:"Base Robinhood L2 testnet"},description:{ru:"Arbitrum Orbit L2 от Robinhood. Базовые активности: трансферы, взаимодействие с контрактами (swap/mint), стейкинг.",en:"Robinhood Arbitrum Orbit L2. Basics: transfers, contract calls (swap/mint), staking."},rewards:{ru:"Публичных гарантий нет · сеть для практики",en:"No public guarantees · practice network"},activities:{ru:["Трансферы между кошельками","Торговля на bonding curve (swap/mint)","Стейкинг / клейм наград"],en:["Wallet transfers","Bonding-curve trading (swap/mint)","Staking / reward claims"]}},
+ {slug:"flop",name:"Flop Labs",chain_id:99999,currency:"FLOP",faucet:"",explorer:"",tagline:{ru:"Launchpad Flop Labs",en:"Flop Labs launchpad"},description:{ru:"Платформа запуска токенов. Активности: compute, validate, stake — отрабатываются контрактными вызовами.",en:"Token launch platform. Activities: compute, validate, stake via contract calls."},rewards:{ru:"Заглушка · наград не обещаем",en:"Stub · no rewards promised"},activities:{ru:["Compute / validate / stake","Трансферы"],en:["Compute / validate / stake","Transfers"]}},
+ {slug:"arc",name:"Arc (Minara.Fun)",chain_id:5042002,currency:"ARC",faucet:"",explorer:"https://explorer.testnet.arc.network",tagline:{ru:"Launchpad Minara.Fun",en:"Minara.Fun launchpad"},description:{ru:"Платформа с запуском токенов, торговлей и ликвидностью. Активности: launch, trade, add_liquidity.",en:"Token launches, trading and liquidity. Activities: launch, trade, add_liquidity."},rewards:{ru:"Правила платформы · без гарантий",en:"Platform rules · no guarantees"},activities:{ru:["Запуск / торговля / добавление ликвидности","Трансферы"],en:["Launch / trade / add liquidity","Transfers"]}}
 ];
 async function loadState(){
   try{const r=await fetch("state.json?t="+Date.now(),{cache:"no-store"});if(!r.ok)throw 0;return await r.json();}
@@ -80,14 +80,34 @@ function renderLive(s){
   if(!s){
     const retryBtn='<button class="btn small" id="liveRetry" type="button">'+(lang==="en"?"retry":"повторить")+"</button>";
     const la=$("#liveAlert");
-    if(la)la.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"state.json not published yet — the farm will upload metrics. The rest of the site already works.":"state.json ещё не опубликован — ферма скоро загрузит метрики. Остальной сайт уже работает.")+" "+retryBtn+"</div>";
+    if(la)la.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"No snapshot yet.":"Снимка пока нет.")+" "+retryBtn+"</div>";
     const rb=$("#liveRetry");
     if(rb)rb.addEventListener("click",()=>{refetch();});
+    const fe=$("#fieldEmpty");if(fe)fe.hidden=false;
+    const fg=$("#fieldGrid");if(fg)fg.style.display="none";
+    const fl=$("#fieldLegend");if(fl)fl.style.display="none";
     const nets=$("#nets");if(nets)nets.innerHTML=FALLBACK_NETS.map(netCard).join("");
+    const lc=$("#lastCycle");if(lc)lc.hidden=true;
     paintTicker(null);
-    setPill("mut","—");return;
+    setPill("mut",lang==="en"?"offline":"офлайн");return;
   }
   const la=$("#liveAlert");if(la)la.innerHTML="";
+  // Протухший снимок — не «всё ок»: ферма молчит дольше обычной паузы
+  // публикации (30 мин + запас). Непарсируемая дата — без баннера.
+  const sa=$("#staleAlert");
+  if(sa){
+    let age=-1;
+    try{
+      const t=Date.parse(String(s.updated_at||"").replace(" ","T").replace(" UTC","Z").replace("UTC","Z"));
+      age=isFinite(t)?Date.now()-t:-1;
+    }catch(e){age=-1;}
+    if(age>45*60*1000){
+      sa.hidden=false;
+      sa.innerHTML='<div class="alert" role="alert">'+esc(lang==="en"
+        ?"Stale data: snapshot "+(s.updated_at||"—")+" — the farm is silent."
+        :"Данные устарели: снимок "+(s.updated_at||"—")+" — ферма молчит.")+"</div>";
+    }else{sa.hidden=true;sa.innerHTML="";}
+  }
   const pool=s.pool||{},db=s.db||{};
   const total=(pool.actions??0)+(pool.errors??0);
   const rate=total>0?(pool.actions/total*100):null;
@@ -108,12 +128,13 @@ function renderLive(s){
   }
   const term=$("#term");if(term)term.classList.toggle("live",!!s.running&&!pool.paused);
   el("net",s.network||"—");
-  const hf=$("#health");if(hf)hf.textContent=Number(s.health_factor??1).toFixed(2);
+  const hf=$("#health");if(hf){const h=Number(s.health_factor);hf.textContent=isFinite(h)?h.toFixed(2):"—";}
   el("updated",(lang==="en"?"updated: ":"обновлено: ")+(s.updated_at||"—"));
   const nets=(s.networks&&s.networks.length)?s.networks:FALLBACK_NETS;
   const netsBox=$("#nets");if(netsBox)netsBox.innerHTML=nets.map(n=>netCard(n,n.slug===s.network)).join("");
   paintTicker(nets);
   const hist0=s.history||[];
+  const lc=$("#lastCycle");if(lc)lc.hidden=false;
   el("lastCycle",lastCycleText(hist0));
   const wc=s.wallet_cells||{};
   const cells=typeof wc.cells==="string"?wc.cells:"";
@@ -174,19 +195,25 @@ function renderPnl(p){
     ||'<tr><td colspan="2" class="note">—</td></tr>';
 }
 function netCard(n,cur){
-  const acts=(n.activities||[]).map(a=>"<li>"+esc(a)+"</li>").join("");
+  const L=lang==="en"?"en":"ru";
+  const pick=(v,enV)=>{
+    if(lang==="en"&&(typeof enV==="string"||Array.isArray(enV)))return enV;
+    if(typeof v==="object"&&v!==null)return v[L]||v.ru||"";
+    return v||"";
+  };
+  const acts=(pick(n.activities,n.activities_en)||[]).map(a=>"<li>"+esc(a)+"</li>").join("");
   const links=[n.faucet?'<a href="'+esc(n.faucet)+'" target="_blank" rel="noopener">faucet</a>':"",n.explorer?'<a href="'+esc(n.explorer)+'" target="_blank" rel="noopener">explorer</a>':""].filter(Boolean).join(" · ");
   return `<div class="net"><div><span class="name">${esc(n.name)}</span>${cur?' <span class="cur">'+(lang==="en"?"current":"текущая")+"</span>":""}</div>
     <div class="meta">chain ${esc(n.chain_id)} · ${esc(n.currency)}</div>
-    <div class="tag">${esc(n.tagline||"")}</div>
-    <div class="desc">${esc(n.description||"")}</div>
-    <div class="rewards">${esc(n.rewards||"—")}</div><ul>${acts}</ul>${links?'<div class="toolbar">'+links+"</div>":""}</div>`;
+    <div class="tag">${esc(pick(n.tagline,n.tagline_en))}</div>
+    <div class="desc">${esc(pick(n.description,n.description_en))}</div>
+    <div class="rewards">${esc(pick(n.rewards,n.rewards_en)||"—")}</div><ul>${acts}</ul>${links?'<div class="toolbar">'+links+"</div>":""}</div>`;
 }
 function paintTicker(nets){
   try{
     const list=(nets&&nets.length?nets:FALLBACK_NETS).map(n=>`${n.name} ${n.chain_id}`.toUpperCase());
-    const tag=lang==="en"?"TESTS":"ТЕСТОВ";
-    const ti=$("#tickerIn");if(ti)ti.textContent=("harvest v2.3.0 · "+list.join(" · ")+` · 1467 ${tag} · MIT · `).repeat(4);
+    const ver=(window.hv&&window.hv.version)||"v2.4.1";
+    const ti=$("#tickerIn");if(ti)ti.textContent=("harvest "+ver+" · "+list.join(" · ")+" · MIT · ").repeat(4);
   }catch(e){}
 }
 function drawLive(){
@@ -242,26 +269,11 @@ async function refetch(){
   const s=await loadState();window.hvLast=s;renderLive(s);
 }
 refetch();
-let _failStreak=0;
-setInterval(async()=>{
-  if(document.hidden) return;
-  if(!navigator.onLine){
-    _failStreak++;
-    return;
-  }
-  const s=await loadState();
-  if(s){_failStreak=0;window.hvLast=s;renderLive(s);}
-  else{
-    _failStreak++;
-    if(_failStreak>5){
-      const el=$("#liveAlert");
-      if(el && !el.innerHTML){
-        el.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"offline — retrying…":"офлайн — повторяю…")+'</div>';
-      }
-    }
-  }
-},60000);
-window.addEventListener("online",()=>{_failStreak=0;refetch();});
+/* Дальше обновления едут из common.js: он раз в минуту опрашивает
+   state.json для пилюли в шапке и рассылает hv:state. Свой второй
+   поллинг тут не нужен — иначе два запроса в минуту и гонка за hvLast. */
+window.addEventListener("hv:state",e=>{if(e.detail!==undefined){window.hvLast=e.detail;renderLive(e.detail);}});
+window.addEventListener("online",()=>{refetch();});
 window.addEventListener("offline",()=>{
   const el=$("#liveAlert");
   if(el)el.innerHTML='<div class="alert" role="alert">'+(lang==="en"?"offline":"офлайн")+'</div>';
@@ -269,12 +281,11 @@ window.addEventListener("offline",()=>{
 let _rzT=0;
 window.addEventListener("resize",()=>{clearTimeout(_rzT);_rzT=setTimeout(()=>{drawLive();},150);});
 window.hvRedraw=()=>{try{drawLive();}catch(e){}};
-window.addEventListener("hv:state",e=>{if(e.detail!==undefined){window.hvLast=e.detail;}});
 
 /* ---------- фильтры/зум/поиск/инспектор поля (только чтение DOM) ---------- */
 (function(){
 "use strict";
-var filter="all",zoom250=true,query="",sel=-1;
+var filter="all",detail=true,query="",sel=-1;
 function L(){return lang==="en"?"en":"ru";}
 function cells(){return Array.prototype.slice.call(document.querySelectorAll("#fieldGrid .cell"));}
 function apply(){
@@ -300,11 +311,17 @@ function apply(){
     }else{box.innerHTML='<span class="note">—</span>';}
   }
   var z=document.getElementById("fxZoom");
-  if(z){z.textContent=zoom250?(L()==="en"?"250 DETAIL":"250 ДЕТАЛЬНО"):(L()==="en"?"PANORAMA":"ПАНОРАМА");z.setAttribute("aria-label",L()==="en"?"Field zoom":"Масштаб поля");}
+  if(z){
+    z.textContent=detail?(L()==="en"?"PANORAMA":"ПАНОРАМА"):(L()==="en"?"250 · DETAIL":"250 · ДЕТАЛЬНО");
+    z.setAttribute("aria-pressed",detail?"true":"false");
+    z.setAttribute("aria-label",detail
+      ?(L()==="en"?"Detailed view. Switch to panorama":"Детальный вид. Переключить на панораму")
+      :(L()==="en"?"Panorama. Switch to detailed view":"Панорама. Переключить на детальный вид"));
+  }
   var g=document.getElementById("fieldGrid");
   if(g){
-    if(zoom250){g.classList.remove("zoom");list.forEach(function(el){el.textContent="";});}
-    else{g.classList.add("zoom");list.forEach(function(el,i){el.textContent=String(i+1);});}
+    if(detail){g.classList.add("zoom");list.forEach(function(el,i){el.textContent=String(i+1);});}
+    else{g.classList.remove("zoom");list.forEach(function(el){el.textContent="";});}
   }
   var q=document.getElementById("fxQ");
   if(q)q.placeholder=L()==="en"?"search #…" :"поиск #…";
@@ -314,7 +331,7 @@ document.addEventListener("click",function(e){
   if(b){filter=b.dataset.f;sel=-1;
     Array.prototype.forEach.call(document.querySelectorAll("#fxFilters [data-f]"),function(x){x.classList.remove("on");x.setAttribute("aria-pressed","false");});
     b.classList.add("on");b.setAttribute("aria-pressed","true");apply();writeUrl();return;}
-  if(e.target.closest&&e.target.closest("#fxZoom")){zoom250=!zoom250;apply();writeUrl();return;}
+  if(e.target.closest&&e.target.closest("#fxZoom")){detail=!detail;apply();writeUrl();return;}
   var c=e.target.closest?e.target.closest("#fieldGrid .cell"):null;
   if(c){var list=cells();sel=list.indexOf(c);apply();}
 });
@@ -352,13 +369,14 @@ function readUrl(){
   var q=new URLSearchParams(s);
   var f=q.get("f"),z=q.get("z"),qq=q.get("q");
   if(f&&_FILTERS.indexOf(f)!==-1)filter=f;
-  if(z==="1")zoom250=false;
+  if(z==="1")detail=true;
+  else if(z==="0")detail=false;
   if(qq&&/^\d+$/.test(qq))query=qq;
 }
 function writeUrl(){
   var parts=[];
   if(filter!=="all")parts.push("f="+filter);
-  if(!zoom250)parts.push("z=1");
+  if(!detail)parts.push("z=0");
   if(query)parts.push("q="+encodeURIComponent(query));
   try{history.replaceState(null,"",location.pathname+(parts.length?"?"+parts.join("&"):"")+location.hash);}catch(e){}
 }
@@ -373,5 +391,8 @@ new MutationObserver(apply).observe(gridEl,{childList:true});
 readUrl();
 syncControls();
 apply();
+/* Смена языка перерисовывает подписи кнопок через common.js,
+   а текст зума/инспектора/плейсхолдера — только здесь. */
+if(hv.onLang)hv.onLang(()=>{try{apply();}catch(e){}});
 })();
 })();

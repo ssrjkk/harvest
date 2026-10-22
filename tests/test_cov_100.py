@@ -20,7 +20,7 @@ class TestPortalInitFallback(unittest.TestCase):
         # форсируем except-ветку (строки 15-16): core.version недоступен
         with mock.patch.dict(sys.modules, {"core.version": None}):
             importlib.reload(_p)
-            self.assertEqual(_p.__version__, "2.3.0")
+            self.assertEqual(_p.__version__, "2.4.1")
         importlib.reload(_p)
         self.assertTrue(hasattr(_p, "__version__"))
 

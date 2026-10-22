@@ -6,7 +6,9 @@ const hv=window.hv;
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const toast=hv.toast, esc=hv.esc, fmt=hv.fmt;
 let lang=hv.lang();
-hv.onLang(()=>{lang=hv.lang();try{if(wst.step===3)renderWiz();}catch(e){}});
+hv.onLang(()=>{lang=hv.lang();paintCfgEmpty();paintEngine();try{if(wst.step===3)renderWiz();}catch(e){}});
+const TcfgEmpty=()=>lang==="en"?"# press “Generate YAML”":"# нажмите «Сгенерировать YAML»";
+function paintCfgEmpty(){const o=$("#cfgOut");if(o&&o.dataset.empty==="1")o.textContent=TcfgEmpty();}
 
 /* ---------- tabs ---------- */
 const TABS=["t-config","t-cmd","t-wallet","t-sim","t-check","t-ref"];
@@ -38,10 +40,18 @@ if(_pt)_pt.addEventListener("keydown",e=>{
 /* ---------- copy (специфичные кнопки демо-зоны) ---------- */
 const Tcopied=()=>lang==="en"?"copied":"скопировано";
 const TcopyFail=()=>lang==="en"?"select + Ctrl+C":"выделите + Ctrl+C";
+function copyText(t){
+  // Как в common.js: на file:// и без прав буфера — через textarea.
+  return (navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).catch(()=>{
+    var ta=document.createElement("textarea");ta.value=t;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");ta.remove();return true;}
+    catch(_){ta.remove();throw 0;}
+  });
+}
 const _cc=$("#cfgCopy");
-if(_cc)_cc.addEventListener("click",()=>{const t=$("#cfgOut").textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
+if(_cc)_cc.addEventListener("click",()=>{const t=$("#cfgOut").textContent;copyText(t).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
 const _cm=$("#cmdCopy");
-if(_cm)_cm.addEventListener("click",()=>{const t=$("#cmdOut").textContent;(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
+if(_cm)_cm.addEventListener("click",()=>{const t=$("#cmdOut").textContent;copyText(t).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));});
 
 /* ---------- config builder ---------- */
 const NETS={
@@ -82,9 +92,10 @@ $$("#cfgPreset button").forEach(b=>b.addEventListener("click",()=>{
 }));
 segSync("#cfgPreset");
 const _cfgGen=$("#cfgGen");
-if(_cfgGen)_cfgGen.addEventListener("click",()=>{$("#cfgOut").textContent=buildYaml();toast(lang==="en"?"yaml ready":"yaml готов");});
+if(_cfgGen)_cfgGen.addEventListener("click",()=>{const o=$("#cfgOut");o.dataset.empty="0";o.textContent=buildYaml();toast(lang==="en"?"yaml ready":"yaml готов");});
 const _cfgDl=$("#cfgDl");
-if(_cfgDl)_cfgDl.addEventListener("click",()=>{const y=buildYaml();$("#cfgOut").textContent=y;const b=new Blob([y],{type:"text/yaml"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=NETS[$("#cfgNet").value].file;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+if(_cfgDl)_cfgDl.addEventListener("click",()=>{const o=$("#cfgOut");o.dataset.empty="0";const y=buildYaml();o.textContent=y;const b=new Blob([y],{type:"text/yaml"});const a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=NETS[$("#cfgNet").value].file;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000);});
+paintCfgEmpty();
 
 /* ---------- cmd builder ---------- */
 function buildCmd(){
@@ -104,19 +115,32 @@ function buildCmd(){
 }
 const _cmdBuild=$("#cmdBuild");
 if(_cmdBuild)_cmdBuild.addEventListener("click",()=>{$("#cmdOut").textContent=buildCmd();});
-$$("#cmdPreset button").forEach(b=>b.addEventListener("click",()=>{
-  $$("#cmdPreset button").forEach(x=>x.classList.remove("on"));b.classList.add("on");
-  $("#cmdFast").checked=(b.dataset.p==="degen");segSync("#cmdPreset");
-}));
-segSync("#cmdPreset");
 
 /* ---------- wallets ---------- */
-let wallets=[], ethersMod=null;
-async function detectEthers(){
-  try{ethersMod=await import("https://esm.sh/ethers@6.13.2");$("#wEngine").value="ethers@6 (real EVM)";$("#wMode").textContent="ethers@6 (real EVM)";$("#wMode").className="pill ok";}
-  catch(e){$("#wEngine").value="demo (offline)";$("#wMode").textContent="demo (offline)";$("#wMode").className="pill warn";}
+let wallets=[], ethersMod=null, ethersLoading=null, ethersFailed=false;
+function paintEngine(){
+  const e=$("#wEngine"), m=$("#wMode");
+  if(!e||!m)return;
+  if(ethersMod){e.value="ethers@6 (real EVM)";m.textContent="ethers@6 (real EVM)";m.className="pill ok";return;}
+  if(ethersLoading){e.value=lang==="en"?"loading ethers…":"загружаю ethers…";m.textContent=lang==="en"?"loading":"загрузка";m.className="pill warn";return;}
+  if(ethersFailed){e.value="demo (offline)";m.textContent="demo (offline)";m.className="pill warn";return;}
+  e.value=lang==="en"?"on demand":"по требованию";
+  m.textContent=lang==="en"?"local":"локально";
+  m.className="pill";
 }
-detectEthers();
+function ensureEthers(){
+  if(ethersMod)return Promise.resolve(true);
+  if(ethersLoading)return ethersLoading;
+  paintEngine();
+  // Единственный внешний запрос демо-зоны. Запускается только по кнопке,
+  // а не при открытии страницы: иначе обещание «ничего не уходит» было бы ложью.
+  ethersLoading=import("https://esm.sh/ethers@6.13.2")
+    .then(mod=>{ethersMod=mod;ethersFailed=false;paintEngine();return true;})
+    .catch(()=>{ethersMod=null;ethersFailed=true;paintEngine();return false;})
+    .finally(()=>{ethersLoading=null;paintEngine();});
+  return ethersLoading;
+}
+paintEngine();
 const rndHex=n=>{try{
   return [...crypto.getRandomValues(new Uint8Array(n))].map(b=>b.toString(16).padStart(2,"0")).join("");
 }catch(e){
@@ -125,13 +149,19 @@ const rndHex=n=>{try{
 const _wGen=$("#wGen");
 if(_wGen)_wGen.addEventListener("click",async()=>{
   const n=Math.min(200,Math.max(1,parseInt($("#wCount").value||"5",10)));
-  for(let i=0;i<n;i++){
-    let addr,priv,lbl="";
-    if(ethersMod){try{const w=ethersMod.Wallet.createRandom();addr=w.address;priv=w.privateKey;lbl="ethers";}catch(e){ethersMod=null;}}
-    if(!addr){priv="0x"+rndHex(32);addr="0x"+rndHex(20);lbl="demo";$("#wEngine").value="demo (offline)";$("#wMode").textContent="demo (offline)";$("#wMode").className="pill warn";}
-    wallets.push({address:addr,private_key:priv,actions:0,mode:lbl});
+  _wGen.disabled=true;_wGen.setAttribute("aria-busy","true");
+  try{
+    await ensureEthers();
+    for(let i=0;i<n;i++){
+      let addr,priv,lbl="";
+      if(ethersMod){try{const w=ethersMod.Wallet.createRandom();addr=w.address;priv=w.privateKey;lbl="ethers";}catch(e){ethersMod=null;paintEngine();}}
+      if(!addr){priv="0x"+rndHex(32);addr="0x"+rndHex(20);lbl="demo";}
+      wallets.push({address:addr,private_key:priv,actions:0,mode:lbl});
+    }
+    renderWallets();toast(wallets.length+(lang==="en"?" wallets":" кошельков"));
+  }finally{
+    _wGen.disabled=false;_wGen.removeAttribute("aria-busy");
   }
-  renderWallets();toast(wallets.length+(lang==="en"?" wallets":" кошельков"));
 });
 function renderWallets(){
   const tb=$("#wRows");if(!tb)return;
@@ -203,14 +233,17 @@ function drawChart(data){
   const W=cv.clientWidth||600,H=220;cv.width=W*dpr;cv.height=H*dpr;
   const x=cv.getContext("2d");x.scale(dpr,dpr);
   const cs=getComputedStyle(document.documentElement);
+  const cLine=cs.getPropertyValue("--line").trim()||"#DDD6C2";
+  const cMut=cs.getPropertyValue("--muted").trim()||"#6F6A5C";
+  const cGold=cs.getPropertyValue("--gold").trim()||"#D4A72C";
   x.clearRect(0,0,W,H);
   const d=data||hist.map(h=>h.actions_ok);
-  x.strokeStyle=cs.getPropertyValue("--line");x.beginPath();x.moveTo(34,8);x.lineTo(34,H-24);x.lineTo(W-8,H-24);x.stroke();
-  if(!d.length){x.fillStyle=cs.getPropertyValue("--muted");x.font="12px monospace";x.fillText(lang==="en"?"no data — run simulation":"нет данных — запустите симуляцию",44,H/2);return;}
+  x.strokeStyle=cLine;x.beginPath();x.moveTo(34,8);x.lineTo(34,H-24);x.lineTo(W-8,H-24);x.stroke();
+  if(!d.length){x.fillStyle=cMut;x.font="12px monospace";x.fillText(lang==="en"?"no data — run simulation":"нет данных — запустите симуляцию",44,H/2);return;}
   const mx=Math.max(...d,1),bw=Math.max(3,(W-60)/d.length-4);
   d.forEach((v,i)=>{const h=(H-48)*v/mx,bx=40+i*(bw+4);
-    x.fillStyle=cs.getPropertyValue("--gold");x.fillRect(bx,H-24-h,bw,h);});
-  x.fillStyle=cs.getPropertyValue("--muted");x.font="11px monospace";x.fillText((lang==="en"?"max ":"макс ")+mx,40,20);
+    x.fillStyle=cGold;x.fillRect(bx,H-24-h,bw,h);});
+  x.fillStyle=cMut;x.font="11px monospace";x.fillText((lang==="en"?"max ":"макс ")+mx,40,20);
 }
 window.addEventListener("resize",()=>drawChart());
 window.hvRedraw=()=>{try{drawChart();}catch(e){}};
@@ -309,7 +342,7 @@ function renderWiz(){
 }
 const _wCopyCmd=$("#wCopyCmd");
 if(_wCopyCmd)_wCopyCmd.addEventListener("click",()=>{
-  (navigator.clipboard?navigator.clipboard.writeText(wizCmd()):Promise.reject()).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));
+  copyText(wizCmd()).then(()=>toast(Tcopied())).catch(()=>toast(TcopyFail()));
 });
 const _wDlCfg=$("#wDlCfg");
 if(_wDlCfg)_wDlCfg.addEventListener("click",()=>{

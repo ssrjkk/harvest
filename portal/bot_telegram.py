@@ -663,7 +663,7 @@ async def _auto_delete_file(bot: Bot, chat_id: int, message_id: int, delay_s: fl
 _HOME_TEXT = (
     "Это <b>harvest PORTAL</b> — живое поле фермы.\n"
     "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
-    "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
+    + _FOOT
 )
 
 
@@ -748,7 +748,7 @@ _HELP_TEXT = (
     "• /profiles — разнообразие профилей флота\n"
     "• /export [json] — скачать все кошельки (CSV)\n\n"
     "/start — главное меню\n/help — эта справка\n\n"
-    "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
+    + _FOOT
 )
 
 
@@ -973,7 +973,7 @@ def _home_kb(running: bool, paused: bool, lang: str = "ru", live_on: bool = Fals
     pau_btn = _b("btn_resume", "v1:run:resume") if (running and paused) else _b("btn_pause", "v1:run:pause")
     return InlineKeyboardMarkup(inline_keyboard=[
         [run_btn, pau_btn],
-        [InlineKeyboardButton(text="🚀 Открыть терминал",
+        [InlineKeyboardButton(text="Открыть поле",
                               web_app=WebAppInfo(url="https://ssrjkk.github.io/harvest/"))],
         [_b("btn_refresh", "v1:home:refresh"), _b("btn_menu", "v1:menu:show")],
     ])

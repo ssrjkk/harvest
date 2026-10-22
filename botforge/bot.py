@@ -190,21 +190,27 @@ def progress_bar(done, total, width=10):
     return f"{bar} {pct:.0f}% ({done}/{total})"
 
 
+def _hf_text(s) -> str:
+    """health для витрины: число — с двумя знаками, неизвестно — «—»."""
+    try:
+        v = s.get("health_factor")
+        return "—" if v is None else f"{float(v):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
 def fmt_status(s):
     pool = s.get("pool", {}) if isinstance(s, dict) else {}
     state = "▶ работает" if s.get("running") else "⏹ остановлена"
     if pool.get("paused"):
         state += " ⏸"
-    try:
-        hf = float(s.get("health_factor", 1.0))
-    except (TypeError, ValueError):
-        hf = 1.0
+    hf = _hf_text(s)
     return (
         "📊 <b>harvest — статус</b>\n\n"
         f"Ферма: <b>{state}</b>\n"
         f"• Действий: <b>{pool.get('actions', 0)}</b> · ошибок: <b>{pool.get('errors', 0)}</b>\n"
         f"• Обработано: <b>{pool.get('processed', 0)}</b> · циклов: <b>{pool.get('cycles', 0)}</b>\n"
-        f"• Кошельков: <b>{s.get('wallet_count', '-')}</b> · health: <b>{hf:.2f}</b>\n"
+        f"• Кошельков: <b>{s.get('wallet_count', '-')}</b> · health: <b>{hf}</b>\n"
         f"Прогресс: <b>{progress_bar(pool.get('processed', 0), s.get('wallet_count', 0))}</b>\n"
         f"• Обновлено: <b>{esc(s.get('updated_at', '-'))}</b>\n\n"
         f"{AUTHOR}"
@@ -229,17 +235,19 @@ def fmt_history(s):
 def fmt_doctor(s):
     pool = s.get("pool", {}) if isinstance(s, dict) else {}
     errs = pool.get("errors", 0)
-    try:
-        hf = float(s.get("health_factor", 1.0))
-    except (TypeError, ValueError):
-        hf = 1.0
+    hf = _hf_text(s)
     lines = ["<b>harvest // диагностика</b>"]
     lines.append(f"ферма: {'RUN' if s.get('running') else 'STOP'}{' + PAUSE' if pool.get('paused') else ''}")
-    lines.append(f"ошибок: {errs} · health: {hf:.2f}")
+    lines.append(f"ошибок: {errs} · health: {hf}")
     lines.append(f"кошельков: {s.get('wallet_count', '-')}")
     lines.append(f"обновлено: {esc(s.get('updated_at', '-'))}")
-    if errs and hf < 0.5:
-        lines.append("совет: /status + проверь RPC и кран")
+    if errs and hf != "—":
+        try:
+            bad = float(hf) < 0.5
+        except ValueError:
+            bad = False
+        if bad:
+            lines.append("совет: /status + проверь RPC и кран")
     return "\n".join(lines)
 
 

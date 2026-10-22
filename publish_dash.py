@@ -35,13 +35,80 @@ DASH_BRANCH = "gh-pages"
 SITE_DIR = ROOT / ".dash-site"
 # Файлы сайта в ветке gh-pages (корень): лендинг + ассеты. state.json дописывается рядом.
 SITE_FILES = ("index.html", "field.html", "demo.html", "docs.html",
-              "terminal.html", "offline.html", "manifest.webmanifest", "sw.js",
+              "terminal.html", "offline.html", "404.html",
+              "manifest.webmanifest", "sw.js",
               ".nojekyll", "robots.txt")
 SITE_DIRS = ("assets",)
 DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 
 
 _CELLS_MAX = 400  # максимум клеток сетки; остальные — подписью «+N»
+_METRICS_STALE_S = 15 * 60  # снимок метрик старше — «неизвестно», а не цифра
+
+
+def _farm_running(db_path: str) -> bool:
+    """Жива ли ферма на этой БД: проба через тот же single-instance лок.
+
+    Все точки входа (портал, auto.py, CLI) держат OS-лок из
+    core.single_instance.default_lock_path на всё время работы, ОС снимает
+    его при смерти процесса. Поэтому свидетельство только положительное:
+    чужой держатель = процесс жив. Всё остальное (свободно, нет бэкенда,
+    ошибка) — False, как раньше: лучше «стоп» при живой ферме, чем
+    «работает» при мёртвой.
+
+    Не-файловый путь (postgres-DSN и т.п.) — сразу False: лок на той же
+    машине тут бессмыслен, а строить путь из DSN — плодить мусорные каталоги.
+    """
+    if "://" in str(db_path):
+        return False
+    try:
+        from core.single_instance import SingleInstance, default_lock_path
+    except Exception:  # noqa: BLE001 — урезанное окружение без core
+        return False
+    probe = SingleInstance(default_lock_path(db_path))
+    try:
+        if probe.acquire():
+            probe.release()
+            return False
+        return True
+    except Exception:  # noqa: BLE001 — страховка поверх acquire
+        return False
+
+
+def _network_slug(db_path: str) -> str:
+    """Слаг сети по имени БД (канон — portal/networks.py).
+
+    DSN разбирается через путь: postgres://…/farming_arc — тоже находится.
+    Неизвестное имя — fallback vibevibe, как раньше.
+    """
+    raw = str(db_path)
+    if "://" in raw:
+        from urllib.parse import urlsplit
+
+        base = urlsplit(raw).path.rsplit("/", 1)[-1]
+    else:
+        base = Path(raw).name
+    for n in NETWORKS:
+        db = str(n.get("db") or "")
+        if base == db or (base and base == Path(db).stem):
+            return str(n["slug"])
+    return "vibevibe"
+
+
+def _fresh_ts(raw) -> bool:
+    """Снимок метрик свежий (не старше _METRICS_STALE_S)? Иначе — неизвестно.
+
+    ts пишет SQLite (CURRENT_TIMESTAMP, UTC без зоны). Битое/будущее
+    значение — тоже «неизвестно»: fail-closed в сторону «—», а не цифры.
+    """
+    if not raw:
+        return False
+    try:
+        ts = datetime.strptime(str(raw).strip()[:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+    except (ValueError, TypeError):
+        return False
+    age = (datetime.now(UTC) - ts).total_seconds()
+    return 0 <= age <= _METRICS_STALE_S
 
 
 def _scrub_addrs(text: str) -> str:
@@ -60,71 +127,6 @@ def _json_loads(raw) -> list:
     except Exception:  # noqa: BLE001
         return []
     return val if isinstance(val, list) else []
-
-
-def _plural_files(n: int) -> str:
-    """файл/файла/файлов для счётчика (публикация, чтобы не править руками)."""
-    if n % 10 == 1 and n % 100 != 11:
-        return "файл"
-    if 2 <= n % 10 <= 4 and n % 100 not in (12, 13, 14):
-        return "файла"
-    return "файлов"
-
-
-def collect_test_counts() -> tuple[int | None, int | None]:
-    """Число (тестов, файлов) через pytest --collect-only.
-
-    Для подстановки в gh-pages копии при публикации (числа в master —
-    лишь fallback-снапшот, руками не правим). Ошибка/таймаут → (None, None).
-    """
-    import re
-
-    try:
-        r = subprocess.run(
-            [sys.executable, "-m", "pytest", "tests/", "--collect-only",
-             "--ignore=tests/test_load_opt.py"],
-            cwd=ROOT, capture_output=True, text=True, timeout=180,
-        )
-    except Exception:  # noqa: BLE001
-        return None, None
-    out = (r.stdout or "") + "\n" + (r.stderr or "")
-    m = re.search(r"(\d+)\s+tests?\s+collected", out)
-    if not m:
-        return None, None
-    files = len({line.split("::")[0] for line in out.splitlines()
-                 if line.startswith("tests/")})
-    return int(m.group(1)), files or None
-
-
-def inject_test_counts(site_dir: Path, tests: int, files: int) -> int:
-    """Подставляет свежие счётчики в gh-pages копии (все страницы + js).
-
-    DOCUMENTATION/README в gh-pages не едут и остаются снапшотом.
-    """
-    import re
-
-    targets = sorted(site_dir.glob("*.html")) + sorted((site_dir / "assets").glob("*.js"))
-    patterns = [
-        (re.compile(r"\d[\d\s]*\s+TESTS"), f"{tests} TESTS"),
-        (re.compile(r"\d+\s*·\s*\d+\s+файл[а-я]*"), f"{tests} · {files} {_plural_files(files)}"),
-        (re.compile(r"\d+\s+tests\s*·\s*\d+\s+files"), f"{tests} tests · {files} files"),
-    ]
-    made = 0
-    for path in targets:
-        if not path.exists():
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        for rx, repl in patterns:
-            text, n = rx.subn(repl, text)
-            made += n
-        try:
-            path.write_text(text, encoding="utf-8")
-        except OSError:
-            pass
-    return made
 
 
 def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None) -> str:
@@ -234,18 +236,39 @@ async def collect() -> dict:
                     }
             except Exception:  # noqa: BLE001 — нет таблицы/снапшота: без PnL
                 pnl = None
+            # Живые health/dyn_workers — только из свежего снимка метрик
+            # (демон портала пишет каждые 30 с). Нет таблицы, пусто или
+            # протух — None: витрина покажет «—», а не 1.0/0.
+            health_factor = None
+            dyn_workers = None
+            try:
+                async with db.execute(
+                    "SELECT dyn_workers, health_factor, ts FROM metrics_snapshots "
+                    "ORDER BY id DESC LIMIT 1"
+                ) as cur:
+                    mrow = await cur.fetchone()
+                if mrow is not None and mrow[1] is not None and _fresh_ts(mrow[2]):
+                    dyn_workers = float(mrow[0] or 0)
+                    health_factor = float(mrow[1])
+            except Exception:  # noqa: BLE001 — нет таблицы: неизвестно
+                pass
     except Exception as e:  # noqa: BLE001 — locked/corrupt: пустой state вместо краха
         raise RuntimeError(f"db read failed: {e}") from e
 
     return {
-        "running": False,
-        "network": "vibevibe",
+        # running — проба лока на той же машине (не идеально: ферма могла
+        # стартовать/остановиться между публикациями, это последнее известное
+        # состояние на момент снимка — см. updated_at), network — по имени БД.
+        "running": _farm_running(DB),
+        "network": _network_slug(DB),
         "networks": [
             {
                 k: n[k]
                 for k in (
                     "slug", "name", "chain_id", "currency", "tagline",
-                    "description", "rewards", "activities", "faucet", "explorer",
+                    "tagline_en", "description", "description_en",
+                    "rewards", "rewards_en", "activities", "activities_en",
+                    "faucet", "explorer",
                 )
             }
             for n in NETWORKS
@@ -255,17 +278,16 @@ async def collect() -> dict:
             "errors": r[1],
             "processed": r[3],
             "cycles": r[2],
-            "dyn_workers": 0,
+            "dyn_workers": dyn_workers,
             "dropped": 0,
         },
-        "health_factor": 1.0,
+        "health_factor": health_factor,
         "wallet_count": wallet_count,
         "db": {"cycles": r[2], "actions": r[0], "errors": r[1]},
         "top_wallets": top,
         "wallet_cells": {"v": 2, "n": wallet_count, "cells": cells, "details": details},
         "pnl": pnl,
         "history": history,
-        "chart": {"actions": [], "errors": [], "processed": []},
         "updated_at": datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC"),
     }
 
@@ -380,14 +402,7 @@ def _publish_inner(state: dict, wallets_blob: dict | None = None) -> None:
                     _time.sleep(2 * attempt)
         if not ok:
             continue
-    # Счётчики тестов — генерацией при публикации (не руками): gh-pages копии
-    # получают свежие числа, master остаётся fallback-снапшотом.
-    counted = collect_test_counts()
-    if counted[0] and counted[1]:
-        n = inject_test_counts(wt, counted[0], counted[1])
-        print(f"счётчики тестов: {counted[0]} · {counted[1]} ({n} замен)")
-    else:
-        print("счётчики тестов: пропуск (pytest недоступен)")
+    # Счётчики тестов в витрину не вшиваем: цифры устаревают быстрее кода.
     (wt / "state.json").write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     extra = ["state.json"]
     if wallets_blob is not None:

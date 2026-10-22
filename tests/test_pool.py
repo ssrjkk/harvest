@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -117,6 +118,49 @@ class TestPoolCrashRecovery(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(processed), len(self.wallets) - 1)
             # Полный цикл прошёл — состояние стёрто (файла больше нет).
             self.assertFalse(Path(self.cfg["state_file"]).exists())
+        finally:
+            await pool.close()
+            await db.close()
+
+
+class TestPoolHealthSnapshot(unittest.IsolatedAsyncioTestCase):
+    """record_health_snapshot: строка метрик для витрины, никогда не бросает."""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.dir = Path(self.td.name)
+        cfg = _minimal_config()
+        cfg["database"] = {**cfg["database"], "path": str(self.dir / "state.db")}
+        cfg["state_file"] = str(self.dir / "state.json")
+        self.cfg = cfg
+
+    def tearDown(self):
+        self.td.cleanup()
+
+    async def test_snapshot_written(self):
+        db = Database(self.cfg["database"]["path"])
+        await db.init()
+        pool = FarmerPool(self.cfg, db)
+        try:
+            self.assertTrue(await pool.record_health_snapshot(6))
+            rows = await db.get_metrics_history(1)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["wallets"], 6)
+            self.assertGreaterEqual(rows[0]["health_factor"], 0.15)
+            self.assertLessEqual(rows[0]["health_factor"], 1.0)
+        finally:
+            await pool.close()
+            await db.close()
+
+    async def test_snapshot_never_raises(self):
+        db = Database(self.cfg["database"]["path"])
+        await db.init()
+        pool = FarmerPool(self.cfg, db)
+        try:
+            pool.db = mock.AsyncMock()
+            pool.db.record_metrics_snapshot = mock.AsyncMock(
+                side_effect=RuntimeError("disk gone"))
+            self.assertFalse(await pool.record_health_snapshot(6))
         finally:
             await pool.close()
             await db.close()

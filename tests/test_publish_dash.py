@@ -156,38 +156,86 @@ class TestPublishDash(unittest.TestCase):
         self.assertEqual(publish_dash._cell_state(2, 5, 3, 3), "e")
         self.assertEqual(publish_dash._cell_state(4, 4, 1, 3), "r")
 
-    def test_plural_files(self):
-        self.assertEqual(publish_dash._plural_files(1), "файл")
-        self.assertEqual(publish_dash._plural_files(54), "файла")
-        self.assertEqual(publish_dash._plural_files(5), "файлов")
-        self.assertEqual(publish_dash._plural_files(11), "файлов")
+    def test_farm_running_probe(self):
+        from core.single_instance import SingleInstance, default_lock_path
 
-    def test_inject_counts(self):
         with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / "assets").mkdir()
-            # Набор страниц/скриптов — как в настоящем docs/: inject_test_counts
-            # берёт glob по *.html и assets/*.js, а не хардкод-список.
-            for name in ("index.html", "field.html", "demo.html", "docs.html"):
-                (root / name).write_text("1335 TESTS · 1335 · 54 файла", encoding="utf-8")
-            for name in ("common.js", "field.js", "demo.js"):
-                (root / "assets" / name).write_text(
-                    "1335 TESTS · 1335 tests · 54 files", encoding="utf-8")
-            # Страница без счётчиков должна пройти нетронутой.
-            (root / "terminal.html").write_text("<title>harvest</title>", encoding="utf-8")
-            n = publish_dash.inject_test_counts(root, 1400, 55)
-            self.assertGreater(n, 0)
-            for name in ("index.html", "field.html", "demo.html", "docs.html"):
-                html = (root / name).read_text(encoding="utf-8")
-                self.assertIn("1400 TESTS", html)
-                self.assertIn("1400 · 55 файлов", html)
-                self.assertNotIn("1335", html)
-            for name in ("common.js", "field.js", "demo.js"):
-                js = (root / "assets" / name).read_text(encoding="utf-8")
-                self.assertIn("1400 tests · 55 files", js)
-                self.assertNotIn("1335", js)
-            self.assertEqual(
-                (root / "terminal.html").read_text(encoding="utf-8"), "<title>harvest</title>")
+            db = os.path.join(td, "probe.db")
+            Path(db).touch()
+            self.assertFalse(publish_dash._farm_running(db))
+            guard = SingleInstance(default_lock_path(db))
+            self.assertTrue(guard.acquire())
+            try:
+                self.assertTrue(publish_dash._farm_running(db))
+            finally:
+                guard.release()
+            self.assertFalse(publish_dash._farm_running(db))
+
+    def test_network_slug_from_db_name(self):
+        self.assertEqual(publish_dash._network_slug("farming_robinhood.db"), "robinhood")
+        self.assertEqual(publish_dash._network_slug("/data/farming_arc.db"), "arc")
+        self.assertEqual(publish_dash._network_slug("postgres://u@h/db"), "vibevibe")
+        self.assertEqual(publish_dash._network_slug("postgres://u:p@h:5432/farming_arc"), "arc")
+        self.assertEqual(publish_dash._network_slug("farming_vibevibe.db"), "vibevibe")
+
+    def test_farm_running_probe_ignores_non_file_paths(self):
+        # DSN — не файл: проба лока бессмысленна и не должна плодить каталоги.
+        self.assertFalse(publish_dash._farm_running("postgres://u:p@h:5432/farming_arc"))
+
+    def test_collect_running_and_network(self):
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "farming_robinhood.db")
+            _make_db(db, wallets=3)
+            state = self._collect(db)
+            self.assertFalse(state["running"])
+            self.assertEqual(state["network"], "robinhood")
+
+    @staticmethod
+    def _write_metrics(db: str, dyn, health, ts: str | None) -> None:
+        con = sqlite3.connect(db)
+        con.execute(
+            "CREATE TABLE IF NOT EXISTS metrics_snapshots (id INTEGER PRIMARY KEY "
+            "AUTOINCREMENT, ts TIMESTAMP DEFAULT CURRENT_TIMESTAMP, actions INTEGER "
+            "DEFAULT 0, errors INTEGER DEFAULT 0, processed INTEGER DEFAULT 0, "
+            "cycles INTEGER DEFAULT 0, wallets INTEGER DEFAULT 0, "
+            "dyn_workers REAL DEFAULT 0, health_factor REAL DEFAULT 1.0)"
+        )
+        con.execute(
+            "INSERT INTO metrics_snapshots (dyn_workers, health_factor, ts) VALUES (?, ?, "
+            "COALESCE(?, CURRENT_TIMESTAMP))",
+            (dyn, health, ts),
+        )
+        con.commit()
+        con.close()
+
+    def test_collect_health_from_fresh_metrics(self):
+        import datetime
+
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=3)
+            fresh = (datetime.datetime.now(datetime.timezone.utc)
+                     - datetime.timedelta(minutes=2)).strftime("%Y-%m-%d %H:%M:%S")
+            self._write_metrics(db, 7.0, 0.82, fresh)
+            state = self._collect(db)
+            self.assertEqual(state["health_factor"], 0.82)
+            self.assertEqual(state["pool"]["dyn_workers"], 7.0)
+
+    def test_collect_health_unknown_when_stale_or_absent(self):
+        import datetime
+
+        with tempfile.TemporaryDirectory() as td:
+            db = os.path.join(td, "t.db")
+            _make_db(db, wallets=3)
+            state = self._collect(db)
+            self.assertIsNone(state["health_factor"])
+            self.assertIsNone(state["pool"]["dyn_workers"])
+            stale = (datetime.datetime.now(datetime.timezone.utc)
+                     - datetime.timedelta(hours=3)).strftime("%Y-%m-%d %H:%M:%S")
+            self._write_metrics(db, 7.0, 0.82, stale)
+            state = self._collect(db)
+            self.assertIsNone(state["health_factor"])
+            self.assertIsNone(state["pool"]["dyn_workers"])
 
     def test_site_files_cover_all_docs_pages(self):
         """Новая страница в docs/ не должна молча остаться неопубликованной."""
@@ -219,12 +267,6 @@ class TestPublishDash(unittest.TestCase):
         self.assertEqual(f(None), (None, 0))
         self.assertEqual(f("строка"), (None, 0))
 
-    def test_collect_counts_matches_suite(self):
-        n, m = publish_dash.collect_test_counts()
-        self.assertIsNotNone(n)
-        self.assertGreater(n, 1300)
-        self.assertGreaterEqual(m, 54)
-
     def test_collect_networks_have_links(self):
         with tempfile.TemporaryDirectory() as td:
             db = os.path.join(td, "t.db")
@@ -235,6 +277,8 @@ class TestPublishDash(unittest.TestCase):
             self.assertIn("explorer", net)
             self.assertNotIn("config", net)
             self.assertNotIn("db", net)
+            self.assertIn("description_en", net)
+            self.assertIn("activities_en", net)
 
     def test_collect_details_no_secrets(self):
         with tempfile.TemporaryDirectory() as td:

@@ -1,6 +1,6 @@
 /* harvest SW: статика — cache-first, state.json — network-first, офлайн — offline.html.
-   CACHE bump при каждом релизе (v2.4.1): иначе клиенты сидят на старых ассетах. */
-const CACHE = "harvest-v2.4.1";
+   CACHE bump при каждом релизе: иначе клиенты сидят на старых ассетах. */
+const CACHE = "harvest-v2.4.2";
 const STATIC = [
   "./",
   "./index.html",
@@ -8,6 +8,7 @@ const STATIC = [
   "./demo.html",
   "./docs.html",
   "./terminal.html",
+  "./404.html",
   "./offline.html",
   "./manifest.webmanifest",
   "./assets/common.js",
@@ -15,7 +16,6 @@ const STATIC = [
   "./assets/demo.js",
   "./assets/site.css",
   "./assets/tokens.css",
-  "./assets/terminal.css",
   "./assets/og.png",
   "./assets/icon-192.png",
   "./assets/icon-512.png",
@@ -60,11 +60,13 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(fetch(e.request).catch(() => caches.match("./offline.html")));
     return;
   }
-  e.respondWith(caches.match(e.request).then((hit) => hit || fetch(e.request).then((r) => {
+  // Ключ кэша — без query: файлы с ?v= не плодят дубликаты.
+  const cacheKey = stateKey(e.request);
+  e.respondWith(caches.match(cacheKey).then((hit) => hit || fetch(e.request).then((r) => {
     if (r.ok) {
       const copy = r.clone();
-      caches.open(CACHE).then((c) => c.put(e.request, copy));
+      caches.open(CACHE).then((c) => c.put(cacheKey, copy));
     }
     return r;
-  }).catch(() => caches.match(e.request))));
+  }).catch(() => caches.match(cacheKey).then((hit2) => hit2 || caches.match("./offline.html")))));
 });

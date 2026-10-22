@@ -441,6 +441,9 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
                             except TimeoutError:
                                 pass
             finally:
+                # Финальный снимок метрик в БД: CLI-прогоны не держат демона
+                # с recorder-циклом, иначе витрина для них вечно «—».
+                await pool.record_health_snapshot(len(wallets))
                 await pool.close()
             print(f"  {Fore.GREEN}Фарм: {time.monotonic() - t3:.1f} сек{Style.RESET_ALL}")
         else:

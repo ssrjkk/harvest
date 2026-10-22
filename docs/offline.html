@@ -3,12 +3,21 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>harvest — офлайн</title>
-  <style>body{font-family:monospace;padding:24px;background:#14110A;color:#F0E8D0}a{color:#D4A72C}</style>
+  <title>Нет соединения — harvest</title>
+  <style>
+    body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:#14110A;color:#F0E8D0;font:14px/1.65 Consolas,"Courier New",monospace}
+    .box{max-width:560px;border:2px solid #2A2418;background:#1B1710;box-shadow:6px 6px 0 #0D0B06;padding:24px 26px}
+    h1{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#9A8F73;margin:0 0 10px}
+    p{margin:8px 0;color:#C9C1AC}
+    a{color:#D4A72C}
+    code{color:#D4A72C}
+  </style>
 </head>
 <body>
-  <h1>harvest // офлайн</h1>
-  <p>Нет соединения. Статика закэширована, <code>state.json</code> обновится при появлении сети.</p>
-  <p><a href="./index.html">На поле</a></p>
+  <div class="box">
+    <h1>harvest // офлайн</h1>
+    <p>Интернета нет. Страницы и стили уже лежат в кэше, а <code>state.json</code> подтянется, когда сеть вернётся.</p>
+    <p><a href="./index.html">Главная</a> · <a href="./field.html">Поле</a> · <a href="./demo.html">Демо</a> · <a href="./docs.html">Доки</a></p>
+  </div>
 </body>
 </html>

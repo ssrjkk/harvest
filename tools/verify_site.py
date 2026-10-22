@@ -23,6 +23,11 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(ROOT, "docs")
 CSS = os.path.join(DOCS, "assets", "site.css")
 
+sys.path.insert(0, ROOT)
+from core.version import VERSION  # noqa: E402  (source of truth for the site version)
+
+SITE_VERSION = f"v{VERSION}"
+
 # Порядок ссылок в навигации: одинаковый на всех страницах.
 NAV_LINKS = ["index.html", "field.html", "demo.html", "docs.html"]
 
@@ -49,9 +54,11 @@ def main() -> int:
             + [CSS, os.path.join(DOCS, ".nojekyll"), os.path.join(DOCS, "robots.txt"),
                os.path.join(DOCS, "assets", "og.png"),
                os.path.join(DOCS, "manifest.webmanifest"), os.path.join(DOCS, "sw.js"),
+               os.path.join(DOCS, "404.html"),
                os.path.join(DOCS, "offline.html"), os.path.join(DOCS, "terminal.html")])
     for p in want:
         check(f"exists {os.path.relpath(p, ROOT)}", os.path.exists(p))
+    check("legacy terminal.css removed", not os.path.exists(os.path.join(DOCS, "assets", "terminal.css")))
     pages = {n: open(os.path.join(DOCS, n), encoding="utf-8").read() for n in PAGES}
     js = {n: open(os.path.join(DOCS, "assets", n), encoding="utf-8").read()
           for n in ("common.js", "field.js", "demo.js")}
@@ -69,7 +76,9 @@ def main() -> int:
     if os.path.exists(sw):
         swtxt = open(sw, encoding="utf-8").read()
         check("sw: wallets blob not precached", "wallets.enc" not in swtxt, "")
-        for n in list(PAGES) + ["assets/common.js", "assets/field.js", "assets/demo.js"]:
+        check("sw: terminal.css not precached", "terminal.css" not in swtxt, "")
+        for n in list(PAGES) + ["assets/common.js", "assets/field.js", "assets/demo.js",
+                                "404.html", "offline.html", "terminal.html"]:
             check(f"sw precaches {n}", f'"./{n}"' in swtxt, "")
     # Блок PnL на «Поле»: разметка, рендер и словарь — вместе, иначе блок
     # либо не отрисуется, либо останется с английскими подписями.
@@ -86,12 +95,24 @@ def main() -> int:
     # адреса кошельков в публичную ветку не идут.
     check("field.js: no explorer address link", "/address/" not in field_js)
 
-    # Деплой-архив бота не должен отставать от исходников.
+    # Деплой-архив бота детерминированный (фиксированные метки записей):
+    # сравниваем байты пересборки, а не mtime — mtime на свежем клоне
+    # зависит от порядка распаковки файлов и ложно краснеет.
     zipp = os.path.join(ROOT, "botforge", "harvest-botforge.zip")
     zsrc = [os.path.join(ROOT, "botforge", n) for n in ("bot.py", "requirements.txt", "README.md")]
     if os.path.exists(zipp) and all(os.path.exists(p) for p in zsrc):
-        check("botforge zip fresh",
-              os.path.getmtime(zipp) >= max(os.path.getmtime(p) for p in zsrc), "")
+        sys.path.insert(0, os.path.join(ROOT, "tools"))
+        try:
+            from build_botforge_zip import build as _zb
+            import tempfile as _tf
+            from pathlib import Path as _P
+            with _tf.TemporaryDirectory() as _td:
+                _tmp = os.path.join(_td, "harvest-botforge.zip")
+                _zb(_P(_tmp))
+                _same = open(_tmp, "rb").read() == open(zipp, "rb").read()
+            check("botforge zip matches sources", _same, "")
+        except Exception as e:  # noqa: BLE001 — сборка не должна ронять проверку
+            check("botforge zip matches sources", False, f"rebuild failed: {e}")
 
     # Mini App (этап 3): клиент без фреймворков, id-ссылки целы, внешнего —
     # только telegram-web-app.js, инлайн-скриптов нет (CSP без nonce).
@@ -128,7 +149,7 @@ def main() -> int:
     # Внутренние ссылки и ресурсы резолвятся в реальные файлы docs/: страницы
     # лежат в корне docs/, поэтому относительный путь проверяем от DOCS.
     link_pages = dict(pages)
-    for extra in ("terminal.html", "offline.html"):
+    for extra in ("terminal.html", "offline.html", "404.html"):
         p = os.path.join(DOCS, extra)
         if os.path.exists(p):
             link_pages[extra] = open(p, encoding="utf-8").read()
@@ -198,9 +219,63 @@ def main() -> int:
     en_keys = set(re.findall(r"(?:[{,]\s*)([a-z][a-z0-9_]*):", "{" + m.group(1))) if m else set()
     html_keys: set[str] = set()
     for html in pages.values():
-        html_keys |= set(re.findall(r'data-i18n="([a-z0-9_]+)"', html))
+        html_keys |= set(re.findall(r'data-i18n(?:-ph|-aria)?="([a-z0-9_]+)"', html))
     missing_en = sorted(html_keys - en_keys)
     check("i18n keys covered by EN", not missing_en, str(missing_en))
+
+    # Ссылки на несуществующие ветки GitHub: master удалён, канон — main.
+    # Проверяем весь docs/, а не только страницы из PAGES (футеры, 404).
+    dead_branch = []
+    for fname in sorted(os.listdir(DOCS)):
+        if not fname.endswith(".html"):
+            continue
+        html = open(os.path.join(DOCS, fname), encoding="utf-8").read()
+        if "blob/master/" in html or "tree/master/" in html:
+            dead_branch.append(fname)
+    check("no links to deleted master branch", not dead_branch, str(dead_branch))
+
+    # Версия сайта — из core/version.py, а не из копии в проверялке. Тикеры,
+    # шапки и футеры должны говорить одно и то же.
+    versions = set()
+    for name, html in list(pages.items()) + [("field.js", js["field.js"]), ("common.js", js["common.js"])]:
+        versions |= set(re.findall(r"\bv\d+\.\d+\.\d+\b", html))
+    check("single site version everywhere", versions == {SITE_VERSION}, str(sorted(versions)))
+    # Числа тестов больше не выносим на витрину: они быстро устаревают и
+    # превращают проект в отчёт. Проверяем, что счётчики не вернулись.
+    count_claims = set()
+    for name, html in list(pages.items()) + [("field.js", js["field.js"]), ("common.js", js["common.js"])]:
+        count_claims |= set(re.findall(r"\b\d{3,}\s*(?:TESTS|ТЕСТОВ|tests|тестов)\b", html, re.I))
+        count_claims |= set(re.findall(r"\b\d{3,}\s*[·-]\s*\d+\s*(?:файл|files?)\b", html, re.I))
+    check("no numeric test-count claims", not count_claims, str(sorted(count_claims)))
+    # Честность витрины: никаких процентов сапплая и дропов в коде сайта и каталоге сетей.
+    drop_hype = []
+    for label, text in [("field.js", js["field.js"]), ("common.js", js["common.js"])] + list(pages.items()):
+        if re.search(r"5%\s*сапплая", text):
+            drop_hype.append(label)
+    try:
+        nets_src = open(os.path.join(ROOT, "portal", "networks.py"), encoding="utf-8").read()
+        if re.search(r"5%\s*сапплая", nets_src):
+            drop_hype.append("portal/networks.py")
+    except OSError:
+        pass
+    check("no drop-supply hype", not drop_hype, str(drop_hype))
+    # Кран один и тот же везде: прямые claim-URL Robinhood совпадают.
+    faucet_mismatch = []
+    try:
+        nets_src = open(os.path.join(ROOT, "portal", "networks.py"), encoding="utf-8").read()
+        if "faucet.testnet.chain.robinhood.com/claim" not in nets_src:
+            faucet_mismatch.append("portal/networks.py: no direct claim URL")
+    except OSError as e:
+        faucet_mismatch.append(f"portal/networks.py unreadable: {e}")
+    if "faucet.testnet.chain.robinhood.com/claim" not in js["field.js"]:
+        faucet_mismatch.append("field.js: no direct claim URL")
+    check("faucet URLs consistent", not faucet_mismatch, str(faucet_mismatch))
+    # SW не должен класть в кэш сырой Request с query: иначе рост ключей.
+    swtxt = open(os.path.join(DOCS, "sw.js"), encoding="utf-8").read()
+    check("sw caches via query-stripped key", "c.put(cacheKey" in swtxt or "c.put(stateKey" in swtxt, "")
+    # Переключение языка обязано перерисовывать и JS-тексты поля
+    # (зум/инспектор/плейсхолдер/пустые чарты), а не только data-i18n.
+    check("field.js repaints on hv:lang", js["field.js"].count("hv.onLang") >= 2, "")
 
     # Пресеты конструктора: имена/chain — против portal/networks.py (канон),
     # database.path — против shipped config-файлов (ground truth конструктора).
@@ -236,6 +311,110 @@ def main() -> int:
     bare = re.findall(r"contract: 0x[0-9a-fA-F]+", demo_js)
     check("no unquoted contract addresses", not bare, str(bare[:3]))
 
+    # Версия портала — из core.version, а не из копий в коде и статике.
+    # HTML портала несёт плейсхолдер, бот — _FOOT из bot_ops.
+    from portal import render_page
+
+    portal_html = ["portal/static/index.html", "portal/static/login.html",
+                   "portal/static/miniapp/app.html"]
+    for rel in portal_html:
+        text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        check(f"{rel} version via placeholder",
+              "{{HARVEST_VERSION}}" in text
+              and not re.findall(r"\bv?\d+\.\d+\.\d+\b", text), "")
+        rendered = render_page(os.path.join(ROOT, rel))
+        check(f"{rel} renders version {SITE_VERSION}",
+              "{{HARVEST_VERSION}}" not in rendered
+              and SITE_VERSION.lstrip("v") in rendered, "")
+    stale_py = []
+    for rel in ["portal/bot_ops.py", "portal/bot_telegram.py", "portal/api.py",
+                "portal/miniapp.py", "portal/__init__.py"]:
+        text = open(os.path.join(ROOT, rel), encoding="utf-8").read()
+        for m in re.findall(r"(?<![\d.])(\d+\.\d+\.\d+)(?!\.?\d)", text):
+            if m != SITE_VERSION.lstrip("v"):
+                stale_py.append(f"{rel}: {m}")
+    check("portal py has no stale version copies", not stale_py, str(stale_py))
+    # Поле не врёт про живость: running — проба лока, network — из имени БД,
+    # health/dyn — только из свежего снимка метрик, а не захардкоженные 1.0/0.
+    pub = open(os.path.join(ROOT, "publish_dash.py"), encoding="utf-8").read()
+    check("publish derives running/network",
+          "_farm_running(DB)" in pub and "_network_slug(DB)" in pub
+          and '"running": False' not in pub, "")
+    check("publish reads metrics snapshots",
+          "metrics_snapshots" in pub and "_fresh_ts" in pub
+          and '"health_factor": 1.0' not in pub, "")
+    # Снимки пишут оба пути фарма: демон (recorder-цикл) и run_once пула
+    # (auto/CLI/экраны через хук в конце цикла) плюс финал в auto.
+    pool_src = open(os.path.join(ROOT, "core", "pool.py"), encoding="utf-8").read()
+    auto_src = open(os.path.join(ROOT, "auto.py"), encoding="utf-8").read()
+    check("pool records health snapshot",
+          "async def record_health_snapshot" in pool_src
+          and "await self.record_health_snapshot(len(wallets))" in pool_src, "")
+    check("auto records health snapshot",
+          "await pool.record_health_snapshot(len(wallets))" in auto_src, "")
+
+    # Контракт state.json: продюсер (publish.collect) против потребителей
+    # (поле, боты). Типы и ключи, а не только наличие блоков в HTML.
+    import asyncio as _asyncio
+    import sqlite3 as _sqlite3
+    import tempfile as _tempfile
+    import publish_dash as _pd
+    with _tempfile.TemporaryDirectory() as _td:
+        _dbp = os.path.join(_td, "farming_robinhood.db")
+        _con = _sqlite3.connect(_dbp)
+        _con.execute("CREATE TABLE wallets (address TEXT PRIMARY KEY, private_key TEXT, "
+                     "mnemonic TEXT, total_actions INTEGER DEFAULT 0, "
+                     "total_attempts INTEGER DEFAULT 0, last_cycle INTEGER)")
+        _con.execute("CREATE TABLE cycle_history (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                     "started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, mode TEXT, "
+                     "duration_s REAL, wallets INTEGER, wallets_ok INTEGER, "
+                     "actions_ok INTEGER, errors INTEGER)")
+        _con.commit()
+        _con.close()
+        _old_db, _pd.DB = _pd.DB, _dbp
+        try:
+            _st = _asyncio.run(_pd.collect())
+        finally:
+            _pd.DB = _old_db
+    _bad = []
+    if not isinstance(_st.get("running"), bool):
+        _bad.append("running")
+    if _st.get("network") != "robinhood":
+        _bad.append("network")
+    if not isinstance(_st.get("wallet_count"), int):
+        _bad.append("wallet_count")
+    if not isinstance(_st.get("updated_at"), str):
+        _bad.append("updated_at")
+    _pool = _st.get("pool") or {}
+    for _k in ("actions", "errors", "processed", "cycles", "dropped"):
+        if not isinstance(_pool.get(_k), int):
+            _bad.append("pool." + _k)
+    for _k in ("health_factor",):
+        if _st.get(_k) is not None and not isinstance(_st.get(_k), (int, float)):
+            _bad.append(_k)
+    if _pool.get("dyn_workers") is not None and not isinstance(_pool.get("dyn_workers"), (int, float)):
+        _bad.append("pool.dyn_workers")
+    _wc = _st.get("wallet_cells") or {}
+    if _wc.get("v") != 2 or not isinstance(_wc.get("cells"), str) or not isinstance(_wc.get("details"), list):
+        _bad.append("wallet_cells")
+    for _n in _st.get("networks", []):
+        for _k in ("tagline_en", "description_en", "rewards_en", "activities_en"):
+            if _k not in _n:
+                _bad.append("networks." + _k)
+                break
+    check("state.json schema contract", not _bad, str(sorted(set(_bad))))
+
+    # exe-spec ссылается на существующие файлы: протухшие datas/entry —
+    # битый дистрибутив, а CI exe не собирает и не заметит.
+    spec = open(os.path.join(ROOT, "harvest.spec"), encoding="utf-8").read()
+    _spec_missing = []
+    if not os.path.exists(os.path.join(ROOT, "main.py")):
+        _spec_missing.append("main.py")
+    for _src in re.findall(r"\(\s*'([^']+)'\s*,\s*'[^']*'\s*\)", spec):
+        if not os.path.exists(os.path.join(ROOT, _src)):
+            _spec_missing.append(_src)
+    check("harvest.spec datas exist", not _spec_missing, str(_spec_missing))
+
     # Токены: сгенерированный CSS свеж (пересборка не должна ничего менять).
     before = open(os.path.join(DOCS, "assets", "tokens.css"), encoding="utf-8").read()
     r = subprocess.run([sys.executable, os.path.join(ROOT, "tools", "build_tokens.py")],
@@ -249,7 +428,7 @@ def main() -> int:
         "field.html": ["navToggle", "mainNav", "fieldGrid", "fieldEmpty", "fieldLegend",
                        "fieldMore", "lastCycle", "cellTip", "fxFilters", "fxZoom", "fxQ",
                        "fxInspector", "updated", "term", "dot", "status", "net", "health",
-                       "liveAlert", "nets", "chartMain", "chartProc", "tWallets", "tHistory"],
+                       "liveAlert", "staleAlert", "nets", "chartMain", "chartProc", "tWallets", "tHistory"],
         "demo.html": ["navToggle", "mainNav", "modeNew", "modePro", "newView", "proView",
                       "cfgNet", "cfgOut", "cmdOut", "wRows", "simLog", "simChart",
                       "vText", "vOut"],

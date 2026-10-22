@@ -150,7 +150,7 @@ class TestPerformanceEasy(unittest.TestCase):
 
 class TestVersionEasy(unittest.TestCase):
     def test_version_line(self):
-        self.assertEqual(version_line(), "harvest v2.3.0")
+        self.assertEqual(version_line(), "harvest v2.4.1")
 
 
 class TestWalletEasy(unittest.TestCase):

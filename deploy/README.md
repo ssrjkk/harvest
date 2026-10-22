@@ -141,7 +141,7 @@ curl https://ваш-домен/healthz          # {"status":"ok","ready":true}
 ```
 
 Mini App (дашборд в Telegram) открывается по `PORTAL_BASE_URL` — после деплоя
-кнопка «🚀 Открыть Mini App» в боте заработает сразу.
+кнопка «Открыть Mini App» в боте заработает сразу.
 
 ## 4.5. Бесплатно без карты — Hugging Face Spaces (Docker)
 

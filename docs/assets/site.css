@@ -26,8 +26,10 @@ section.block,.hero{scroll-margin-top:76px}
 
 /* top bar */
 .topbar{border-bottom:2px solid var(--ink);position:sticky;top:0;background:var(--bg);z-index:50;padding-top:env(safe-area-inset-top, 0px)}
-/* index.html использует .titlebar (terminal.css) вместо .topbar-in — дублируем раскладку */
 .titlebar{display:flex;align-items:center;gap:14px;min-height:60px;padding-top:6px;padding-bottom:6px;flex-wrap:wrap;min-width:0}
+.topbar .titlebar{padding:6px 22px}
+.topbar .btn{box-shadow:none;padding:4px 10px}
+.topbar .btn:hover{transform:none;box-shadow:none;background:var(--bg2)}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
 .brand-mark{width:30px;height:30px;background:var(--gold);color:var(--gold-ink);display:grid;place-items:center;font-family:var(--disp);font-size:18px;flex:none}
 .brand-name{font-family:var(--disp);font-size:22px;letter-spacing:.06em}
@@ -41,12 +43,10 @@ nav.main{display:flex;gap:6px;margin-left:8px;overflow-x:auto;scrollbar-width:no
 nav.main a{font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.08em;text-decoration:none;color:var(--ink2);padding:4px 10px;white-space:nowrap;border:2px solid transparent}
 nav.main a.navlink{padding:4px 10px;text-decoration:none}
 nav.main a:hover{border-color:var(--ink)}
+nav.main a.btn{box-shadow:none;background:transparent;border-color:transparent;color:var(--ink2);padding:5px 10px}
+nav.main a.btn:hover{transform:none;box-shadow:none;background:var(--bg2);border-color:var(--ink);color:var(--ink)}
+nav.main a.btn[aria-current="page"]{background:var(--gold);border-color:var(--gold);color:var(--gold-ink)}
 .top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
-@media(max-width:1500px) and (min-width:901px){
-  .topbar-in{flex-wrap:wrap;row-gap:8px}
-  nav.main{order:3;flex-basis:100%;margin-left:0}
-  .topbar .btn.primary{display:none}
-}
 .nav-toggle{display:none;font-family:var(--mono);font-size:18px;font-weight:700;background:var(--bg);color:var(--ink);border:2px solid var(--ink);padding:4px 12px;cursor:pointer;box-shadow:3px 3px 0 var(--line2);min-width:44px;min-height:44px;align-items:center;justify-content:center}
 @media(min-width:901px){.nav-scrim{display:none !important}}
 @media(max-width:900px){
@@ -70,7 +70,9 @@ nav.main a:hover{border-color:var(--ink)}
   .hero .titlebar span:last-child{display:none}
   .brand-name{font-size:18px}
   .seg button{padding:8px 8px}
-  .topbar-in{gap:8px}
+  .topbar .titlebar{padding:6px 14px}
+  nav.main{padding:8px 14px}
+  .hero .wrap{padding-top:24px}
   .wrap{padding:0 14px}
   section.block{padding:32px 0}
   h1{font-size:clamp(30px,10vw,40px);border-left-width:6px;padding-left:12px}
@@ -91,12 +93,16 @@ nav.main a:hover{border-color:var(--ink)}
 .seg button.on{background:var(--chip);color:var(--chip-ink)}
 
 /* hero */
-.hero{padding:60px 0 34px;border-bottom:2px solid var(--ink)}
+.hero{padding:0 0 38px;border:2px solid var(--ink);box-shadow:6px 6px 0 var(--line2);margin:0 auto 18px;max-width:var(--max)}
+@media(max-width:1204px){.hero{margin-left:14px;margin-right:14px}}
+@media(max-width:480px){.hero{margin-left:8px;margin-right:8px;box-shadow:4px 4px 0 var(--line2)}}
+.hero .titlebar{min-height:0;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:7px 14px;background:var(--gold);color:var(--gold-ink);border-bottom:2px solid var(--ink);font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.hero .wrap{padding-top:34px}
 .kicker{font-family:var(--mono);font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 h1{font-family:var(--disp);font-size:clamp(36px,11vw,104px);line-height:.92;margin:18px 0 14px;letter-spacing:.005em;text-transform:uppercase;font-weight:400;border-left:10px solid var(--gold);padding-left:18px}
 h1 em{font-style:normal;color:var(--gold)}
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.lede{max-width:62ch;color:var(--ink2);font-size:17px;margin:0}
+.lede{max-width:64ch;color:var(--ink2);font-size:17px;margin:0}
 .hero-grid{display:grid;grid-template-columns:1.2fr .8fr;gap:26px;margin-top:28px}
 @media(max-width:860px){.hero-grid{grid-template-columns:1fr}}
 .stat-table{border:2px solid var(--ink);overflow:hidden;box-shadow:5px 5px 0 var(--line2)}
@@ -104,9 +110,6 @@ h1 em{font-style:normal;color:var(--gold)}
 .stat-table td,.stat-table th{padding:9px 12px;border-bottom:1px solid var(--line);text-align:left}
 .stat-table tr:last-child td{border-bottom:0}
 .stat-table th{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--bg);background:var(--ink);font-weight:700}
-/* Шапка таблицы в hero: явные фирменные цвета. Без этого th наследует
-   --bg/--ink, которые переопределяет поздний terminal.css :root, —
-   и шапка выходит светлой на светлом. */
 /* hero — тёмное бренд-окно терминала во ВСЕХ темах: пиним полный набор
    переменных ink прямо на поддерево, иначе светлая тема даёт тёмный текст
    на тёмном фоне (переменные наследуются со страницы). */
@@ -115,6 +118,7 @@ h1 em{font-style:normal;color:var(--gold)}
   --muted:#9A8F73; --line:#2C2618; --line2:#57492E; --dots:#241E12;
   --gold:#e5b842; --gold-ink:#14110A;
   --paper:#F0E8D0; --chip:#F0E8D0; --chip-ink:#14110A;
+  background:var(--bg);
   color:var(--ink);
 }
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
@@ -145,6 +149,25 @@ h2{font-family:var(--disp);font-size:clamp(30px,4vw,44px);line-height:.95;margin
 .card h3{margin:0 0 6px;font-size:15px;text-transform:uppercase;letter-spacing:.03em}
 .card p{margin:6px 0;color:var(--ink2);font-size:14px}
 .label{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+/* Письмо автора: обычный текст, без карточек и иконок. */
+.letter{max-width:76ch;margin:16px 0 30px;padding:2px 0 2px 20px;border-left:8px solid var(--gold)}
+.letter p{margin:0 0 13px;font-size:16.5px;color:var(--ink2)}
+.letter p:last-of-type{margin-bottom:0}
+.letter .sign{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:16px}
+/* Список границ: заголовок слева, объяснение справа. */
+.plain-list{list-style:none;margin:18px 0 0;padding:0;border:2px solid var(--ink);background:var(--bg);box-shadow:5px 5px 0 var(--line2)}
+.plain-list li{display:grid;grid-template-columns:minmax(150px,.3fr) 1fr;gap:18px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.plain-list li:last-child{border-bottom:0}
+.plain-list b{font-family:var(--mono);font-size:11.5px;line-height:1.5;letter-spacing:.08em;text-transform:uppercase;color:var(--gold)}
+.plain-list span{font-size:14.5px;color:var(--ink2)}
+@media(max-width:640px){
+  .plain-list li{grid-template-columns:1fr;gap:5px}
+  .letter{padding-left:14px;border-left-width:6px}
+  .letter p{font-size:15.5px}
+}
+/* Inset-панель (инспектор поля). Раньше приходила из terminal.css. */
+.inset{background:var(--bg2);border:2px solid var(--line2)}
+#fxInspector b{color:var(--gold)}
 table.t{width:100%;border-collapse:collapse;font-size:13.8px;background:var(--bg)}
 table.t th{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--chip-ink);background:var(--chip);font-weight:700;text-align:left;padding:9px 10px}
 table.t td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
@@ -316,9 +339,7 @@ footer a{color:var(--ink2)}
 
 @media print{
   /* Печать справочника: белый фон вместо тёмной темы — не жжём тонер.
-     Прячем интерактив и навигацию, оставляем контент и таблицы.
-     terminal.css грузится последним и переопределяет цвета body и фоны,
-     поэтому здесь везде !important и явные значения, а не переменные. */
+     Прячем интерактив и навигацию, оставляем контент и таблицы. */
   .topbar,.ticker,.nav-scrim,.toast,.cmdk,.hero-cta,.toolbar,.copy-btn,
   .nav-toggle,#themeBtn,#langRu,#langEn,.field-grid,.cell-tip,.play-tabs{display:none!important}
   body{background:#fff!important;color:#000!important}

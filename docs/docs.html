@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Доки — harvest</title>
-<meta name="description" content="Документация harvest: факты, устройство, портал и Telegram-бот, безопасность, тесты, лицензия MIT.">
+<meta name="description" content="Как устроен harvest: архитектура, портал и Telegram-бот, безопасность, тесты и лицензия MIT.">
 <meta name="theme-color" content="#14110A">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Доки — harvest">
-<meta property="og:description" content="Документация harvest: факты, устройство, портал и Telegram-бот, безопасность, тесты, лицензия MIT.">
+<meta property="og:description" content="Как устроен harvest: архитектура, портал и Telegram-бот, безопасность, тесты и лицензия MIT.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
 <meta property="og:url" content="https://ssrjkk.github.io/harvest/docs.html">
 <meta name="twitter:card" content="summary_large_image">
@@ -22,7 +22,6 @@
 try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
-<link rel="stylesheet" href="assets/terminal.css">
 <noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
 </head>
 <body class="is-loading">
@@ -30,9 +29,9 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
 <header class="topbar">
   <div class="titlebar">
-    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
     <span style="display:flex;gap:8px;align-items:center">
-      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
       <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
       <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss">◐</button>
       <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
@@ -47,28 +46,28 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 </header>
 <div class="nav-scrim" id="navScrim" hidden></div>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <!-- SPECS -->
 <section class="block" data-reveal id="specs">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="specs_h">Факты</h2></div>
+    <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="specs_h">Коротко о проекте</h2></div>
     <div class="table-wrap"><table class="t">
       <tr><th data-i18n="th_fact">Факт</th><th data-i18n="th_val">Значение</th></tr>
       <tr><td data-i18n="f_net">Сети из коробки</td><td class="num">4 — Robinhood 46630 · Flop · Arc 5042002 · vibe/vibe</td></tr>
-      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">1467 · 57 файлов · зелёный прогон</td></tr>
-      <tr><td data-i18n="f_wallet">Генерация</td><td class="num">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
-      <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
-      <tr><td data-i18n="f_portal">Управление</td><td class="num">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
-      <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num">exe через PyInstaller · Docker + compose</td></tr>
+      <tr><td data-i18n="f_tests">Тесты</td><td class="num" data-i18n="f_tests_v">pytest · контрактные сценарии · CI</td></tr>
+      <tr><td data-i18n="f_wallet">Генерация</td><td class="num" data-i18n="f_wallet_v">BIP-39 · ~60 кошельков/сек · AES-256-GCM</td></tr>
+      <tr><td data-i18n="f_rpc">RPC-слой</td><td class="num" data-i18n="f_rpc_v">мульти-RPC · EMA · circuit breaker · TTL-кэши</td></tr>
+      <tr><td data-i18n="f_portal">Управление</td><td class="num" data-i18n="f_portal_v">CLI auto.py · Rich-меню main.py · портал + Telegram-бот</td></tr>
+      <tr><td data-i18n="f_dist">Дистрибуция</td><td class="num" data-i18n="f_dist_v">exe через PyInstaller · Docker + compose</td></tr>
     </table></div>
   </div>
 </section><!-- 06 ARCH -->
 <section class="block" data-reveal id="arch">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">06</span><h2 data-i18n="s5_h">Как устроено</h2></div>
-    <p class="sec-sub" data-i18n="s5_sub">main.py (Rich-меню) и auto.py (CLI-автомат) делят одно ядро core/. Один NetworkManager на сессию — латентность, кэши и монитор общие. Запись в БД — через BatchWriter батчами, с cooldown после серии сбоев.</p>
+    <p class="sec-sub" data-i18n="s5_sub">main.py — меню для человека, auto.py — тот же пайплайн для скрипта. Оба делят одно ядро core/. Один NetworkManager на сессию — латентность, кэши и монитор общие. Запись в БД идёт через BatchWriter батчами, с паузой после серии сбоев.</p>
     <div class="grid2">
       <div><div class="tree">main.py ── interactive menu (Rich live, p/q keys)
 auto.py ── CLI pipeline: gen → faucet → farm → export
@@ -107,7 +106,7 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
 <section class="block" data-reveal id="portal">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">07</span><h2 data-i18n="s6_h">Портал и Telegram</h2></div>
-    <p class="sec-sub" data-i18n="s6_sub">python -m portal поднимает aiohttp (веб + API) и, при токене, бота. Секреты — только через env. Fail-closed: bind не на loopback без способа входа — отказ запуска.</p>
+    <p class="sec-sub" data-i18n="s6_sub">python -m portal поднимает aiohttp (веб + API) и, если есть токен, Telegram-бота. Секреты — только через env. Если портал выставляют не на loopback и способа входа нет, он отказывается стартовать.</p>
     <div class="grid2">
       <div class="table-wrap"><table class="t">
         <tr><th>env</th><th data-i18n="po_d">Назначение</th></tr>
@@ -133,25 +132,27 @@ core/exporter.py ── CSV/JSON (+AES-CBC v2 files)</div></div>
       <div class="card"><h3>Redaction</h3><p data-i18n="b2_p">RPC-URL чистятся везде: credentials до @ и query-токены стираются. https://user:pass@host/?api_key=X → https://host/. Логи, история циклов, CLI-вывод.</p></div>
       <div class="card"><h3>Fail-closed</h3><p data-i18n="b3_p">Нет мастер-ключа при шифрованных сидах — отказ. Портал default-deny, single-instance лок на БД, ограничение прав файлов, лимиты логина 5/10мин per-IP.</p></div>
     </div>
-    <p class="note" data-i18n="sec_rep">Нашли уязвимость — не открывайте публичный issue. Используйте private vulnerability reporting на GitHub или напишите мейнтейнеру. Поддерживается только последний релиз; ответ в течение 48 часов.</p>
+    <p class="note" data-i18n="sec_rep">Нашли уязвимость — не открывайте публичный issue. Напишите через private vulnerability reporting на GitHub или напрямую мейнтейнеру. Поддерживается последний релиз; стараюсь ответить в течение 48 часов.</p>
   </div>
 </section><!-- 09 TESTS / FAQ -->
 <section class="block" data-reveal id="tests">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Тесты и вопросы</h2></div>
+    <div class="sec-head"><span class="sec-no">09</span><h2 data-i18n="s8_h">Проверки и вопросы</h2></div>
     <div class="grid2">
       <div>
-<pre class="code">python -m pytest tests -q   # 1467 tests · 57 files</pre>
+<pre class="code" id="codeTest">python -m pytest tests -q<button class="btn small copy-btn" data-copy="codeTest" type="button"><span data-i18n="copy">копировать</span></button></pre>
         <ul class="tight note">
           <li data-i18n="t1">wait_for_receipt: EMA-бюджет поллинга, failover при серии ошибок, деградация частоты, None по бюджету без отката nonce, кросс-чек на вторичной ноде.</li>
-          <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI-бейдж в README.</li>
+          <li data-i18n="t2">Линт: ruff · flake8 · black (120) · mypy · bandit. CI гоняет то же, что можно запустить локально; покрытие core/portal — это гейт в CI, а не цифра для хвастовства на сайте.</li>
+          <li data-i18n="t3">Нагрузочный тест — opt-in: <code class="inline">$env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q</code>.</li>
         </ul>
       </div>
       <div>
-        <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебный фарминг активности. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
-        <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вашей вкладки. Сайт статический, отправки на сервер нет — закройте вкладку или нажмите «Очистить», и они исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
-        <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime делает фоллбэк на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
-        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по расписанию — по умолчанию каждые 30 минут, допустимо 15–60; история master не растёт — снапшот уходит в ветку gh-pages). До этого вся остальная информация и инструменты уже работают.</div></details>
+        <details open><summary><span class="q">Q1</span> <span data-i18n="q1">Это для мейннета?</span></summary><div class="a" data-i18n="a_q1">Нет. Только тестнеты и учебная активность. Не используйте реальные средства и не храните реальные ключи в демо-зоне сайта.</div></details>
+        <details><summary><span class="q">Q2</span> <span data-i18n="q2">Где мои ключи из демо-генератора?</span></summary><div class="a" data-i18n="a_q2">Только в памяти вкладки. Сайт статический, на сервер ничего не уходит — закройте вкладку или нажмите «Очистить», и ключи исчезнут. Для постоянного хранения используйте экспорт и шифрование из Python-версии.</div></details>
+        <details><summary><span class="q">Q3</span> <span data-i18n="q3">Что делать с 0x0-контрактами в конфиге?</span></summary><div class="a" data-i18n="a_q3">Это заглушки по дизайну: валидатор пропускает их с замечанием, runtime откатывается на transfer. Впишите реальные адреса из Tier-2 документации, когда будете готовы.</div></details>
+        <details><summary><span class="q">Q4</span> <span data-i18n="q4">Почему поле пустое?</span></summary><div class="a" data-i18n="a_q4">Поле оживает после первой публикации: запустите python publish_dash.py на машине фермы (по умолчанию раз в 30 минут, допустимо 15–60; история main не растёт — снапшот уходит в ветку gh-pages). Если данных нет — это не ошибка сайта, ферма просто ещё ничего не отправила.</div></details>
+        <details><summary><span class="q">Q5</span> <span data-i18n="q5">Вы обещаете дроп?</span></summary><div class="a" data-i18n="a_q5">Нет. harvest не гарантирует дроп, поинты или прибыль. Тестнеты меняются, активность могут не засчитать. Инструмент помогает делать практику аккуратно, но результат не в его власти.</div></details>
       </div>
     </div>
   </div>
@@ -181,15 +182,15 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.</div>
-    <div class="toolbar"><a class="btn small" href="https://github.com/ssrjkk/harvest/blob/master/LICENSE" target="_blank" rel="noopener">LICENSE file</a></div>
+    <div class="toolbar"><a class="btn small" href="https://github.com/ssrjkk/harvest/blob/main/LICENSE" target="_blank" rel="noopener">LICENSE file</a></div>
   </div>
 </section></main>
 
 <footer>
   <div class="wrap cols">
-    <div><b class="mono">harvest v2.4.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
     <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
-    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
 <div class="cmdk" id="cmdk">

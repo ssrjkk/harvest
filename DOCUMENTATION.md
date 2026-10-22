@@ -1,6 +1,6 @@
 ﻿# harvest — полная документация проекта и кода
 
-Версия: **v2.3.0** · Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив)
+Версия: **v2.4.1** · Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив)
 
 **Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk · Лицензия [MIT](LICENSE)
 
@@ -669,7 +669,7 @@ chain_id, circuit breaker, ноды), кран (живые стратегии), 
 
 ### 3.23. `version.py`
 
-`VERSION = "2.3.0"`, `version_line() -> "harvest v2.3.0"` (используется в
+`VERSION = "2.4.1"`, `version_line() -> "harvest v2.4.1"` (используется в
 `--version` и баннерах).
 
 ---
@@ -1074,6 +1074,32 @@ pandas, pytest и пр.; `upx=False` (ложные срабатывания AV/E
 
 `portal/links.json` наполняется так: `[ { "label": "<что>", "url": "<https://…>" } ]` —
 и проверяется `GET /api/links` портала.
+
+---
+
+## 9.6. Релиз (чеклист поднятия версии)
+
+Версия живёт в одном месте — `core/version.py`. Остальное подтягивается
+автоматически, кроме картинок. Порядок:
+
+1. **Номер**: `core/version.py` → `VERSION = "X.Y.Z"`. Футеры бота,
+   статика портала (`{{HARVEST_VERSION}}`), сайт (константы в `common.js` /
+   `field.js`) подхватят сами — проверяет `verify_site` (`single site version`,
+   `no stale version copies`, `renders version`).
+2. **Кэш SW**: `docs/sw.js` → `CACHE = "harvest-vX.Y.Z"` (+1 к прошлой).
+3. **OG-картинка**: `python tools/make_og.py` (Pillow; на Windows — Impact/Consolas,
+   на Linux — дефолтный шрифт, вид будет отличаться — генерировать на Windows).
+4. **Скриншоты README**: `python tools/shoot_site.py --url http://127.0.0.1:8765`
+   (сервер: `python -m http.server 8765 --directory docs`), матрица:
+   `python tools/shoot_site.py --url ... --matrix` → `fails=0`.
+5. **Архив бота**: `python tools/build_botforge_zip.py` (детерминированный;
+   `verify_site` сравнивает байты, mtime не важен).
+6. **Эндпоинты**: `python tools/check_endpoints.py` с машины с интернетом —
+   RPC `eth_chainId` обязан совпасть с `chain_id` конфигов.
+7. **Проверки**: `python tools/verify_site.py` → 0 FAIL;
+   `python -m pytest tests -q` → зелёный (гейт 100% покрытия core/portal).
+8. **CHANGELOG**: перенести раздел `[Unreleased]` в новый `## [X.Y.Z] - <дата>`,
+   завести пустой `[Unreleased]` сверху.
 
 ---
 

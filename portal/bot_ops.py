@@ -22,7 +22,11 @@ import yaml
 from core.config_validate import ConfigError, config_warnings, validate_config
 from portal.networks import NETWORKS
 
-_FOOT = "ssrjkk · t.me/ssrjkk_bot · MIT · v2.3.0"
+try:
+    from core.version import VERSION as _VERSION
+except Exception:  # noqa: BLE001 — урезанное окружение без core
+    _VERSION = "2.4.1"
+_FOOT = f"ssrjkk · t.me/ssrjkk_bot · MIT · v{_VERSION}"
 
 # Лимит входного YAML для /check (как лимит initData): защита от спама.
 _CHECK_MAX_BYTES = 16 * 1024

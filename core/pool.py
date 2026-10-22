@@ -254,6 +254,29 @@ class FarmerPool:
             "health": round(self._health_factor, 2),
         }
 
+    async def record_health_snapshot(self, wallets: int = 0) -> bool:
+        """Один снимок метрик в БД для витрины (прогоны без демона).
+
+        Парный близнец recorder-цикла демона портала: тот же ряд
+        metrics_snapshots, та же свежесть для publish. Никогда не бросает:
+        False — БД недоступна, витрина покажет «—», прогон идёт дальше.
+        """
+        try:
+            st = self.live_stats()
+            await self.db.record_metrics_snapshot(
+                actions=int(st.get("actions", 0) or 0),
+                errors=int(st.get("errors", 0) or 0),
+                processed=int(st.get("processed", 0) or 0),
+                cycles=int(st.get("cycles", 0) or 0),
+                wallets=int(wallets or 0),
+                dyn_workers=float(st.get("dyn_workers", 0) or 0),
+                health_factor=float(self.network.concurrency_factor()),
+            )
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Снимок метрик не записан: {e}")
+            return False
+
     def _per_wallet_timeout(self, profile: WalletProfile) -> int:
         """Персональный бюджет времени на кошелёк (сек).
 
@@ -510,6 +533,10 @@ class FarmerPool:
             )
         # Очищаем кэш приватных ключей после цикла (не держим ключи в памяти на масштабе)
         self.network.clear_accounts_cache()
+        # Снимок метрик для витрины — здесь, а не у вызывателей: так его
+        # получают все пути (auto, run_forever, экраны CLI), каждый цикл.
+        # Метод не бросает; витрина для бесконечных прогонов тоже живая.
+        await self.record_health_snapshot(len(wallets))
         return final
 
     async def close(self) -> None:

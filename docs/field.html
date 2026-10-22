@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Поле — harvest</title>
-<meta name="description" content="Живое поле фермы harvest: сетка кошельков, метрики, кран и Telegram-бот. Данные публикует ферма.">
+<meta name="description" content="Снимок состояния фермы harvest: сетка кошельков, метрики, история, кран и Telegram-бот. Данные публикует сама ферма.">
 <meta name="theme-color" content="#14110A">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Поле — harvest">
-<meta property="og:description" content="Живое поле фермы harvest: сетка кошельков, метрики, кран и Telegram-бот. Данные публикует ферма.">
+<meta property="og:description" content="Снимок состояния фермы harvest: сетка кошельков, метрики, история, кран и Telegram-бот. Данные публикует сама ферма.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
 <meta property="og:url" content="https://ssrjkk.github.io/harvest/field.html">
 <meta name="twitter:card" content="summary_large_image">
@@ -22,7 +22,6 @@
 try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documentElement.classList.add("rv");addEventListener("load",function(){setTimeout(function(){document.documentElement.classList.remove("rv")},2500)})}}catch(e){}</script>
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/site.css">
-<link rel="stylesheet" href="assets/terminal.css">
 <noscript><style>nav.main{display:flex !important;position:static !important;max-height:none !important}</style></noscript>
 </head>
 <body class="is-loading">
@@ -30,9 +29,9 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
 <header class="topbar">
   <div class="titlebar">
-    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.0</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
+    <span><b class="brand-mark">h</b> <span class="brand-name">harvest</span> <span class="brand-ver">v2.4.1</span> <span class="live" id="livePill"><i class="dot mut" id="pillDot"></i><span id="pillTxt">…</span></span></span>
     <span style="display:flex;gap:8px;align-items:center">
-      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" aria-label="Меню">≡</button>
+      <button id="navToggle" class="nav-toggle" type="button" aria-expanded="false" aria-controls="mainNav" data-i18n-aria="aria_menu" aria-label="Меню">≡</button>
       <button id="langRu" class="btn" type="button" style="padding:2px 10px">RU</button><button id="langEn" class="btn" type="button" style="padding:2px 10px">EN</button>
       <button id="themeBtn" class="btn" type="button" style="padding:2px 10px" title="Paper / Ink / Moss">◐</button>
       <a class="btn" href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener" style="padding:2px 10px;text-decoration:none">GitHub</a>
@@ -47,28 +46,29 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 </header>
 <div class="nav-scrim" id="navScrim" hidden></div>
 
-<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.0 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · 1467 TESTS · MIT ·&nbsp;</div></div>
+<div class="ticker" aria-hidden="true"><div class="ticker-in" id="tickerIn">harvest v2.4.1 · ROBINHOOD 46630 · VIBE/VIBE 46630 · FLOP 99999 · ARC 5042002 · MIT ·&nbsp;</div></div>
 
 <main id="main">
 <span id="live" aria-hidden="true"></span>
 <section class="block" data-reveal id="field">
   <div class="wrap">
-    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — живое состояние фермы</h2><span class="pill" id="updated" aria-live="polite">—</span></div>
+    <div class="sec-head"><span class="sec-no">01</span><h2 data-i18n="sl_h">Поле — что происходит сейчас</h2><span class="pill" id="updated" aria-live="polite">—</span></div>
 
-    <div class="toolbar" id="fxFilters" role="toolbar" aria-label="Фильтры поля" style="overflow-x:auto">
-      <button class="btn small on" data-f="all" type="button" aria-pressed="true" aria-label="Все кошельки" data-i18n="f_all">ВСЕ</button>
-      <button class="btn small" data-f="i" type="button" aria-pressed="false" aria-label="Спящие">i</button>
-      <button class="btn small" data-f="w" type="button" aria-pressed="false" aria-label="Работающие">w</button>
-      <button class="btn small" data-f="o" type="button" aria-pressed="false" aria-label="Успешные">o</button>
-      <button class="btn small" data-f="e" type="button" aria-pressed="false" aria-label="С ошибками">e</button>
-      <button class="btn small" data-f="r" type="button" aria-pressed="false" aria-label="Отдыхающие">r</button>
-      <button class="btn small" id="fxZoom" type="button">250</button>
-      <label class="visually-hidden" for="fxQ">Номер кошелька</label>
-      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…" aria-label="Номер кошелька">
+    <div class="toolbar" id="fxFilters" role="toolbar" data-i18n-aria="aria_filters" aria-label="Фильтры поля" style="overflow-x:auto">
+      <button class="btn small on" data-f="all" type="button" aria-pressed="true" data-i18n-aria="aria_f_all" aria-label="Все кошельки" data-i18n="f_all">ВСЕ</button>
+      <button class="btn small" data-f="i" type="button" aria-pressed="false" data-i18n-aria="aria_f_i" aria-label="Спящие">i</button>
+      <button class="btn small" data-f="w" type="button" aria-pressed="false" data-i18n-aria="aria_f_w" aria-label="Работающие">w</button>
+      <button class="btn small" data-f="o" type="button" aria-pressed="false" data-i18n-aria="aria_f_o" aria-label="Успешные">o</button>
+      <button class="btn small" data-f="e" type="button" aria-pressed="false" data-i18n-aria="aria_f_e" aria-label="С ошибками">e</button>
+      <button class="btn small" data-f="r" type="button" aria-pressed="false" data-i18n-aria="aria_f_r" aria-label="Отдыхающие">r</button>
+      <button class="btn small" id="fxZoom" type="button" aria-pressed="true">ПАНОРАМА</button>
+      <label class="visually-hidden" for="fxQ" data-i18n="aria_q">Номер кошелька</label>
+      <input class="btn small" id="fxQ" inputmode="numeric" style="cursor:text;max-width:130px" placeholder="#…" data-i18n-aria="aria_q" aria-label="Номер кошелька">
     </div>
     <div class="inset" id="fxInspector" role="status" style="padding:8px 12px;margin:8px 0"><span class="note">—</span></div>
-    <p class="sec-sub" data-i18n="sl_sub">Метрики публикует скрипт publish_dash.py с машины фермы в ветку gh-pages. Сайт перечитывает state.json раз в минуту (60 с); издатель работает по своему расписанию — по умолчанию каждые 30 минут (планировщик HarvestDashPublish, допустимо 15–60). Если публикации ещё не было — сайт всё равно полностью работает, данные появятся сами.</p>
+    <p class="sec-sub" data-i18n="sl_sub">Сюда ферма публикует снимок: метрики, историю и сетку кошельков. Сайт перечитывает state.json раз в минуту, публикация обычно идёт раз в 30 минут. Если снимка ещё нет, ниже будет пусто — это нормально, а не поломка сайта.</p>
     <div id="liveAlert" role="alert"></div>
+    <div id="staleAlert" role="alert" hidden></div>
     <div class="termline" id="term" aria-live="polite">
       <span class="tstat"><i class="dot mut" id="dot" aria-hidden="true"></i><b id="status">—</b></span>
       <span><span data-i18n="t_net">сеть</span> <b id="net">—</b></span>
@@ -77,11 +77,12 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
     </div>
     <p class="note" id="lastCycle">—</p>
     <div id="fieldEmpty" hidden>
-      <p><span data-i18n="fe_t">Ферма остановлена. Запусти</span>
+      <p><span data-i18n="fe_t">Данных ещё нет. Когда ферма опубликует первый снимок, поле оживёт. Можно запустить вручную:</span>
       <code id="feCmd">python auto.py --wallets 50 --cycles 5</code>
-      <button class="btn small" data-copy="feCmd" type="button" data-i18n="copy">копировать</button></p>
+      <button class="btn small" data-copy="feCmd" type="button" data-i18n="copy">копировать</button>
+      <span data-i18n="fe_pub">затем <code>python publish_dash.py</code>.</span></p>
     </div>
-    <div class="field-grid" id="fieldGrid" role="grid" aria-label="Сетка кошельков" tabindex="0"></div>
+    <div class="field-grid" id="fieldGrid" role="grid" data-i18n-aria="aria_grid" aria-label="Сетка кошельков" tabindex="0"></div>
     <div class="field-legend" id="fieldLegend">
       <span><i class="sw s-i"></i><span data-i18n="lg_i">спит</span></span>
       <span><i class="sw s-w"></i><span data-i18n="lg_w">работает</span></span>
@@ -143,23 +144,23 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 <section class="block" data-reveal id="faucet">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="fx_h">Кран и диагностика</h2></div>
-    <p class="sec-sub" data-i18n="fx_p1">Проба крана — handshake без траты квоты; запрос — tools/call request_testnet_funds, доливает адрес до максимума сети, повтор безопасен. Без ключа стратегия молча исключается на pre-flight.</p>
-    <p class="note" data-i18n="fx_p2">Ключ: console.chainstack.com → user/settings/api-keys (env CHAINSTACK_API_KEY, в конфиги не пишется).</p>
+    <p class="sec-sub" data-i18n="fx_p1">Кран сначала проверяет ключ и квоту, и только потом просит монеты. Без CHAINSTACK_API_KEY стратегия просто не включается — это не ошибка, а честный пропуск.</p>
+    <p class="note" data-i18n="fx_p2">Ключ: console.chainstack.com → user/settings/api-keys. Держите его в env CHAINSTACK_API_KEY, не в конфиге.</p>
   </div>
 </section><!-- BOT -->
 <section class="block" data-reveal id="bot">
   <div class="wrap">
     <div class="sec-head"><span class="sec-no">◆</span><h2 data-i18n="bot_h">Telegram-бот</h2></div>
-    <p class="sec-sub" data-i18n="bot_p">Бот фермы: Поле, [Профили], /profiles, конструкторы /cmd /cfg, проверка /check. Контакт автора — отдельно.</p>
+    <p class="sec-sub" data-i18n="bot_p">Бот фермы показывает поле и умеет /profiles, /cmd, /cfg и /check. Для связи с автором есть отдельный @ssrjkk_bot.</p>
     <div class="toolbar"><a class="btn small" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">t.me/harvest_testnet_bot</a><a class="btn small" href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a></div>
   </div>
 </section></main>
 
 <footer>
   <div class="wrap cols">
-    <div><b class="mono">harvest v2.4.0</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
+    <div><b class="mono">harvest v2.4.1</b><br><span data-i18n="ft">EVM testnet farmer · © 2026 ssrjkk · MIT</span></div>
     <div><span class="label" data-i18n="ft_map">Карта</span><br><a href="index.html" data-i18n="nav_home">Главная</a> · <a href="field.html" data-i18n="nav_field">Поле</a> · <a href="demo.html" data-i18n="nav_demo">Демо</a> · <a href="docs.html" data-i18n="nav_docs">Доки</a></div>
-    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/master/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
+    <div><a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">GitHub</a> · <a href="https://github.com/ssrjkk/harvest/blob/main/DOCUMENTATION.md" target="_blank" rel="noopener">DOCUMENTATION.md</a> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener">@harvest_testnet_bot</a></div>
   </div>
 </footer>
 <div class="cmdk" id="cmdk">

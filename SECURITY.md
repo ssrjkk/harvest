@@ -1,25 +1,17 @@
-# Security Policy
+# Безопасность
 
-## Supported Versions
+Поддерживается только последний релиз — смотрите тег в
+[CHANGELOG](CHANGELOG.md).
 
-Only the latest release is supported with security updates.
+## Куда писать
 
-## Reporting a Vulnerability
+Нашли уязвимость — не открывайте публичное ишью.
 
-If you discover a security vulnerability, please report it responsibly.
+- GitHub: приватный репорт через Security → Report a vulnerability
+- или в личку автору: [@ssrjkk_bot](https://t.me/ssrjkk_bot)
 
-**Do NOT open a public issue.**
+Пришлите что случилось, как повторить и чем это грозит. Фикс
+предлагать не обязательно, но буду благодарен.
 
-Use GitHub private vulnerability reporting or email the maintainer.
-
-Include:
-- Description of the vulnerability
-- Steps to reproduce
-- Potential impact
-- Suggested fix (if any)
-
-## Response Timeline
-
-- Initial response: within 48 hours
-- Vulnerability assessment: within 7 days
-- Fix deployment: depends on severity
+Отвечаю обычно в течение пары дней. Если тихо дольше недели —
+напомните, письмо могло потеряться.
