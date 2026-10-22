@@ -107,7 +107,16 @@ h1 em{font-style:normal;color:var(--gold)}
 /* Шапка таблицы в hero: явные фирменные цвета. Без этого th наследует
    --bg/--ink, которые переопределяет поздний terminal.css :root, —
    и шапка выходит светлой на светлом. */
-.hero .stat-table th{background:var(--gold);color:var(--gold-ink)}
+/* hero — тёмное бренд-окно терминала во ВСЕХ темах: пиним полный набор
+   переменных ink прямо на поддерево, иначе светлая тема даёт тёмный текст
+   на тёмном фоне (переменные наследуются со страницы). */
+.hero.win{
+  --bg:#14110A; --bg2:#1E1810; --ink:#F0E8D0; --ink2:#CFC3A6;
+  --muted:#9A8F73; --line:#2C2618; --line2:#57492E; --dots:#241E12;
+  --gold:#e5b842; --gold-ink:#14110A;
+  --paper:#F0E8D0; --chip:#F0E8D0; --chip-ink:#14110A;
+  color:var(--ink);
+}
 .num{font-family:var(--mono);font-variant-numeric:tabular-nums}
 .terminal{border:2px solid var(--ink);background:#0D0B06;color:#D8D2BE;overflow:hidden;box-shadow:5px 5px 0 var(--line2)}
 .terminal-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:2px solid var(--gold);font-family:var(--mono);font-size:12px;color:#9A8F73}

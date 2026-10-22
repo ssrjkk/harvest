@@ -4,7 +4,14 @@
 Пишет:         docs/assets/tokens.css (сгенерирован — не править руками).
 
 Порядок блоков: :root (тема paper — дефолт без data-theme),
-[data-theme="ink"], [data-theme="moss"].
+html[data-theme="paper"], html[data-theme="ink"], html[data-theme="moss"].
+Селекторы квалифицированы элементом html: голый [data-theme="..."] имеет
+специфичность (0,1,0) — как у псевдокласса :root, и при ничьей выигрывает
+порядок. terminal.css грузится последним и его :root перебивал ВСЕ темы
+(проверено в браузере: paper/ink/moss резолвились в terminal-значения).
+html[...] даёт (0,1,1) и всегда выигрывает у :root любого файла.
+Явный блок paper нужен тоже: раньше paper жил только в голом :root и
+проигрывал terminal :root по порядку.
 """
 
 from __future__ import annotations
@@ -79,9 +86,11 @@ def main() -> int:
         "/* GENERATED from design/tokens.json by tools/build_tokens.py — не править руками. */\n"
         + _block(":root", themes["paper"], tokens)
         + "\n"
-        + _block('[data-theme="ink"]', themes["ink"], tokens)
+        + _block('html[data-theme="paper"]', themes["paper"], tokens)
         + "\n"
-        + _block('[data-theme="moss"]', themes["moss"], tokens)
+        + _block('html[data-theme="ink"]', themes["ink"], tokens)
+        + "\n"
+        + _block('html[data-theme="moss"]', themes["moss"], tokens)
         + "\n"
     )
     with open(OUT, "w", encoding="utf-8") as f:
