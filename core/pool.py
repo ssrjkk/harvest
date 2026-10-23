@@ -395,16 +395,41 @@ class FarmerPool:
         chunk: list[dict],
         all_addresses: list,
         cycle_number: int,
+        stop_event: asyncio.Event | None = None,
     ) -> dict[str, int]:
         """Один чанк кошельков уходит в очередь воркер-пула целиком.
 
         Воркеры вытягивают их по одному со staggered-стартом (спят start_delay
         из профиля перед обработкой) и динамическим масштабированием по здоровью
         RPC. Ждём полного исчерпания очереди и возвращаем {address: done_actions}.
+
+        Stop посреди чанка: взятые в работу кошельки докручиваются (атомарность
+        send/nonce не рвём), не взятые — сбрасываются через abort_pending и
+        считаются 0 (crash-state их не отмечает → повтор следующим циклом).
+        Без stop_event — прежнее поведение (полный join).
         """
         for wallet in chunk:
             await worker_pool.submit(wallet, all_addresses, cycle_number)
-        await worker_pool.join()
+        if stop_event is None:
+            await worker_pool.join()
+        else:
+            join_task = asyncio.create_task(worker_pool.join())
+            stop_task = asyncio.create_task(stop_event.wait())
+            try:
+                done, _pending = await asyncio.wait(
+                    {join_task, stop_task}, return_when=asyncio.FIRST_COMPLETED
+                )
+                if stop_task in done:
+                    worker_pool.abort_pending()
+            finally:
+                if not join_task.done():
+                    await join_task
+                if not stop_task.done():
+                    stop_task.cancel()
+                    try:
+                        await stop_task
+                    except asyncio.CancelledError:
+                        pass
         return {w["address"]: worker_pool.results.get(w["address"], 0) for w in chunk}
 
     async def run_once(
@@ -486,7 +511,9 @@ class FarmerPool:
                 # одному. Вход плавный (staggered start из профиля), приоритеты
                 # (кран/send срочнее) поддерживаются, число воркеров подстраивается
                 # под здоровье RPC — вместо дружного старта всего чанка сразу.
-                results = await self._run_chunk_with_pool(worker_pool, chunk, all_addresses, effective_cycle)
+                results = await self._run_chunk_with_pool(
+                    worker_pool, chunk, all_addresses, effective_cycle, stop_event
+                )
                 self._health_factor = worker_pool.last_health
                 self._last_workers = worker_pool.current_workers
                 marked_this_chunk = 0
@@ -578,7 +605,12 @@ class FarmerPool:
         # Снимок метрик для витрины — здесь, а не у вызывателей: так его
         # получают все пути (auto, run_forever, экраны CLI), каждый цикл.
         # Метод не бросает; витрина для бесконечных прогонов тоже живая.
-        await self.record_health_snapshot(len(wallets))
+        # Исключение — портал: там тикает _metrics_recorder_loop (каждые 30 с),
+        # и второй писатель плодил бы строки с разной семантикой wallets
+        # (recorder: всего в БД, пул: размер чанка). Демон ставит
+        # pool._external_recorder=True — пул молчит, пишет только recorder.
+        if not getattr(self, "_external_recorder", False):
+            await self.record_health_snapshot(len(wallets))
         return final
 
     async def close(self) -> None:

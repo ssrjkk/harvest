@@ -33,6 +33,57 @@ def _addrs(wallets: list[dict]) -> list[str]:
     return [w["address"] for w in wallets]
 
 
+class TestWorkerPoolAbort(unittest.IsolatedAsyncioTestCase):
+    """abort_pending: взятые докручиваются, не взятые сбрасываются, join не виснет."""
+
+    async def test_abort_drops_unstarted(self):
+        processed = []
+
+        async def worker(wallet, all_addresses, cycle_number):
+            processed.append(wallet["address"])
+            return wallet["address"], 1
+
+        pool = WorkerPool(max_workers=2, worker_func=worker, monitor_interval=60)
+        try:
+            for w in _wallets(6):
+                await pool.submit(w, [], 0)
+            pool.abort_pending()
+            await pool.start()
+            out = await asyncio.wait_for(pool.join(), timeout=5)
+            # Никто не обработан (все сброшены до взятия), join вернулся.
+            self.assertEqual(processed, [])
+            self.assertEqual(out, {})
+        finally:
+            await pool.stop()
+
+    async def test_abort_mid_flight_keeps_inflight(self):
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def worker(wallet, all_addresses, cycle_number):
+            if wallet["address"] == _wallet(0)["address"]:
+                started.set()
+                await release.wait()
+            return wallet["address"], 1
+
+        pool = WorkerPool(max_workers=1, worker_func=worker, monitor_interval=60)
+        try:
+            await pool.start()
+            for w in _wallets(3):
+                await pool.submit(w, [], 0)
+            await asyncio.wait_for(started.wait(), timeout=5)
+            pool.abort_pending()
+            release.set()
+            out = await asyncio.wait_for(pool.join(), timeout=5)
+            # Взятый докрутился, остальные сброшены.
+            self.assertEqual(out.get(_wallet(0)["address"]), 1)
+            self.assertNotIn(_wallet(1)["address"], out)
+            self.assertNotIn(_wallet(2)["address"], out)
+        finally:
+            release.set()
+            await pool.stop()
+
+
 class TestWorkerPoolOrderMapping(unittest.IsolatedAsyncioTestCase):
     """Результат мэпится по адресу, а не по порядку завершения воркеров."""
 

@@ -68,6 +68,10 @@ class WorkerPool:
         # воркер снова свободен) — никогда не рвём транзакции на полуслове.
         self._retire: set[asyncio.Task] = set()
         self._stopping = False
+        # Аварийный сброс очереди (stop посреди чанка): взятые воркерами задачи
+        # докручиваются (nonce!), не взятые — сбрасываются без обработки.
+        # _aborted проверяется только в свободной точке воркера, отмен нет.
+        self._aborted = False
         self._monitor_task: asyncio.Task | None = None
         self.monitor_interval = max(0.1, float(monitor_interval))
         # Последнее применённое здоровье и достигнутое число воркеров (для live_stats).
@@ -92,6 +96,17 @@ class WorkerPool:
         await self._queue.join()
         return self.results
 
+    def abort_pending(self) -> None:
+        """Сбросить не взятые в работу задачи (stop посреди чанка).
+
+        Взятые воркерами докручиваются до конца (атомарность send/nonce),
+        не взятые отбрасываются: воркер делает task_done без обработки и
+        выходит. Пропущенные адреса не попадают в results → вызыватель
+        считает их 0 и НЕ отмечает в crash-state (повтор при следующем цикле).
+        Идемпотентен: повторный вызов — no-op.
+        """
+        self._aborted = True
+
     # ---------------- воркеры ----------------
 
     async def _worker_loop(self) -> None:
@@ -103,9 +118,20 @@ class WorkerPool:
                     self._queue.get(), timeout=_GET_TIMEOUT
                 )
             except TimeoutError:
+                # В abort-режиме пустая очередь = всё сброшено, выходим;
+                # иначе обычный холостой цикл монитора/стопа.
+                if self._aborted:
+                    break
                 continue
             except asyncio.CancelledError:
                 raise
+            # Аварийный сброс (stop): не взятая в работу задача отбрасывается —
+            # task_done без обработки, join() не виснет. Остаток очереди
+            # добираем вхолостую (continue, не break), иначе join() повиснет
+            # на неснятых задачах. Взятые ДО abort докручиваются обычным путём.
+            if self._aborted:
+                self._queue.task_done()
+                continue
             # Воркера пометили «на пенсию», пока он спал в get(): монитор уже
             # учёл его как свободный (вывел из расчёта active). Дальше NEW work
             # он начинать не должен — возвращаем снятую задачу в очередь, чтобы

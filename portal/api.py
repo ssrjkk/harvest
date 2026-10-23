@@ -39,6 +39,19 @@ KEY_CFG = web.AppKey("cfg", PortalConfig)
 KEY_DAEMON = web.AppKey("daemon", FarmDaemon)
 KEY_WS_CLIENTS = web.AppKey("ws_clients", set)
 KEY_SHIELD = web.AppKey("shield", Shield)
+# Изменяемое состояние farm-операций (создаётся в create_app, дальше только
+# мутация содержимого — присваивание в app после старта deprecated в aiohttp):
+# stop_task — висящая фоновая остановка; stats_cache — (mono_ts, dict) снапшота.
+KEY_OPS = web.AppKey("ops", dict)
+
+
+def _ops_state(app) -> dict:
+    """Holder farm-операций; вне create_app (юнит-тесты) — ленивое создание."""
+    ops = app.get(KEY_OPS)
+    if not isinstance(ops, dict):
+        ops = {"stop_task": None, "stats_cache": None}
+        app[KEY_OPS] = ops
+    return ops
 
 _SESSION_TG = "tg"
 
@@ -540,7 +553,6 @@ async def api_stats(request: web.Request) -> web.Response:
     return _json(await daemon.statistics())
 
 
-@idempotent("farm:action")
 async def api_farm_action(request: web.Request) -> web.Response:
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
@@ -550,6 +562,14 @@ async def api_farm_action(request: web.Request) -> web.Response:
     _audit(request, f"farm:{action}")
     if action == "stop" and daemon.running:
         # Остановка может занять время (ждём завершение цикла) — не блокируем HTTP.
+        # Повторный POST пока висит предыдущий — тот же статус, второй
+        # daemon.stop() не запускаем (иначе сериализация на _mgmt + гонка
+        # за _task; идемпотентность здесь даёт демон, а не replay кэша).
+        ops = _ops_state(request.app)
+        running_stop = ops.get("stop_task")
+        if isinstance(running_stop, asyncio.Task) and not running_stop.done():
+            await broadcast_ws(request.app, "farm", {"action": action, "stopping": True, **daemon.run_state()})
+            return _json({"ok": True, "stopping": True, **daemon.run_state()})
         task = asyncio.get_running_loop().create_task(daemon.stop())
 
         def _stop_done(t: asyncio.Task) -> None:
@@ -557,8 +577,12 @@ async def api_farm_action(request: web.Request) -> web.Response:
                 t.result()
             except Exception:  # noqa: BLE001
                 logger.exception("[AUDIT] stop task failed")
+            finally:
+                if ops.get("stop_task") is t:
+                    ops["stop_task"] = None
 
         task.add_done_callback(_stop_done)
+        ops["stop_task"] = task
         await broadcast_ws(request.app, "farm", {"action": action, "stopping": True, **daemon.run_state()})
         return _json({"ok": True, "stopping": True, **daemon.run_state()})
     if action == "start":
@@ -580,7 +604,6 @@ async def api_networks(request: web.Request) -> web.Response:
     return _json({"networks": daemon.networks_info()})
 
 
-@idempotent("network:farm")
 async def api_network_farm(request: web.Request) -> web.Response:
     """Переключить сеть и запустить/остановить фарм по ней (одна кнопка)."""
     _require_user(request)
@@ -1077,12 +1100,12 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
         # Пушим статус с фиксированным шагом: клиент рисует дашборд из этих
         # кадров и переключается на HTTP-опрос только при обрыве сокета.
         # Revoke проверяем в цикле: logout кикает живой WS, украденная сессия
-        # не живёт в сокете до обрыва.
+        # не живёт в сокете до обрыва. Снапшот один на всех клиентов окна.
         while not ws.closed:
             if _is_revoked(user.get("jti")):
                 await ws.close(code=4001, message=b"unauthorized")
                 break
-            stats = await daemon.statistics()
+            stats = await _cached_statistics(request.app, daemon)
             await ws.send_json({"type": "status", **stats})
             try:
                 msg = await ws.receive(timeout=WS_PUSH_S)
@@ -1099,6 +1122,23 @@ async def websocket_endpoint(request: web.Request) -> web.WebSocketResponse:
         logger.info("[WS] client disconnected, total=%d", len(clients))
 
     return ws
+
+
+async def _cached_statistics(app: web.Application, daemon: FarmDaemon) -> dict:
+    """Один statistics() на всех WS-клиентов внутри окна WS_PUSH_S.
+
+    Без кэша N клиентов = N последовательных проходов по single-коннекту
+    (live_stats + concurrency + cycle_stats + wallet_count) каждые 3 с — O(N).
+    С кэшем — O(1) за окно: первый читатель считает, остальные разбирают копию.
+    """
+    now = time.monotonic()
+    ops = _ops_state(app)
+    cached = ops.get("stats_cache")
+    if cached is not None and now - cached[0] < WS_PUSH_S:
+        return cached[1]
+    stats = await daemon.statistics()
+    ops["stats_cache"] = (now, stats)
+    return stats
 
 
 async def broadcast_ws(app: web.Application, event_type: str, data: dict) -> None:
@@ -1223,6 +1263,7 @@ def create_app(cfg: PortalConfig, daemon: FarmDaemon, shield: Shield | None = No
     app[KEY_DAEMON] = daemon
     app[KEY_WS_CLIENTS] = set()
     app[KEY_SHIELD] = _shield
+    app[KEY_OPS] = {"stop_task": None, "stats_cache": None}
 
     async def _shield_start(_app: web.Application) -> None:
         await _app[KEY_SHIELD].start()

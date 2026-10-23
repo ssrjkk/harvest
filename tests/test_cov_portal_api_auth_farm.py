@@ -586,6 +586,60 @@ class TestFarmActionsCoverage(_PortalApiBase, unittest.IsolatedAsyncioTestCase):
             self.assertFalse((await resp.json())["ok"])
         await client.close()
 
+    async def test_farm_double_stop_single_daemon_stop(self):
+        """Второй POST пока висит первый — тот же статус, daemon.stop() один раз."""
+        release = asyncio.Event()
+
+        class _SlowDaemon(_FlexDaemon):
+            async def stop(self) -> bool:
+                self.stopped += 1
+                await release.wait()
+                return True
+
+        daemon = _SlowDaemon(running=True)
+        cfg = _make_cfg()
+        app = create_app(cfg, cast(FarmDaemon, daemon))
+        client = TestClient(TestServer(app))
+        await client.start_server()
+        async with client:
+            await client.post("/api/login/password", json={"password": "k" * 64})
+            r1, r2 = await asyncio.gather(
+                client.post("/api/farm/stop"), client.post("/api/farm/stop")
+            )
+            self.assertEqual(r1.status, 200)
+            self.assertEqual(r2.status, 200)
+            self.assertTrue((await r1.json())["stopping"])
+            self.assertTrue((await r2.json())["stopping"])
+            await asyncio.sleep(0.05)
+            self.assertEqual(daemon.stopped, 1)
+            release.set()
+            await asyncio.sleep(0.1)
+            self.assertEqual(daemon.stopped, 1)
+        await client.close()
+
+    async def test_cached_statistics_shared_within_window(self):
+        from portal import api as api_mod
+
+        calls = 0
+
+        class _CountingDaemon(_FlexDaemon):
+            async def statistics(self) -> dict:
+                nonlocal calls
+                calls += 1
+                return {"n": calls}
+
+        daemon = _CountingDaemon(running=True)
+        app: dict = {}
+        first = await api_mod._cached_statistics(app, daemon)
+        second = await api_mod._cached_statistics(app, daemon)
+        self.assertEqual(first, {"n": 1})
+        self.assertEqual(second, {"n": 1})
+        self.assertEqual(calls, 1)
+        # Протухший кэш — пересчёт.
+        api_mod._ops_state(app)["stats_cache"] = (0.0, {"n": 0})
+        third = await api_mod._cached_statistics(app, daemon)
+        self.assertEqual(third, {"n": 2})
+
 
 class TestAuthRemainingBranches(unittest.TestCase):
     """Не покрытые ветки portal/auth.py."""

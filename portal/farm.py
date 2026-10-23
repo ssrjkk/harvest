@@ -132,6 +132,9 @@ class FarmDaemon:
             self.db = Database(self.db_path, master_key=key)
             await self.db.init()
         self.pool = FarmerPool(self.config, self.db)
+        # Метрики пишет только recorder (каждые 30 с): иначе пул дублировал бы
+        # строки в конце каждого цикла с другой семантикой wallets (см. pool).
+        self.pool._external_recorder = True
         if self._metrics_task is None:
             self._metrics_task = asyncio.create_task(self._metrics_recorder_loop())
         # Планировщик инициализируется лениво (при первом обращении или старте),
@@ -164,6 +167,10 @@ class FarmDaemon:
             return False
         async with self._mgmt:
             if self.running:
+                # Дренаж ограничен abort_pending в чанке (взятые докручиваются,
+                # не взятые сбрасываются): висим не дольше самого медленного
+                # кошелька, а не всего чанка. HTTP-стоп при этом не блокируется
+                # вовсе (fire-and-forget в api_farm_action).
                 self._stop.set()
                 assert self._task is not None
                 await self._task
@@ -829,6 +836,9 @@ class FarmDaemon:
 
         Кап 50 за вызов — защита HTTP/RPC от тяжёлой генерации. Бот/CLI
         оперируют до 5000 (батчами по 50): см. portal/bot_ops.py parse_count.
+        Весь вызов под _mgmt: генерация идёт в executor-потоках (loop свободен),
+        а запись — одной серией; между батчами бота лок отпускается, так что
+        блокировка управления ограничена одним батчем, а не всем флотом.
         """
         if self.db is None or self.config is None:
             raise RuntimeError("БД фермы не подключена")

@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -138,6 +139,34 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
         (db_path.parent / (db_path.name + "-shm")).write_bytes(b"stale")
         self.assertTrue(await self.db.restore_backup(0))
         self.assertEqual(await self.db.count_wallets(), 0)
+        await self.db.close()
+
+    async def test_restore_refuses_live_farm(self):
+        from core.single_instance import SingleInstance, default_lock_path
+
+        await self.db.init()
+        await self.db.backup_now()
+        before = Path(self.db.path).read_bytes()
+        guard = SingleInstance(default_lock_path(str(self.db.path)))
+        self.assertTrue(guard.acquire())
+        try:
+            with self.assertLogs("core.database", level="ERROR") as cm:
+                self.assertFalse(await self.db.restore_backup(0))
+            self.assertTrue(any("останови ферму" in line for line in cm.output))
+            self.assertEqual(Path(self.db.path).read_bytes(), before)
+        finally:
+            guard.release()
+        # Лок свободен — восстановление идёт как раньше.
+        self.assertTrue(await self.db.restore_backup(0))
+        await self.db.close()
+
+    async def test_restore_survives_lock_backend_failure(self):
+        await self.db.init()
+        await self.db.backup_now()
+        with mock.patch(
+            "core.single_instance.SingleInstance", side_effect=RuntimeError("no backend")
+        ):
+            self.assertTrue(await self.db.restore_backup(0))
         await self.db.close()
 
     async def test_wrong_key_fails_closed(self):

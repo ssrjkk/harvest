@@ -767,6 +767,23 @@ class Database:
             return False
         src = backups[index]
         db_path = Path(self.path)
+        # Живой фарм держит старый fd и продолжает писать мимо восстанавливаемого
+        # файла (torn-read + потерянные executemany): сначала убеждаемся, что на
+        # этой БД никого нет — проба через тот же single-instance лок, что
+        # держат auto.py/CLI/портал. Занят → отказ с явной причиной, файл цел.
+        if "://" not in str(self.path):
+            try:
+                from core.single_instance import SingleInstance, default_lock_path
+
+                probe = SingleInstance(default_lock_path(str(self.path)))
+                if not probe.acquire():
+                    logger.error(
+                        "БД занята живым процессом — останови ферму перед восстановлением"
+                    )
+                    return False
+                probe.release()
+            except Exception:  # noqa: BLE001 — нет бэкенда лока: как раньше, без гарда
+                pass
         logger.warning(f"Восстановление из {src.name}...")
         await self.close()
         try:

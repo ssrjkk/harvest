@@ -17,6 +17,7 @@ publish_dash.py с твоего ПК). Кошельки с ключами и с�
 """
 
 import asyncio
+import logging
 import os
 import sys
 from datetime import datetime, timezone
@@ -26,6 +27,8 @@ from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, Message
+
+logger = logging.getLogger(__name__)
 
 _TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 if not _TOKEN:
@@ -423,6 +426,11 @@ def wallets_kb(page, pages):
 
 
 async def main():
+    if OPEN_ACCESS:
+        # Отладочный флаг открывает /wallets с ключами ВСЕМ — без этой строки
+        # забытый TELEGRAM_OPEN_ACCESS=1 никак не виден в журнале (портал для
+        # своего PORTAL_OPEN_ACCESS варнит, forge молчал).
+        logger.warning("TELEGRAM_OPEN_ACCESS включён: бот отвечает ЛЮБОМУ user_id!")
     from aiogram.client.default import DefaultBotProperties
 
     bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))

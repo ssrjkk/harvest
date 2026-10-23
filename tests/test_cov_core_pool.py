@@ -471,6 +471,81 @@ class TestPoolInit(unittest.TestCase):
                 })
                 self.assertGreater(pool.timeout, 0)
 
+    def test_chunk_aborts_on_stop_event(self):
+        import time as _time
+
+        from core.workpool import WorkerPool
+
+        async def slow(wallet, all_addresses, cycle_number):
+            await asyncio.sleep(1.0)
+            return wallet["address"], 1
+
+        async def run():
+            pool = self._mk()
+            wallets = [
+                {"address": f"0x{i + 1:040x}"} for i in range(3)
+            ]
+            wp = WorkerPool(max_workers=1, worker_func=slow, monitor_interval=60)
+            try:
+                await wp.start()
+                stop = asyncio.Event()
+
+                async def _fire():
+                    await asyncio.sleep(0.2)
+                    stop.set()
+
+                asyncio.create_task(_fire())
+                t0 = _time.monotonic()
+                out = await pool._run_chunk_with_pool(wp, wallets, [], 1, stop)
+                dt = _time.monotonic() - t0
+                return out, dt, wallets
+            finally:
+                await wp.stop()
+
+        out, dt, wallets = asyncio.run(run())
+        # Без abort чанк занял бы 3 с (1 воркер × 1 с); с abort — ~1 с.
+        self.assertLess(dt, 2.5)
+        vals = [out[w["address"]] for w in wallets]
+        self.assertEqual(vals[0], 1)
+        self.assertEqual(vals[1:], [0, 0])
+
+    def test_chunk_with_unset_stop_event_joins_fully(self):
+        from core.workpool import WorkerPool
+
+        async def fast(wallet, all_addresses, cycle_number):
+            return wallet["address"], 1
+
+        async def run():
+            pool = self._mk()
+            wallets = [{"address": f"0x{i + 1:040x}"} for i in range(3)]
+            wp = WorkerPool(max_workers=2, worker_func=fast, monitor_interval=60)
+            try:
+                await wp.start()
+                return await pool._run_chunk_with_pool(wp, wallets, [], 1, asyncio.Event())
+            finally:
+                await wp.stop()
+
+        out = asyncio.run(run())
+        self.assertEqual(sorted(out.values()), [1, 1, 1])
+
+    def test_external_recorder_skips_pool_snapshot(self):
+        async def run():
+            pool = self._mk()
+            pool._external_recorder = True
+            with mock.patch.object(
+                pool, "record_health_snapshot", wraps=pool.record_health_snapshot
+            ) as rec:
+                await pool.run_once([], [], cycle_number=1)
+                rec.assert_not_called()
+            pool._external_recorder = False
+            with mock.patch.object(
+                pool, "record_health_snapshot", wraps=pool.record_health_snapshot
+            ) as rec:
+                await pool.run_once([], [], cycle_number=1)
+                self.assertTrue(rec.await_count >= 1)
+
+        asyncio.run(run())
+
     def test_auto_timeout_no_behavior(self):
         cfg = _base_cfg(self.td.name)
         del cfg["behavior"]
