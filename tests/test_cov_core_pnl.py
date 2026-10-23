@@ -406,6 +406,101 @@ class PnlTest(unittest.TestCase):
         summary = asyncio.run(run())
         self.assertEqual(summary["ok"], 3)
 
+    def test_build_report_truncated_window(self):
+        """Окно >5000: детали по выборке, window — честный COUNT + пометка."""
+
+        class _CountDB(_FakeDB):
+            async def get_actions_count_since(self, since_id: int = 0) -> int:
+                return 5002
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+            db = _CountDB()
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                summary = await build_report(
+                    tracker=t,
+                    db=db,
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                )
+                html = tmp.read_text(encoding="utf-8")
+            return db, summary, html
+
+        db, summary, html = asyncio.run(run())
+        self.assertEqual(db.snapshots[0]["window_actions"], 5002)
+        self.assertEqual(summary["window_total"], 5002)
+        self.assertTrue(summary["truncated"])
+        self.assertIn("последние 4 из 5002", html)
+
+    def test_build_report_count_failure_falls_back(self):
+        """Счётчик упал: отчёт живёт на len(rows), без обрезки."""
+
+        class _BoomCountDB(_FakeDB):
+            async def get_actions_count_since(self, since_id: int = 0) -> int:
+                raise RuntimeError("count down")
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+            db = _BoomCountDB()
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                summary = await build_report(
+                    tracker=t,
+                    db=db,
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                )
+            return db, summary
+
+        db, summary = asyncio.run(run())
+        self.assertEqual(db.snapshots[0]["window_actions"], 4)
+        self.assertFalse(summary["truncated"])
+
+    def test_build_report_count_below_sample_clamps(self):
+        """Счётчик меньше выборки (гонка): window = len(rows), без пометки."""
+
+        class _SmallCountDB(_FakeDB):
+            async def get_actions_count_since(self, since_id: int = 0) -> int:
+                return 1
+
+        async def run():
+            t = PnlTracker(ADDRS, sample=2, concurrency=1)
+            net = _FakeNet({a: 1.0 for a in ADDRS})
+            await t.mark(net, "pre_faucet")
+            await t.mark(net, "pre_farm")
+            await t.mark(net, "post_run")
+            db = _SmallCountDB()
+            with tempfile.TemporaryDirectory() as d:
+                tmp = Path(d) / "r.html"
+                summary = await build_report(
+                    tracker=t,
+                    db=db,
+                    network={"name": "N", "slug": "S", "chain_id": 46630},
+                    currency="ETH",
+                    explorer="",
+                    out_path=str(tmp),
+                )
+                html = tmp.read_text(encoding="utf-8")
+            return db, summary, html
+
+        db, summary, html = asyncio.run(run())
+        self.assertEqual(db.snapshots[0]["window_actions"], 4)
+        self.assertFalse(summary["truncated"])
+        self.assertNotIn("Окно:", html)
+
 
 if __name__ == "__main__":
     unittest.main()

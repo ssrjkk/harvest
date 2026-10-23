@@ -1382,3 +1382,22 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка чтения действий для PnL: {e}")
         return rows
+
+    async def get_actions_count_since(self, since_id: int = 0) -> int:
+        """Сколько действий с id > since_id всего (без лимита выборки).
+
+        Пара к get_actions_since(limit=5000): детали отчёта строятся по
+        последним 5000, а window_actions — честный COUNT. Иначе флот на
+        2000 кошельков молча занижал витрину в 40 раз.
+        """
+        try:
+            db = await self._connect()
+            async with db.execute(
+                "SELECT COUNT(*) FROM actions_log WHERE id > ?",
+                (int(max(0, since_id)),),
+            ) as cur:
+                row = await cur.fetchone()
+            return int(row[0] or 0) if row else 0
+        except Exception as e:
+            logger.error(f"Ошибка подсчёта действий для PnL: {e}")
+            return 0

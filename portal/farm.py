@@ -476,6 +476,13 @@ class FarmDaemon:
             except asyncio.CancelledError:
                 pass
             self._metrics_task = None
+        if self._balance_alerts_task is not None:
+            self._balance_alerts_task.cancel()
+            try:
+                await self._balance_alerts_task
+            except asyncio.CancelledError:
+                pass
+            self._balance_alerts_task = None
         if self._drip_task is not None and not self._drip_task.done():
             self._drip_task.cancel()
             try:

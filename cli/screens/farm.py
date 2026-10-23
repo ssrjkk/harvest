@@ -167,6 +167,12 @@ async def screen_farm_live(u: ui.UI, config: dict, db: Database, stop_event: asy
         prod.cancel()
         if not task.done():
             task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                logger.warning(f"Фарм-таск завершился с ошибкой: {e}")
         try:
             if pool is not None:
                 await pool.close()

@@ -98,7 +98,7 @@ def _check_range(
     сообщение, не прерывая проверку остальных секций (как все проверки в файле).
     """
     msg: str | None = None
-    if not isinstance(value, (int, float)):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         msg = f"{name}: ожидается число, получено {type(value).__name__}"
     elif value < min_val:
         msg = f"{name}: {value} < {min_val}"
@@ -118,7 +118,11 @@ def _check_range_pair(name: str, value: Any, errors: list[str] | None = None) ->
             msg = f"{name}: ожидается [min, max], получено {value}"
         else:
             lo, hi = value
-            if not isinstance(lo, (int, float)) or not isinstance(hi, (int, float)):
+            bad = (
+                isinstance(lo, bool) or isinstance(hi, bool)
+                or not isinstance(lo, (int, float)) or not isinstance(hi, (int, float))
+            )
+            if bad:
                 msg = f"{name}: min/max должны быть числами"
             elif lo < 0:
                 # Отрицательный min ломал инварианты молча: random.randint(-х, hi)
@@ -127,7 +131,7 @@ def _check_range_pair(name: str, value: Any, errors: list[str] | None = None) ->
                 msg = f"{name}: min ({lo}) < 0 — диапазоны не могут быть отрицательными"
             elif lo > hi:
                 msg = f"{name}: min ({lo}) > max ({hi})"
-    elif not isinstance(value, (int, float)):
+    elif isinstance(value, bool) or not isinstance(value, (int, float)):
         msg = f"{name}: ожидается [min, max] или число, получено {type(value).__name__}"
     if msg is not None:
         if errors is None:

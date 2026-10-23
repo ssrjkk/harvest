@@ -223,7 +223,7 @@ def _snapshot_age_min(updated_at) -> float | None:
 def _freshness_note(s) -> str:
     """Свежесть снимка для статусов: «5 мин назад» + флаг протухания.
 
-    Порог тот же, что на сайте (45 мин): старше — честное «ферма молчит»,
+    Порог тот же, что на сайте и у витрины (15 мин): старше — честное «ферма молчит»,
     а не вид живой витрины.
     """
     age = _snapshot_age_min(s.get("updated_at"))
@@ -235,7 +235,7 @@ def _freshness_note(s) -> str:
         ago = f"{int(age)} мин назад"
     else:
         ago = f"{int(age // 60)} ч {int(age % 60):02d} мин назад"
-    stale = " · ⚠️ снимок старый, ферма молчит" if age > 45 else ""
+    stale = " · ⚠️ снимок старый, ферма молчит" if age > 15 else ""
     return f"({ago}{stale})"
 
 
@@ -467,25 +467,29 @@ async def main():
                 await m.answer(fmt_status(await fetch_state()), parse_mode=ParseMode.HTML,
                                reply_markup=nav_kb("status"))
             except Exception:  # noqa: BLE001
-                await m.answer("⚠️ Не удалось получить состояние фермы.", parse_mode=ParseMode.HTML)
+                await m.answer("⚠️ Не удалось получить состояние фермы.", parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("status"))
         elif text == "/pnl":
             try:
                 await m.answer(fmt_pnl(await fetch_state()), parse_mode=ParseMode.HTML,
                                reply_markup=nav_kb("pnl"))
             except Exception:  # noqa: BLE001
-                await m.answer("⚠️ Не удалось получить PnL.", parse_mode=ParseMode.HTML)
+                await m.answer("⚠️ Не удалось получить PnL.", parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("pnl"))
         elif text == "/history":
             try:
                 await m.answer(fmt_history(await fetch_state()), parse_mode=ParseMode.HTML,
                                reply_markup=nav_kb("history"))
             except Exception:  # noqa: BLE001
-                await m.answer("⚠️ Не удалось получить историю.", parse_mode=ParseMode.HTML)
+                await m.answer("⚠️ Не удалось получить историю.", parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("history"))
         elif text == "/doctor":
             try:
                 await m.answer(fmt_doctor(await fetch_state()), parse_mode=ParseMode.HTML,
                                reply_markup=nav_kb("doctor"))
             except Exception:  # noqa: BLE001
-                await m.answer("⚠️ Не удалось получить диагностику.", parse_mode=ParseMode.HTML)
+                await m.answer("⚠️ Не удалось получить диагностику.", parse_mode=ParseMode.HTML,
+                               reply_markup=nav_kb("doctor"))
         elif text == "/wallets":
             try:
                 wallets = await fetch_wallets()

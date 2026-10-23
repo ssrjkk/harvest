@@ -98,10 +98,17 @@ def _as_range(value, default: tuple[float, float]) -> tuple[float, float]:
     Скаляр `activity: 1.5` осмыслен как фиксированное значение (1.5, 1.5),
     а не как `rng.uniform(1.5)`, который рушится TypeError. Мусор (строка
     и т.п.) — на дефолт: безопасное поведение, а не безвучная нулевая
-    производительность кошелька.
+    производительность кошелька. Перевёрнутая пара [hi, lo] — swap:
+    uniform() её молча терпит, а randint() роняет ValueError.
     """
+    if isinstance(value, bool):
+        return (float(default[0]), float(default[1]))
     if isinstance(value, (list, tuple)) and len(value) == 2:
-        return (float(value[0]), float(value[1]))
+        try:
+            lo, hi = float(value[0]), float(value[1])
+        except (TypeError, ValueError):
+            return (float(default[0]), float(default[1]))
+        return (lo, hi) if lo <= hi else (hi, lo)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         v = float(value)
         return (v, v)
@@ -119,8 +126,9 @@ def profile_for(address: str, config: dict) -> WalletProfile:
     activity = max(0.1, min(3.0, rng.uniform(*_as_range(_cfg(config, "activity", (0.5, 1.5)), (0.5, 1.5)))))
 
     rl, rh = _as_range(_cfg(config, "rest_cycles", (1, 3)), (1, 3))
-    rest_lo = max(1, int(rng.uniform(rl, rh)))
-    rest_cycles = (rest_lo, max(rest_lo + 1, int(rng.uniform(rl, rh)) + 1))
+    # randint — включительно: int(uniform(1,3)) давал только 1-2, 3 недостижима.
+    rest_lo = max(1, rng.randint(int(rl), int(rh)))
+    rest_cycles = (rest_lo, max(rest_lo + 1, rng.randint(int(rl), int(rh)) + 1))
 
     adl = _as_range(_cfg(config, "action_delay_scale", (0.7, 1.5)), (0.7, 1.5))
     delay_actions_scale = max(0.1, min(5.0, rng.uniform(*adl)))
@@ -151,6 +159,10 @@ def profile_for(address: str, config: dict) -> WalletProfile:
     jitter = _draw_bounded(rng, config, "amount_jitter", 0.25, 0.0, 0.9)
     amount_min_mul = max(0.1, 1.0 + rng.uniform(-jitter, jitter * 0.6))
     amount_max_mul = max(0.1, 1.0 + rng.uniform(-jitter * 0.4, jitter))
+    # Независимые розыгрыши могли инвертировать коридор (мин > макс в ~21%
+    # случаев): суммы ниже называли «максимумом». Swap чинит семантику.
+    if amount_max_mul < amount_min_mul:
+        amount_min_mul, amount_max_mul = amount_max_mul, amount_min_mul
 
     gas_deviation = _draw_bounded(rng, config, "gas_deviation", 0.06, 0.0, 0.5)
     if not isinstance(_cfg(config, "gas_deviation", 0.06), (list, tuple)):
@@ -170,10 +182,18 @@ def profile_for(address: str, config: dict) -> WalletProfile:
     # Staggered start: детерминированный стартовый сдвиг кошелька (анти-сибил).
     # Воркер-пул не стартует все кошельки одновременно — каждый входит плавно.
     sd = _cfg(config, "start_delay", (0.0, 3.0))
-    if isinstance(sd, (int, float)) and not isinstance(sd, bool):
+    if isinstance(sd, bool):
+        sd_range = (0.0, 0.0)
+    elif isinstance(sd, (int, float)) and not isinstance(sd, bool):
         sd_range = (float(sd), float(sd))
     elif isinstance(sd, (list, tuple)) and len(sd) == 2:
-        sd_range = (float(sd[0]), float(sd[1]))
+        try:
+            a, b = float(sd[0]), float(sd[1])
+        except (TypeError, ValueError):
+            # ["x","y"] раньше роняли profile_for с ValueError (блокер:
+            # behavior вообще не валидируется, пул крашился на старте).
+            a = b = 0.0
+        sd_range = (a, b) if a <= b else (b, a)
     else:
         # Мусор/нечисловой тип — без стаггера (fix тест: "owo" -> 0.0).
         sd_range = (0.0, 0.0)

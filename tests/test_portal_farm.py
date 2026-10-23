@@ -723,10 +723,12 @@ class TestMetricsRecorder(FarmProxyTestBase):
 
     async def test_close_cancels_recorder_and_releases_resources(self):
         self.daemon._metrics_task = asyncio.create_task(self.daemon._metrics_recorder_loop())
+        self.daemon._balance_alerts_task = asyncio.create_task(asyncio.sleep(60))
         pool = _ProxyPool(_FakeNetwork())
         self.daemon.pool = pool
         await self.daemon.close()
         self.assertIsNone(self.daemon._metrics_task)
+        self.assertIsNone(self.daemon._balance_alerts_task)
         self.assertIsNone(self.daemon.pool)
         self.assertTrue(pool.closed)
         self.assertIsNone(self.daemon.db)

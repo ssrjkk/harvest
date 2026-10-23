@@ -866,6 +866,11 @@ async def api_scheduler_add_task(request: web.Request) -> web.Response:
         return _json({"error": "cycles must be 1-1000"}, status=400)
     if cycles < 1 or cycles > 1000:
         return _json({"error": "cycles must be 1-1000"}, status=400)
+    enabled = body.get("enabled", True)
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() not in ("0", "false", "no", "off", "")
+    else:
+        enabled = bool(enabled)
     bad = _guard_check(request, {"task_id": task_id, "name": name, "run_at_time": run_at_time})
     if bad is not None:
         return bad
@@ -876,6 +881,7 @@ async def api_scheduler_add_task(request: web.Request) -> web.Response:
         interval_minutes=interval_minutes,
         run_at_time=run_at_time,
         cycles=cycles,
+        enabled=enabled,
     )
     _audit(request, f"scheduler:add task={task_id}")
     return _json({"ok": True, "task": task})
@@ -1117,10 +1123,7 @@ async def broadcast_ws(app: web.Application, event_type: str, data: dict) -> Non
 
     for ok, ws in await asyncio.gather(*(_send(ws) for ws in list(clients))):
         if not ok:
-            try:
-                clients.discard(ws)
-            except Exception:  # noqa: BLE001
-                pass
+            clients.discard(ws)
 
 
 async def healthz(request: web.Request) -> web.Response:

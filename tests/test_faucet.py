@@ -25,6 +25,15 @@ class TestFaucetConcurrency(unittest.TestCase):
         f = Faucet({"faucet": {}, "proxy": {}})
         self.assertEqual(f.concurrent_batch(0), 1)
 
+    def test_request_batch_rejects_degenerate(self):
+        import asyncio as _aio
+
+        f = Faucet({"faucet": {}, "proxy": {}})
+        with self.assertRaises(ValueError):
+            _aio.run(f.request_batch(["a"], 0))
+        with self.assertRaises(ValueError):
+            _aio.run(f.request_batch(["a"], 2, max_concurrent=0))
+
     def test_enabled_flag(self):
         self.assertFalse(Faucet({"faucet": {"enabled": False}, "proxy": {}}).enabled)
         self.assertTrue(Faucet({"faucet": {"enabled": True}, "proxy": {}}).enabled)

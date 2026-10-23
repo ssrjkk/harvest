@@ -189,9 +189,11 @@ if(_simRun)_simRun.addEventListener("click",()=>{
   if(simTimer)return;
   const W=Math.min(2000,Math.max(1,parseInt($("#simW").value,10)||50));
   const C=Math.min(200,Math.max(1,parseInt($("#simC").value,10)||5));
-  const skip=parseFloat($("#simSkip").value||"0.05");
-  const ab=($("#simA").value||"3,8").split(",").map(x=>parseInt(x.trim(),10));const alo=ab[0]||3,ahi=ab[1]||8;
-  const fail=parseFloat($("#simFail").value||"0.08");
+  let skip=parseFloat($("#simSkip").value||"0.05");if(!isFinite(skip)||skip<0)skip=0.05;if(skip>1)skip=1;
+  const abRaw=($("#simA").value||"3,8").split(",").map(x=>parseInt(x.trim(),10));
+  let alo=Number.isFinite(abRaw[0])?abRaw[0]:3,ahi=Number.isFinite(abRaw[1])?abRaw[1]:8;
+  if(alo>ahi){const t=alo;alo=ahi;ahi=t;}
+  let fail=parseFloat($("#simFail").value||"0.08");if(!isFinite(fail)||fail<0)fail=0.08;if(fail>1)fail=1;
   const speed=parseInt($("#simSpeed").value,10)||8;
   const addrs=Array.from({length:W},(_,i)=>"0xSIM"+String(i).padStart(5,"0"));
   const profs=addrs.map(a=>{const r=rnd(hash32(a));return{act:0.5+r()*1.0,burst:r()<0.12?1.6:1.0,rest:r()<0.06?2:0};});
@@ -212,7 +214,7 @@ if(_simRun)_simRun.addEventListener("click",()=>{
       let na=alo+Math.floor(r()*(ahi-alo+1));na=Math.round(na*p.burst);
       for(let k=0;k<na;k++){if(rnd(hash32(addrs[i]+":"+cyc+":"+k))()<fail)errs++;else acts++;}
     }
-    const dur=((performance.now()-t0)/1000*speed+0.4).toFixed(1);
+    const dur=((performance.now()-t0)/1000).toFixed(1);
     const row={cycle:cyc,mode:"auto",wallets:W,wallets_ok:ok,actions_ok:acts,errors:errs,duration_s:dur};
     hist.push(row);perCycle.push(acts);
     slog(lang==="en"
@@ -259,7 +261,7 @@ if(_vRun)_vRun.addEventListener("click",()=>{
   const missing=req.filter(s=>!has(s));
   out.push(missing.length?["bad",(RU?"нет секций: ":"missing sections: ")+missing.join(", ")]:["ok",RU?"все обязательные секции на месте":"all required sections present"]);
   const rpc=(t.match(/rpc_url:\s*(\S+)/)||[])[1]||"";
-  const rpcHost=(rpc.match(/^https?:\/\/([^/:]+)/)||[])[1]||"";
+  const rpcHost=(rpc.match(/^https?:\/\/\[([^\]]+)\]/)||rpc.match(/^https?:\/\/([^/:]+)/)||[])[1]||"";
   const rpcOk=/^https:\/\//.test(rpc)||["127.0.0.1","localhost","::1"].indexOf(rpcHost.toLowerCase())!==-1;
   out.push(rpcOk?["ok","rpc TLS ok"]:["bad",RU?`rpc_url должен быть https (http — только 127.0.0.1/localhost), получили: ${rpc||"—"}`:`rpc_url must be https (http only for 127.0.0.1/localhost) — got: ${rpc||"—"}`]);
   const chain=parseInt((t.match(/chain_id:\s*(\d+)/)||[])[1]||"0",10);
@@ -283,11 +285,10 @@ const _pRun=$("#pRun");
 if(_pRun)_pRun.addEventListener("click",()=>{
   const cpu=Math.max(1,parseInt($("#pCpu").value,10)||8);
   const wIn=parseInt($("#pW").value,10);
-  const w=isNaN(wIn)?Math.min(Math.max(20,cpu*2),128):wIn;
-  const rpc=Math.min(Math.max(8,cpu*4),128);
+  const w=Number.isFinite(wIn)&&wIn>0?wIn:Math.min(Math.max(20,cpu*2),128);
+  const rpc=Number.isFinite(wIn)&&wIn>0?Math.max(4,Math.min(wIn*3,128)):Math.min(Math.max(8,cpu*4),128);
   const gen=Math.min(8,Math.max(2,cpu));
-  $("#p1").textContent=Math.min(Math.max(20,cpu*2),128)+(isNaN(wIn)?" (auto)":"");
-  $("#p2").textContent=rpc;$("#p3").textContent=gen;$("#p4").textContent=Math.max(w*4,100);
+  $("#p1").textContent=w+(Number.isFinite(wIn)&&wIn>0?"":" (auto)");$("#p2").textContent=rpc;$("#p3").textContent=gen;$("#p4").textContent=Math.max(w*4,100);
 });
 
 /* ---------- mode: beginner / pro ---------- */
@@ -307,7 +308,7 @@ if(_modePro)_modePro.addEventListener("click",()=>{mode="pro";try{localStorage.s
 applyMode();
 
 /* ---------- beginner wizard ---------- */
-const WNETS={vibevibe:"vibe/vibe",robinhood:"Robinhood Chain",arc:"Arc (Minara)",flop:"Flop Labs"};
+const WNETS={vibevibe:"vibe/vibe",robinhood:"Robinhood Chain",arc:"Arc (Minara)",flop:"Flop Labs",simple:"Simple (transfer-only)"};
 let wst={step:1,net:"vibevibe",cycles:2};
 $$(".opt").forEach(o=>o.addEventListener("click",()=>{
   $$(".opt").forEach(x=>x.classList.remove("sel"));o.classList.add("sel");wst.net=o.dataset.net;

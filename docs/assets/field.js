@@ -103,7 +103,7 @@ function renderLive(s){
       const t=Date.parse(String(s.updated_at||"").replace(" ","T").replace(" UTC","Z").replace("UTC","Z"));
       age=isFinite(t)?Date.now()-t:-1;
     }catch(e){age=-1;}
-    if(age>45*60*1000){
+    if(age>15*60*1000){
       sa.hidden=false;
       sa.innerHTML='<div class="alert" role="alert">'+esc(lang==="en"
         ?"Stale data: snapshot "+(s.updated_at||"—")+" — the farm is silent."
@@ -147,10 +147,10 @@ function renderLive(s){
   const fg=$("#fieldGrid");if(fg)fg.style.display=cells?"":"none";
   const fl=$("#fieldLegend");if(fl)fl.style.display=cells?"":"none";
   renderGrid(cells,nWallets,!!s.running);
-  const pick=(arr,fb)=>((arr&&arr.length)?arr.slice(-60):fb);
-  live.actions=pick(s.chart?.actions,hist0.map(c=>c.actions_ok||0).slice(-60));
-  live.errors=pick(s.chart?.errors,hist0.map(c=>c.errors||0).slice(-60));
-  live.proc=pick(s.chart?.processed,hist0.map(c=>c.wallets||0).slice(-60));
+  // Графики — только из history (state.json ключа chart не несёт).
+  live.actions=hist0.map(c=>c.actions_ok||0).slice(-60);
+  live.errors=hist0.map(c=>c.errors||0).slice(-60);
+  live.proc=hist0.map(c=>c.wallets||0).slice(-60);
   drawLive();
   const tw=$("#tWallets");
   if(tw)tw.innerHTML=(s.top_wallets||[]).map((w,i)=>

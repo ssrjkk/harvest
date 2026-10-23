@@ -900,6 +900,22 @@ class TestReadFallbacks(unittest.IsolatedAsyncioTestCase):
             db._connect = boom
             self.assertEqual(await db.get_actions_since(0), [])
             self.assertEqual(await db.get_actions_since(-5, 0), [])
+            self.assertEqual(await db.get_actions_count_since(0), 0)
+            await db.close()
+
+    async def test_actions_count_since(self):
+        with tempfile.TemporaryDirectory() as d:
+            db = await self._db(d)
+            self.assertEqual(await db.get_actions_count_since(0), 0)
+            await db.log_actions_batch(
+                [
+                    ("0x1111", "transfer", "0xh1", 1, ""),
+                    ("0x2222", "stake", "0xh2", 0, "error=x"),
+                ]
+            )
+            self.assertEqual(await db.get_actions_count_since(0), 2)
+            self.assertEqual(await db.get_actions_count_since(1), 1)
+            self.assertEqual(await db.get_actions_count_since(-5), 2)
             await db.close()
 
     async def test_metrics_ok(self):

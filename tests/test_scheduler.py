@@ -160,6 +160,15 @@ class TestScheduler(unittest.TestCase):
         task.next_run = None
         self.assertFalse(self.scheduler._is_due(task))
 
+    def test_is_due_aware_datetimes(self):
+        from datetime import datetime, timedelta, timezone
+        self.scheduler.add_task("t1", interval_hours=1)
+        task = self.scheduler.tasks["t1"]
+        task.next_run = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        self.assertTrue(self.scheduler._is_due(task))
+        task.next_run = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        self.assertFalse(self.scheduler._is_due(task))
+
     def test_compute_next_run_with_time(self):
         self.scheduler.add_task("t1", run_at_time="23:59")
         task = self.scheduler.tasks["t1"]

@@ -1196,6 +1196,37 @@ class TestFarmerEasy2(unittest.IsolatedAsyncioTestCase):
         res = await f.run_cycle()
         self.assertEqual(res, 3)
 
+    async def test_reversed_ranges_do_not_raise(self):
+        from core.farmer import Farmer
+
+        cfg, wallet, network, faucet, executor = self._mk(
+            farming={"actions_per_cycle": [8, 3], "delay_between_actions": [20, 5],
+                     "skip_cycle_probability": 0.0}
+        )
+        f = Farmer(wallet, cfg, network, executor, faucet, [wallet["address"]])
+        self.assertGreaterEqual(f._actions_count(), 3)
+        lo, hi = f._action_delay_bounds()
+        self.assertLessEqual(lo, hi)
+
+    async def test_garbage_ranges_fall_back(self):
+        from core.farmer import Farmer
+
+        cfg, wallet, network, faucet, executor = self._mk(
+            farming={"actions_per_cycle": ["x", "y"], "delay_between_actions": ["a", "b"],
+                     "skip_cycle_probability": 0.0}
+        )
+        f = Farmer(wallet, cfg, network, executor, faucet, [wallet["address"]])
+        self.assertGreaterEqual(f._actions_count(), 1)
+        lo, hi = f._action_delay_bounds()
+        self.assertEqual((lo, hi), (5.0, 5.0))
+        cfg2, wallet2, _, _, _ = self._mk(
+            farming={"actions_per_cycle": "junk", "delay_between_actions": None,
+                     "skip_cycle_probability": 0.0}
+        )
+        f2 = Farmer(wallet2, cfg2, network, executor, faucet, [wallet2["address"]])
+        self.assertGreaterEqual(f2._actions_count(), 1)
+        self.assertEqual(f2._action_delay_bounds(), (5.0, 5.0))
+
     async def test_burst_and_hilo(self):
         from core.behavior import WalletProfile
         from core.farmer import Farmer

@@ -155,6 +155,33 @@ class TestStartDelay(unittest.TestCase):
         p = profile_for(ADDR_A, _cfg(start_delay=2.0))
         self.assertAlmostEqual(p.start_delay, 2.0)
 
+    def test_garbage_ranges_never_raise(self):
+        # Мусор в behavior раньше ронял пул с ValueError (секция вообще
+        # не валидируется): теперь — безопасный дефолт.
+        p = profile_for(ADDR_A, _cfg(activity=["bad", "data"]))
+        self.assertGreaterEqual(p.activity, 0.1)
+        p = profile_for(ADDR_A, _cfg(start_delay=["x", "y"]))
+        self.assertEqual(p.start_delay, 0.0)
+        p = profile_for(ADDR_A, _cfg(activity=[1.5, 0.5]))
+        self.assertGreaterEqual(p.activity, 0.1)
+        # bool — не число: дефолт, а не activity=True→1.0 / краш.
+        from core.behavior import _as_range as _ar
+
+        self.assertEqual(_ar(True, (0.5, 1.5)), (0.5, 1.5))
+        p = profile_for(ADDR_A, _cfg(activity=True, start_delay=True))
+        self.assertEqual(p.start_delay, 0.0)
+        self.assertGreaterEqual(p.activity, 0.5)
+        self.assertLessEqual(p.activity, 1.5)
+
+    def test_amount_corridor_never_inverted(self):
+        for i in range(50):
+            p = profile_for(f"0x{i:040x}", _cfg())
+            self.assertLessEqual(p.amount_min_mul, p.amount_max_mul)
+
+    def test_rest_can_hit_max(self):
+        seen = {profile_for(f"0x{i:040x}", _cfg(rest_cycles=[1, 3])).rest_cycles[0] for i in range(300)}
+        self.assertIn(3, seen)
+
     def test_delay_disabled_neutral(self):
         p = profile_for(ADDR_A, _cfg(enabled=False, start_delay=[50.0, 70.0]))
         self.assertEqual(p.start_delay, 0.0)

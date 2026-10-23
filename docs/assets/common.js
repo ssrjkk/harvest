@@ -4,7 +4,7 @@
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const toast=(m)=>{const t=$("#toast");if(!t)return;t.textContent=m;t.classList.add("show");clearTimeout(t._h);t._h=setTimeout(()=>t.classList.remove("show"),1800);};
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
-const fmt=n=>{n=Number(n);if(!isFinite(n))return "—";if(Math.abs(n)>=1e6)return(n/1e6).toFixed(2)+"M";if(Math.abs(n)>=1e3)return(n/1e3).toFixed(1)+"K";return String(Math.round(n*100)/100);};
+const fmt=n=>{n=Number(n);if(!isFinite(n))return "—";const a=Math.abs(n);if(a>=1e12)return(n/1e12).toFixed(2)+"T";if(a>=1e9)return(n/1e9).toFixed(2)+"B";if(a>=1e6)return(n/1e6).toFixed(2)+"M";if(a>=1e3)return(n/1e3).toFixed(1)+"K";return String(Math.round((n+Number.EPSILON)*100)/100);};
 const VERSION="v2.4.1";
 window.hv={toast,esc,fmt,version:VERSION};
 /* Подпись в консоли разработчика: сайт статичный, ключи из демо-генератора
@@ -96,7 +96,7 @@ a7:"Local FastAPI pulpit: buttons, WebSocket log, top and history (main.py → G
 a_n:"Per-layer detail: §3 of DOCUMENTATION.md in the repo (entry points, portal, configs, Tier-2 for real RPCs/contracts).",
 s6_h:"Portal & Telegram",s6_sub:"python -m portal brings up aiohttp (web + API) and, if a token is set, the Telegram bot. Secrets come only from env. If the portal is exposed beyond loopback and there's no way to log in, it refuses to start.",
 po_d:"Purpose",po1:"Session signing, min 16 chars",po2:"BotFather token",po3:"Default-deny user_id list",po4:"DB master key / web-login PIN",po6:"Farmer DB path / farmer config",
-tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, buttons under messages, commands: /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /faucet, /rpc, /scheduler, /alerts — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, status emoji on the home screen. Values escaped, generic error replies.",
+tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, buttons under messages, commands: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /cmd, /cfg, /check, /ref, /cancel, /help — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, status emoji on the home screen. Values escaped, generic error replies.",
 dp_p:"Ready kit: Dockerfile + compose, long-polling with no public URL, Caddy for HTTPS later, .env template, healthcheck, data volume.",
 s7_h:"Security — closed by default",
 b1_h:"Encryption",b1_p:"Seeds: AES-256-GCM (12B nonce, AAD wallet-seed). Export files: AES-256-CBC v2 — PBKDF2-SHA256 100k, separated encrypt/MAC keys, HMAC verified before writing.",
@@ -112,12 +112,12 @@ q5:"Do you promise a drop?",a_q5:"No. harvest doesn't guarantee a drop, points o
 cmdk_ph:"Command or section…",cmdk_hint:"↑↓ select · Enter run · Esc close",
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
 preset_h:"Wallet character (behavior section in YAML)",preset_stealth:"Quiet",preset_balanced:"Even",preset_degen:"Lively",preset_note:"Only changes behavior: pauses, activity, amount spread. It doesn't affect the run command.",
-f_all:"ALL",fx_h:"Faucet & diagnostics",fx_p1:"The faucet checks the key and quota first, and only then asks for coins. Without CHAINSTACK_API_KEY the strategy simply doesn't turn on — that's not an error, it's an honest skip.",fx_p2:"Key: console.chainstack.com → user/settings/api-keys. Keep it in the CHAINSTACK_API_KEY env var, not in the config.",bot_h:"Telegram bot",bot_p:"The farm bot shows the field, computes PnL and understands commands: /status /monitor /doctor /history /pnl /balance /wallets /profiles /export /network /pause /resume /stop /faucet /rpc /scheduler /alerts /cmd /cfg /check /ref, plus step-by-step /cmd and /cfg wizards. For author contact there's a separate @ssrjkk_bot.",specs_h:"Project at a glance",
+f_all:"ALL",fx_h:"Faucet & diagnostics",fx_p1:"The faucet checks the key and quota first, and only then asks for coins. Without CHAINSTACK_API_KEY the strategy simply doesn't turn on — that's not an error, it's an honest skip.",fx_p2:"Key: console.chainstack.com → user/settings/api-keys. Keep it in the CHAINSTACK_API_KEY env var, not in the config.",bot_h:"Telegram bot",bot_p:"The farm bot shows the field, computes PnL and understands commands: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /cmd, /cfg, /check, /ref, /cancel, /help, plus step-by-step /cmd and /cfg wizards. For author contact there's a separate @ssrjkk_bot.",specs_h:"Project at a glance",
 ft:"EVM testnet farmer · © 2026 ssrjkk · MIT",
 mode_new:"Beginner",mode_pro:"Pro",mode_hint:"Beginner — three steps in plain words. Pro — builders, simulator and reference.",
 w_s1:"Network",w_s2:"Scale",w_s3:"Launch",
 w_q1:"What are we farming?",w_q1s:"Farming here means practice transactions on a test network. The money isn't real, and it costs nothing.",
-wd_v:"Tokens and launches. Most people start here.",w_rec:"calm start",wd_r:"The main test network: transfers and swaps.",wd_a:"Token launches and trading. Busier, more log events.",wd_f:"Compute and staking. A stub network for experiments.",
+wd_v:"Tokens and launches. Most people start here.",w_rec:"calm start",wd_r:"The main test network: transfers and swaps.",wd_a:"Token launches and trading. Busier, more log events.",wd_f:"Compute and staking. A stub network for experiments.",wd_s:"Transfers only: the quietest mode.",
 w_q2:"What scale?",w_wallets:"Wallets",w_wallets_s:"Wallets are created automatically. 5–10 is enough for a first try.",
 w_cycles:"How many rounds?",w_c2:"2 — trial",w_c0:"∞ — nonstop",w_cycles_s:"One round walks all wallets: faucet first, then transactions.",
 w_faucet:"Top up balance from the faucet",w_faucet_s:"A faucet is a free giveaway of test coins. Turn off only if you already have coins.",

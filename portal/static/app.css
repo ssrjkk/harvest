@@ -963,7 +963,7 @@ tr.row-active td { background: rgba(168, 85, 247, 0.05); }
   margin-bottom: 10px;
 }
 .login-input:focus { border-color: var(--purple); }
-.login-input::placeholder { color: var(--text-3); }
+.login-input::placeholder { color: var(--text-2); }
 
 .login-btn {
   width: 100%;
@@ -1042,6 +1042,7 @@ tr.row-active td { background: rgba(168, 85, 247, 0.05); }
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .nav-item{all:unset;display:flex;align-items:center;gap:10px;width:100%;box-sizing:border-box;cursor:pointer;padding:12px;min-height:44px}
 .nav-item:focus-visible{outline:2px solid var(--purple-bright);outline-offset:2px;border-radius:8px}
+.btn:focus-visible,.net-select:focus-visible,.login-input:focus-visible,.login-btn:focus-visible,a:focus-visible{outline:2px solid var(--purple-bright);outline-offset:2px}
 @media (max-width: 1024px) {
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }

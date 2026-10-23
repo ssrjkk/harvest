@@ -446,6 +446,31 @@ class TestPoolInit(unittest.TestCase):
         pool = self._mk(cfg_over)
         self.assertGreater(pool.timeout, 0)
 
+    def test_auto_timeout_reversed_scale_uses_max(self):
+        # [2.0, 0.5] раньше брала [1]=0.5: таймаут занижался, ложные wait_for.
+        lo = self._mk({
+            "threading": {"max_workers": 2, "timeout_per_wallet": 0},
+            "farming": {"actions_per_cycle": [2, 4], "delay_between_actions": [1, 3], "delay_between_cycles": [1, 2]},
+            "behavior": {"enabled": True, "action_delay_scale": [2.0, 0.5]},
+        }).timeout
+        hi = self._mk({
+            "threading": {"max_workers": 2, "timeout_per_wallet": 0},
+            "farming": {"actions_per_cycle": [2, 4], "delay_between_actions": [1, 3], "delay_between_cycles": [1, 2]},
+            "behavior": {"enabled": True, "action_delay_scale": [0.5, 2.0]},
+        }).timeout
+        self.assertEqual(lo, hi)
+
+    def test_auto_timeout_garbage_scale_falls_back(self):
+        for bad in (True, ["x", "y"], [1.0, 2.0, 3.0], "junk"):
+            with self.subTest(bad=bad):
+                pool = self._mk({
+                    "threading": {"max_workers": 2, "timeout_per_wallet": 0},
+                    "farming": {"actions_per_cycle": [2, 4], "delay_between_actions": [1, 3],
+                                "delay_between_cycles": [1, 2]},
+                    "behavior": {"enabled": True, "action_delay_scale": bad},
+                })
+                self.assertGreater(pool.timeout, 0)
+
     def test_auto_timeout_no_behavior(self):
         cfg = _base_cfg(self.td.name)
         del cfg["behavior"]

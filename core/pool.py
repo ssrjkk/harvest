@@ -233,7 +233,11 @@ class FarmerPool:
                 elif isinstance(raw_scale, (int, float)):
                     scale_hi = max(1.0, float(raw_scale))
                 elif isinstance(raw_scale, (list, tuple)) and len(raw_scale) == 2:
-                    scale_hi = max(1.0, float(raw_scale[1]))
+                    try:
+                        # Пара [2.0, 0.5] раньше брала [1]: таймаут занижался 2×.
+                        scale_hi = max(1.0, float(max(raw_scale[0], raw_scale[1])))
+                    except (TypeError, ValueError):
+                        scale_hi = 1.0
                 else:
                     scale_hi = 1.0
                 max_actions_eff = max_actions * max(2.0, burst)

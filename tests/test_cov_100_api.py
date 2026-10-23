@@ -250,6 +250,25 @@ class ApiCov(unittest.IsolatedAsyncioTestCase):
             r = await c.post("/api/scheduler/tasks", json={"task_id": "t", "cycles": "abc"})
             self.assertEqual(r.status, 400)
 
+    async def test_scheduler_add_enabled_variants(self):
+        d = _StubDaemon()
+        seen = {}
+
+        async def _add(task_id, **kw):
+            seen.update(kw)
+            return {"task_id": task_id, **kw}
+
+        d.add_scheduler_task = _add  # type: ignore
+        c = await self._client(daemon=d)
+        async with c:
+            await self._authed(c)
+            r = await c.post("/api/scheduler/tasks", json={"task_id": "e1", "enabled": "false"})
+            self.assertEqual(r.status, 200)
+            self.assertFalse(seen.get("enabled", True))
+            r = await c.post("/api/scheduler/tasks", json={"task_id": "e2", "enabled": True})
+            self.assertEqual(r.status, 200)
+            self.assertTrue(seen.get("enabled", False))
+
     async def test_scheduler_update_bad(self):
         d = _StubDaemon()
         d.scheduler_tasks["t1"] = {"task_id": "t1"}

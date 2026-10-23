@@ -223,6 +223,7 @@ def render_html(
     explorer: str,
     currency: str,
     out_path: str,
+    window_note: str = "",
 ) -> str:
     """Собирает самодостаточный HTML (без внешних файлов — открывается с диска)."""
     esc = html.escape
@@ -276,6 +277,9 @@ def render_html(
         f"<td>{(d['ok'] / (d['ok'] + d['fail']) * 100 if (d['ok'] + d['fail']) else 0):.1f}%</td></tr>"
         for t, d in sorted(actions["by_type"].items(), key=lambda kv: -(kv[1]["ok"]))
     ) or '<tr><td colspan="4" class="mut">нет данных</td></tr>'
+    window_note_html = (
+        f'<p class="note">Окно: {esc(window_note)}.</p>' if window_note else ""
+    )
 
     # --- причины отказов ---
     reason_rows = "".join(
@@ -346,6 +350,7 @@ def render_html(
     <tr><th>Действие</th><th>Успешно</th><th>Ошибок</th><th>Success rate</th></tr>
     {type_rows}
   </table>
+  {window_note_html}
 
   <h2>Причины отказов</h2>
   <table>
@@ -396,9 +401,23 @@ async def build_report(
     """
     faucet = tracker.section("pre_faucet", "pre_farm")
     farm = tracker.section("pre_farm", "post_run")
-    actions = summarize_actions(
-        await db.get_actions_since(since_id, limit=5000), sample=set(tracker.addresses)
+    rows = await db.get_actions_since(since_id, limit=5000)
+    actions = summarize_actions(rows, sample=set(tracker.addresses))
+    # Честный window: детали — последние 5000, счётчик — полный COUNT.
+    # Старый код брал window из обрезанной выборки и молча занижал витрину.
+    count_fn = getattr(db, "get_actions_count_since", None)
+    try:
+        window_total = int(await count_fn(since_id)) if callable(count_fn) else len(rows)
+    except Exception:  # noqa: BLE001 — счётчик не должен ломать отчёт
+        window_total = len(rows)
+    if window_total < len(rows):
+        window_total = len(rows)
+    window_note = (
+        "" if window_total <= len(rows)
+        else f"показаны последние {len(rows)} из {window_total} действий окна"
     )
+    if window_note:
+        logger.warning(f"PnL: окно обрезано — {window_note}")
     doc = render_html(
         tracker=tracker,
         faucet_delta=faucet["sum_delta"],
@@ -408,6 +427,7 @@ async def build_report(
         explorer=explorer,
         currency=currency,
         out_path=out_path,
+        window_note=window_note,
     )
     Path(out_path).write_text(doc, encoding="utf-8")
     # Агрегаты в БД: публикатор положит их в state.json, сайт покажет на «Поле».
@@ -421,7 +441,7 @@ async def build_report(
             "sample": len(tracker.addresses),
             "measured": farm["measured"],
             "total_wallets": tracker.total_wallets,
-            "window_actions": actions["total_ok"] + actions["total_fail"],
+            "window_actions": window_total,
             "by_type": [
                 {"type": t, "ok": d["ok"], "fail": d["fail"]}
                 for t, d in sorted(
@@ -444,6 +464,8 @@ async def build_report(
         "total": tracker.total_wallets,
         "ok": actions["total_ok"],
         "fail": actions["total_fail"],
+        "window_total": window_total,
+        "truncated": bool(window_note),
     }
 
 

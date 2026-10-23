@@ -197,6 +197,16 @@ class TestConfigValidate(unittest.TestCase):
         cfg["advanced"]["receipt_timeout"] = 45
         validate_config(cfg)
 
+    def test_bool_is_not_a_number(self):
+        cfg = good_config()
+        cfg["threading"]["max_workers"] = True
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+        cfg = good_config()
+        cfg["farming"]["actions_per_cycle"] = [3, True]
+        with self.assertRaises(ConfigError):
+            validate_config(cfg)
+
     def test_gas_limit_ok_with_low_for_placeholder_contracts(self):
         # Заглушки (0x0) в runtime падают на transfer — им 21000 достаточно.
         cfg = good_config()

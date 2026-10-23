@@ -56,9 +56,18 @@ class Farmer:
     def _actions_count(self) -> int:
         raw_apt = self.farming["actions_per_cycle"]
         if isinstance(raw_apt, (list, tuple)):
-            min_act, max_act = int(raw_apt[0]), int(raw_apt[1])
+            try:
+                a, b = int(raw_apt[0]), int(raw_apt[1])
+            except (TypeError, ValueError, IndexError):
+                a = b = 1
+            # Перевёрнутая пара [8,3] роняла randint с ValueError при
+            # нейтральном профиле (валидатор такое ловит, прямой вызов — нет).
+            min_act, max_act = (a, b) if a <= b else (b, a)
         else:
-            min_act = max_act = int(raw_apt)
+            try:
+                min_act = max_act = int(raw_apt)
+            except (TypeError, ValueError):
+                min_act = max_act = 1
         if self.profile.neutral:
             return random.randint(min_act, max_act)
         lo = max(min_act, self.profile.actions_lo)
@@ -74,9 +83,16 @@ class Farmer:
     def _action_delay_bounds(self) -> tuple[float, float]:
         raw_dly = self.farming["delay_between_actions"]
         if isinstance(raw_dly, (list, tuple)):
-            min_d, max_d = float(raw_dly[0]), float(raw_dly[1])
+            try:
+                a, b = float(raw_dly[0]), float(raw_dly[1])
+            except (TypeError, ValueError, IndexError):
+                a = b = 5.0
+            min_d, max_d = (a, b) if a <= b else (b, a)
         else:
-            min_d = max_d = float(raw_dly)
+            try:
+                min_d = max_d = float(raw_dly)
+            except (TypeError, ValueError):
+                min_d = max_d = 5.0
         if self.profile.neutral:
             return min_d, max_d
         scale = self.profile.delay_actions_scale * random.uniform(0.85, 1.15)

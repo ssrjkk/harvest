@@ -183,6 +183,10 @@ class TestPairHi(unittest.TestCase):
         self.assertEqual(_pair_range(None, (1.0, 2.0)), (1.0, 2.0))
         self.assertEqual(_pair_range(True, (1.0, 2.0)), (1.0, 2.0))
         self.assertEqual(_pair_range("x", (1.0, 2.0)), (1.0, 2.0))
+        # Мусор внутри пары — дефолт, а не ValueError наружу.
+        self.assertEqual(_pair_hi(["x", "y"], 7), 7)
+        self.assertEqual(_pair_hi([None, "z"], 7), 7)
+        self.assertEqual(_pair_range(["x", "y"], (1.0, 2.0)), (1.0, 2.0))
 
     def test_scalar_actions_change_timeout(self):
         from core import pool as pool_mod

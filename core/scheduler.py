@@ -105,6 +105,7 @@ class Scheduler:
         interval_minutes: float = 0,
         run_at_time: str | None = None,
         cycles: int = 1,
+        enabled: bool = True,
     ) -> ScheduleTask:
         task = ScheduleTask(
             task_id,
@@ -113,6 +114,7 @@ class Scheduler:
             interval_minutes=interval_minutes,
             run_at_time=run_at_time,
             cycles=cycles,
+            enabled=bool(enabled),
         )
         self.tasks[task_id] = task
         self._compute_next_run(task)
@@ -177,7 +179,13 @@ class Scheduler:
         if not task.enabled or not task.next_run:
             return False
         try:
-            return datetime.now() >= datetime.fromisoformat(task.next_run)
+            target = datetime.fromisoformat(task.next_run)
+            # Смешанные зоны (naive now vs aware next_run) роняли сравнение
+            # с TypeError → задача никогда не due. Приводим к одной базе.
+            if target.tzinfo is not None:
+                from datetime import timezone
+                return datetime.now(timezone.utc) >= target.astimezone(timezone.utc)
+            return datetime.now() >= target
         except Exception:
             return False
 

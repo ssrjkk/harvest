@@ -720,6 +720,14 @@ class Faucet:
         max_concurrent: потолок одновременных HTTP-запросов к кранам (rate limit).
         """
         total = len(addresses)
+        if not isinstance(batch_size, bool) and isinstance(batch_size, int) and batch_size >= 1:
+            pass
+        else:
+            raise ValueError(f"batch_size должен быть >= 1, дано {batch_size!r}")
+        if not isinstance(max_concurrent, bool) and isinstance(max_concurrent, int) and max_concurrent >= 1:
+            pass
+        else:
+            raise ValueError(f"max_concurrent должен быть >= 1, дано {max_concurrent!r}")
         success = 0
         fail = 0
         sem = asyncio.Semaphore(max_concurrent)

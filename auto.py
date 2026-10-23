@@ -252,7 +252,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
         print(f"  {Fore.YELLOW}DRY-RUN: транзакции НЕ отправляются{Style.RESET_ALL}")
 
     # Один пул на одну БД: защита от случайного двойного фарма.
-    guard = SingleInstance(default_lock_path(config["database"]["path"]))
+    guard = SingleInstance(default_lock_path(db_path))
     if not guard.acquire():
         print(f"  {Fore.YELLOW}Уже работает другой экземпляр фармера (pid={guard.holder_pid()}).{Style.RESET_ALL}")
         print("  Два пула на одной БД несовместимы — пропуск цикла.")
@@ -410,11 +410,13 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             if pnl_tracker is not None:
                 # Снимок «перед фармом» — после крана, до транзакций пула.
                 await pnl_tracker.mark(network, "pre_farm")
-            pool = FarmerPool(config, db, network=network)
+            pool = None
             try:
                 if cycle_count <= 0:
+                    pool = FarmerPool(config, db, network=network)
                     await pool.run_forever(stop_event)
                 else:
+                    pool = FarmerPool(config, db, network=network)
                     all_addresses = [w["address"] for w in wallets]
                     for cycle in range(1, cycle_count + 1):
                         results = await pool.run_once(
@@ -446,8 +448,10 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
             finally:
                 # Финальный снимок метрик в БД: CLI-прогоны не держат демона
                 # с recorder-циклом, иначе витрина для них вечно «—».
-                await pool.record_health_snapshot(len(wallets))
-                await pool.close()
+                # pool мог не создаться (конструктор бросил): тогда и закрывать нечего.
+                if pool is not None:
+                    await pool.record_health_snapshot(len(wallets))
+                    await pool.close()
             print(f"  {Fore.GREEN}Фарм: {time.monotonic() - t3:.1f} сек{Style.RESET_ALL}")
         else:
             print(f"\n{Fore.CYAN}[3/4] Фарм: пропущен (--skip-farm){Style.RESET_ALL}")

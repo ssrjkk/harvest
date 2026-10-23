@@ -27,6 +27,11 @@ class TestParseHelpers(unittest.TestCase):
                 self.assertIn(token, demo)
                 self.assertIn(token, doc)
 
+    def test_status_health_none_shows_dash(self):
+        # Протухший снимок: health_factor=None — раньше float(None) ронял /status.
+        txt = ops.fmt_status({"pool": {}, "db": {}, "health_factor": None, "running": False})
+        self.assertIn("—", txt)
+
     def test_parse_count(self):
         self.assertEqual(ops.parse_count("50"), 50)
         for bad in ["", "xx", "0", "-1", "5001", "1.5", None]:

@@ -148,7 +148,9 @@ def _cell_state(actions: int, attempts: int, last_cycle: int, latest: int | None
 
 async def collect() -> dict:
     try:
-        async with aiosqlite.connect(DB) as db:
+        # busy_timeout: публикатор читает параллельно с живым фармом
+        # (BatchWriter.executemany) — без таймаута ловим SQLITE_BUSY → exit 1.
+        async with aiosqlite.connect(DB, timeout=30) as db:
             try:
                 async with db.execute(
                     "SELECT id, actions_ok, errors, duration_s, wallets FROM cycle_history ORDER BY id DESC LIMIT 20"

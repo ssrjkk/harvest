@@ -73,9 +73,11 @@ def fmt_status(data: dict) -> str:
     rate = f"{actions / total * 100:.1f}%" if total else "—"
     per_cycle = f"{actions / cycles:.1f}" if cycles else "—"
     state = _state_mark(bool(data.get("running")), bool(pool.get("paused")))
+    hf_raw = data.get("health_factor")
+    hf_txt = f"{float(hf_raw):.2f}" if isinstance(hf_raw, (int, float)) else "—"
     lines = [
         "<b>harvest // ПОЛЕ</b>",
-        f"состояние: <b>{state}</b> · health: <b>{float(data.get('health_factor', 0.0)):.2f}</b>",
+        f"состояние: <b>{state}</b> · health: <b>{hf_txt}</b>",
         "<pre>"
         f"кошельки  {_esc(data.get('wallet_count', '-'))}\n"
         f"действия  {_esc(actions)} · ошибки {_esc(errors)}\n"
@@ -491,8 +493,9 @@ threading.workers 1..1000
 receipt_timeout   30с → None без отката nonce
 license.grace     7 дней офлайн
 schedule          ≥0.05 ч</pre>
-ENV: FARMER_RPC_URL · FARMER_CHAIN_ID · FARMER_WORKERS ·
-FARMER_MIN/ TARGET_BALANCE · FARMER_MASTER_KEY ·
-FARMER_VIBE_SIGNER_KEY · CHAINSTACK_API_KEY
+ENV: FARMER_RPC_URL · CHAIN_ID · WALLET_COUNT · WORKERS ·
+GEN_WORKERS · RPC_THREADS · CHUNK_SIZE · FAUCET_MAX_CONCURRENT ·
+RPC_RATE(_FLOOR) · MIN_BALANCE · TARGET_BALANCE · LOG_LEVEL · DB_PATH ·
++ MASTER_KEY · VIBE_SIGNER_KEY · CHAINSTACK_API_KEY · CONFIG
 Полный справочник — вкладка «Про → Справочник» на сайте.
 """ + _FOOT
