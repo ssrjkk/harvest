@@ -168,10 +168,6 @@ class ApiCov(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(r.status, 500)
 
     async def test_broadcast_ws_concurrent_mutation(self):
-        import asyncio as _aio
-
-        sent = []
-
         class _Ws:
             def __init__(self, fail=False, mutate=None):
                 self.fail = fail
