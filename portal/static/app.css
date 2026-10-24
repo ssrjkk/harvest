@@ -23,8 +23,8 @@
   --amber: #f59e0b;
   --text-0: #f1f0ff;
   --text-1: #c5c3e0;
-  --text-2: #7a7899;
-  --text-3: #454363;
+  --text-2: #8585a6;
+  --text-3: #8a87a8;
   --glass: rgba(12, 12, 22, 0.7);
   --glass-hover: rgba(18, 18, 32, 0.8);
   --radius: 10px;
@@ -1070,13 +1070,28 @@ tr.row-active td { background: rgba(168, 85, 247, 0.05); }
 }
 @media (pointer: coarse) {
   .btn { min-height: 44px; }
-  .btn-sm { min-height: 40px; }
+  .btn-sm { min-height: 44px; }
   .copyable:active { color: var(--purple-bright); }
   input[type="checkbox"] { width: 24px; height: 24px; }
 }
 /* Тач-стейты: hover на телефоне нет */
 .btn:active { filter: brightness(1.15); }
 .nav-item:active { background: var(--bg-2); }
+
+/* ── MODAL (замена нативных prompt/confirm) ──
+   Нативный prompt/confirm блокирует вкладку, без лейблов и i18n, уродует
+   SR-режим. Своя модалка: labelled input, Esc/scrim = отмена, фокус
+   возвращается вызывавшему элементу, trap внутри диалога. */
+.modal-scrim{position:fixed;inset:0;z-index:200;display:flex;align-items:flex-start;justify-content:center;padding:12vh 16px 16px;background:rgba(0,0,0,.55)}
+.modal-scrim[hidden]{display:none}
+.modal-box{width:min(440px,100%);background:var(--bg-1);border:1px solid var(--border);border-radius:var(--radius);padding:18px;box-shadow:0 24px 80px rgba(0,0,0,.6)}
+.modal-title{font-size:15px;font-weight:700;color:var(--text-0);margin-bottom:10px}
+.modal-text{font-size:13px;color:var(--text-2);margin-bottom:12px;white-space:pre-line}
+.modal-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px;font-size:12px;color:var(--text-2)}
+.modal-field .login-input{margin:0;width:100%;box-sizing:border-box}
+.modal-err{font-size:12px;color:var(--red);margin-bottom:12px}
+.modal-actions{display:flex;justify-content:flex-end;gap:10px}
+.modal-actions .btn{min-height:44px}
 tr:active td { background: rgba(168, 85, 247, 0.05); }
 
 @media (prefers-reduced-motion: reduce) {

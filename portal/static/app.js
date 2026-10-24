@@ -615,19 +615,94 @@ async function loadScheduler() {
   } catch (e) { if (e.message !== "unauth") toast("Планировщик: " + e.message); }
 }
 
+/* ── MODAL DIALOG (замена нативных prompt/confirm) ──
+   prompt/confirm блокируют вкладку, без лейблов и RU/SR-доступности.
+   Диалог: labelled input, Esc/scrim = отмена, Enter = OK, фокус-трап,
+   фокус возвращается вызывавшему элементу. */
+let _modalWired = false, _modalResolve = null, _modalOpener = null;
+function _modalWire() {
+  if (_modalWired) return;
+  _modalWired = true;
+  $("uiModalOk").addEventListener("click", () => _modalClose(true));
+  $("uiModalCancel").addEventListener("click", () => _modalClose(false));
+  $("uiModal").addEventListener("mousedown", e => { if (e.target.id === "uiModal") _modalClose(false); });
+  document.addEventListener("keydown", e => {
+    if ($("uiModal").hidden || !_modalResolve) return;
+    if (e.key === "Escape") { e.preventDefault(); _modalClose(false); return; }
+    if (e.key !== "Tab") return;
+    const f = [...$("uiModal").querySelectorAll("button,input")].filter(el => !el.hidden && !el.disabled);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+  });
+  $("uiModalInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") { e.preventDefault(); _modalClose(true); }
+  });
+}
+function _modalClose(ok) {
+  const input = $("uiModalInput");
+  const res = { ok, value: input && !input.hidden ? input.value : "" };
+  const done = _modalResolve;
+  _modalResolve = null;
+  $("uiModal").hidden = true;
+  if (_modalOpener && document.contains(_modalOpener)) _modalOpener.focus();
+  _modalOpener = null;
+  if (done) done(res);
+}
+function uiDialog({ title, text = "", input = null, okText = "OK" }) {
+  _modalWire();
+  if (_modalResolve) _modalClose(false);
+  _modalOpener = document.activeElement;
+  $("uiModalTitle").textContent = title;
+  const tx = $("uiModalText");
+  tx.hidden = !text;
+  tx.textContent = text;
+  const fw = $("uiModalField"), inp = $("uiModalInput");
+  if (input) {
+    fw.hidden = false;
+    inp.hidden = false;
+    $("uiModalLabel").textContent = input.label || "";
+    inp.value = input.value || "";
+    inp.placeholder = input.placeholder || "";
+  } else {
+    fw.hidden = true;
+    inp.hidden = true;
+    inp.value = "";
+  }
+  const err = $("uiModalErr");
+  err.hidden = true;
+  err.textContent = "";
+  $("uiModalOk").textContent = okText;
+  $("uiModal").hidden = false;
+  (input ? inp : $("uiModalOk")).focus();
+  return new Promise(resolve => { _modalResolve = resolve; });
+}
+async function uiPrompt(title, label, def = "", placeholder = "") {
+  const r = await uiDialog({ title, input: { label, value: def, placeholder } });
+  return r.ok ? r.value : null;
+}
+async function uiConfirm(title, text, okText = "Удалить") {
+  const r = await uiDialog({ title, text, okText });
+  return r.ok;
+}
+
 async function addSchedulerTask() {
-  const name = prompt("Имя задачи:");
-  if (!name) return;
-  const hoursRaw = prompt("Каждые N часов (0 — по времени суток):", "6");
+  const name = await uiPrompt("Новая задача", "Имя задачи:");
+  if (name === null || !name.trim()) return;
+  const hoursRaw = await uiPrompt("Новая задача", "Каждые N часов (0 — по времени суток):", "6");
   if (hoursRaw === null) return;
   const hours = parseFloat(hoursRaw);
   if (isNaN(hours) || hours < 0 || hours > 720) { toast("Часы: 0..720"); return; }
   let runAt = null;
   if (!hours) {
-    runAt = prompt("Время суток HH:MM:", "09:00");
-    if (!runAt || !/^\d{1,2}:\d{2}$/.test(runAt)) { toast("Формат HH:MM"); return; }
+    runAt = await uiPrompt("Новая задача", "Время суток HH:MM:", "09:00", "09:00");
+    if (runAt === null || !runAt || !/^\d{1,2}:\d{2}$/.test(runAt.trim())) { toast("Формат HH:MM"); return; }
+    runAt = runAt.trim();
   }
-  const cycles = parseInt(prompt("Количество циклов:", "10"), 10);
+  const cyclesRaw = await uiPrompt("Новая задача", "Количество циклов:", "10");
+  if (cyclesRaw === null) return;
+  const cycles = parseInt(cyclesRaw, 10);
   if (!cycles || isNaN(cycles) || cycles < 1 || cycles > 1000) { toast("Циклы: 1..1000"); return; }
   const task_id = "task-" + Date.now().toString(36);
   try {
@@ -643,7 +718,7 @@ async function addSchedulerTask() {
 
 async function deleteSchedulerTask(id) {
   if (!id) return;
-  if (!confirm("Удалить задачу?")) return;
+  if (!await uiConfirm("Удаление задачи", "Удалить задачу?", "Удалить")) return;
   try {
     await j(`/api/scheduler/tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
     toast("Задача удалена");
@@ -691,10 +766,10 @@ async function loadGroups() {
 }
 
 async function addGroup() {
-  const name = prompt("Имя группы:");
-  if (!name) return;
-  const color = prompt("Цвет (hex, например #a855f7):", "#a855f7");
-  if (!color) return;
+  const name = await uiPrompt("Новая группа", "Имя группы:");
+  if (name === null || !name.trim()) return;
+  const color = await uiPrompt("Новая группа", "Цвет (hex, например #a855f7):", "#a855f7", "#a855f7");
+  if (color === null) return;
   if (!/^#[0-9a-fA-F]{6}$/.test(color.trim())) { toast("Цвет: #rrggbb"); return; }
   try {
     await j("/api/groups", {
@@ -708,7 +783,7 @@ async function addGroup() {
 }
 
 async function deleteGroup(id) {
-  if (!confirm("Удалить группу?")) return;
+  if (!await uiConfirm("Удаление группы", "Удалить группу?", "Удалить")) return;
   try {
     await j(`/api/groups/${encodeURIComponent(id)}`, { method: "DELETE" });
     toast("Группа удалена");
@@ -801,7 +876,7 @@ async function loadRpcHealth() {
 }
 
 async function dripFaucet() {
-  if (!confirm("Долить все кошельки с крана? Квота крана тратится по-настоящему.")) return;
+  if (!await uiConfirm("Долив с крана", "Долить все кошельки с крана? Квота крана тратится по-настоящему.", "Долить")) return;
   try {
     const r = await j("/api/faucet/drip", { method: "POST" });
     toast(r.started ? "Долив запущен фоном" : "Долив уже идёт");

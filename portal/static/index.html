@@ -379,6 +379,22 @@
     </div>
   </div>
 
+  <div id="uiModal" class="modal-scrim" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="uiModalTitle">
+      <div class="modal-title" id="uiModalTitle"></div>
+      <div class="modal-text" id="uiModalText" hidden></div>
+      <label class="modal-field" id="uiModalField" hidden>
+        <span id="uiModalLabel"></span>
+        <input class="login-input" id="uiModalInput" autocomplete="off">
+      </label>
+      <div class="modal-err" id="uiModalErr" hidden></div>
+      <div class="modal-actions">
+        <button class="btn" id="uiModalCancel" type="button">Отмена</button>
+        <button class="btn btn-primary" id="uiModalOk" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/app.js?v={{HARVEST_VERSION}}"></script>
 </body>
 </html>

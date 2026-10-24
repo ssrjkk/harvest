@@ -186,6 +186,8 @@
 .tma[data-tma-theme="light"] .tma-head {
   background: linear-gradient(90deg, #ffd23f 0%, #ff9d00 55%, #ff6b00 100%);
 }
+/* Видимый фокус с клавиатуры: раньше правил :focus не было вообще. */
+.tma-btn:focus-visible,.tma-tabs button:focus-visible,.tma select:focus-visible,.tma input:focus-visible,.tma a:focus-visible{outline:3px solid var(--y2k-cyan);outline-offset:2px}
 .tma[data-tma-theme="light"] .tma-title { color: #14110a; text-shadow: none; }
 .tma[data-tma-theme="light"] .tma-sub { color: #0b5fff; }
 .tma[data-tma-theme="light"] .c-i { color: #8a8578; background: #e3ddcc; }
