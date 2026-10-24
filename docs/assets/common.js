@@ -9,7 +9,7 @@ const VERSION="v2.4.1";
 window.hv={toast,esc,fmt,version:VERSION};
 /* Подпись в консоли разработчика: сайт статичный, ключи из демо-генератора
    никуда не уходят. Видно только с открытыми devtools. */
-try{console.log("%c harvest "+VERSION+" %c EVM testnet farmer · ключи остаются в браузере ","background:#D4A72C;color:#14110A;font-weight:bold","color:#9A8F73")}catch(e){}
+try{console.log("%c harvest "+VERSION+" %c QA-стенд для EVM-тестнетов · ключи остаются в браузере ","background:#D4A72C;color:#14110A;font-weight:bold","color:#9A8F73")}catch(e){}
 
 /* ---------- theme ---------- */
 const themes=["paper","ink","moss","terminal"];
@@ -37,7 +37,7 @@ cta_live:"Open the field",cta_demo:"Try the demo",cta_bot:"Telegram bot",
 hero_kicker:"TESTNETS · PYTHON 3.12 · MIT",hero_kicker_r:"NO DROP PROMISES",
 hero_note:"Testnets only. Demo keys stay in your browser; the rig runs on your computer. No drop or profit guarantees: it tests other people's chains, it's not a lottery ticket.",
 contacts:"Author:",
-hg_t:"What's inside",hg_nets:"Networks",hg_nets_v:"5 testnets · Robinhood, Flop, Arc, vibe/vibe, Simple",hg_control:"Control",hg_control_v:"Python CLI · menu · web portal · Telegram",hg_themes:"Themes / languages",hg_themes_v:"Paper · Ink · Moss · Terminal / RU · EN",hg_license:"License",hg_license_v:"MIT · read it, change it",hg_term:"Three commands to the menu",
+hg_t:"What's inside",hg_nets:"Networks",hg_nets_v:"4 testnets · Robinhood, Flop, Arc, vibe/vibe",hg_control:"Control",hg_control_v:"Python CLI · menu · web portal · Telegram",hg_themes:"Themes / languages",hg_themes_v:"Paper · Ink · Moss · Terminal / RU · EN",hg_license:"License",hg_license_v:"MIT · read it, change it",hg_term:"Three commands to the menu",
 net_vibe_note:"— launchpad on Robinhood",net_vibe_act:"transfer · buy/sell — with signer_key",
 code_menu:"# menu: network → farm",code_dry:"# dry run, no transactions",code_portal:"# aiohttp + API + bot",code_tests:"# local check",code_publish:"# state.json → gh-pages → site field",
 sl_h:"The field — what's happening now",sl_sub:"The farm publishes a snapshot here: metrics, history and the wallet grid. The site re-reads state.json once a minute; a publish usually happens every 30 minutes. If there's no snapshot yet, the page will be empty — that's normal, not a broken site.",
@@ -113,7 +113,7 @@ cmdk_ph:"Command or section…",cmdk_hint:"↑↓ select · Enter run · Esc clo
 s9_h:"MIT License",s9_sub:"Use, copy, modify, publish and sell freely — keep the copyright notice. No warranty.",
 preset_h:"Wallet character (behavior section in YAML)",preset_stealth:"Quiet",preset_balanced:"Even",preset_degen:"Lively",preset_note:"Only changes behavior: pauses, activity, amount spread. It doesn't affect the run command.",
 f_all:"ALL",fx_h:"Faucet & diagnostics",fx_p1:"The faucet checks the key and quota first, and only then asks for coins. Without CHAINSTACK_API_KEY the strategy simply doesn't turn on — that's not an error, it's an honest skip.",fx_p2:"Key: console.chainstack.com → user/settings/api-keys. Keep it in the CHAINSTACK_API_KEY env var, not in the config.",bot_h:"Telegram bot",bot_p:"The farm bot shows the field, computes PnL and understands commands: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /cmd, /cfg, /check, /ref, /cancel, /help, plus step-by-step /cmd and /cfg wizards. For author contact there's a separate @ssrjkk_bot.",specs_h:"Project at a glance",
-ft:"EVM testnet farmer · © 2026 ssrjkk · MIT",
+ft:"QA rig for EVM testnets · © 2026 ssrjkk · MIT",
 mode_new:"Beginner",mode_pro:"Pro",mode_hint:"Beginner — three steps in plain words. Pro — builders, simulator and reference.",
 w_s1:"Network",w_s2:"Scale",w_s3:"Launch",
 w_q1:"What are we farming?",w_q1s:"Farming here means practice transactions on a test network. The money isn't real, and it costs nothing.",
