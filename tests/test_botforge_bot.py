@@ -222,6 +222,7 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("#2", bot.fmt_history(s))
         self.assertIn("диагностика", bot.fmt_doctor(s).lower())
         self.assertIn("RUN", bot.fmt_doctor(s))
+        self.assertIn("сеть:", bot.fmt_doctor({**s, "network": "vibevibe"}))
         self.assertIn("История пуста", bot.fmt_history({}))
 
     def test_fmt_health_unknown_shows_dash(self):

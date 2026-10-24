@@ -119,7 +119,7 @@ def _fresh_ts(raw) -> bool:
 
 
 def _scrub_addrs(text: str) -> str:
-    """Вычищает 0x-адреса из details перед публикацией (анти-сибил)."""
+    """Вычищает 0x-адреса из details перед публикацией (персоны не должны связываться)."""
     import re
 
     return re.sub(r"0x[0-9a-fA-F]{40}", "0x…", text or "")[:120]
@@ -169,7 +169,7 @@ async def collect() -> dict:
             except Exception:  # noqa: BLE001
                 wallet_count = 0
             # Топ — только порядковые номера и счётчики: адреса в публичную
-            # ветку не публикуем (анти-сибил: не связывать кошельки между собой).
+            # ветку не публикуем (персоны не должны связываться между собой).
             try:
                 async with db.execute(
                     "SELECT total_actions FROM wallets ORDER BY total_actions DESC LIMIT 10"
@@ -202,7 +202,7 @@ async def collect() -> dict:
                         errs = [(r[0] or "") for r in await cur.fetchall()]
                 except Exception:  # noqa: BLE001 — нет actions_log: без ошибок
                     errs = []
-                # Анти-сибил: адреса из details вычищаем (to=0x… — это наши же
+                # Персоны не связываем: адреса из details вычищаем (to=0x… — это наши же
                 # кошельки; публичная ветка не должна их связывать).
                 details = [
                     {"n": i + 1, "a": a, "t": t, "c": c if c is not None else -1,

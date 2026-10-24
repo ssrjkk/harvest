@@ -21,8 +21,9 @@ harvest — автоматизированный фермер тестнет-с�
 - **Фарминг**: асинхронный воркер-пул поверх одного `NetworkManager`, чанковая
   обработка, crash recovery (`state.json`), динамическое масштабирование воркеров
   по здоровью RPC, adaptive-веса действий.
-- **Анти-сибил**: детерминированные профили поведения на кошелёк (активность, паузы,
-  суммы, газ, время суток, «отдых», staggered-старт).
+- **Персоны нагрузки**: детерминированные поведенческие профили на кошелёк
+  (активность, паузы, суммы, газ, время суток, «отдых», staggered-старт) —
+  флот выглядит как живые пользователи, а не как один скрипт.
 - **Сети**: Robinhood Chain Testnet, Flop Labs Testnet, Arc Testnet (Minara.Fun) —
   выбор сети в стартовом меню или `--config`.
 - **RPC-слой**: мульти-RPC (строка или список), EMA-скоринг нод, автоматическая
@@ -49,7 +50,7 @@ main.py (интерактивное меню, Rich)          auto.py (CLI-авт
             |                \
             |                 core/farmer.py Farmer (цикл одного кошелька)
             |                     core/actions.py ActionExecutor ── core/vibevibe.py
-            |                     core/behavior.py WalletProfile (анти-сибил)
+            |                     core/behavior.py WalletProfile (персоны нагрузки)
             |
       core/network.py NetworkManager (RPC, ноды, кэши, ретраи)
             |            core/faucet.py Faucet (кран)
@@ -574,7 +575,7 @@ TradeIntent ключом tradeSigner → authorization bytes), `call_trade()`
   счётчики: `state.json["pnl"]` → блок PnL на «Поле», `/api/stats` → дашборд
   портала, `/api/miniapp/state` → мини-апп, `/pnl` → боты, PNG-карточка статуса
 
-### 3.18. `behavior.py` — анти-сибил профили
+### 3.18. `behavior.py` — персоны нагрузки (поведенческие профили)
 `WalletProfile` — dataclass-множители (activity, rest_prob, rest_cycles,
 delay_actions_scale, delay_cycles_scale, actions_lo/width, action_multipliers,
 amount_min/max_mul, gas_deviation, odd_amount_prob, faucet_skip_prob,
@@ -903,7 +904,7 @@ transfer); реальные адреса подставляются операт
 `FARMER_MIN_BALANCE`, `FARMER_TARGET_BALANCE`, `FARMER_LOG_LEVEL`,
 `FARMER_DB_PATH`, `FARMER_MASTER_KEY` (64 hex), `LICENSE_PASSWORD`.
 
-### 5.3. Поведение (анти-сибил) — `behavior:`
+### 5.3. Поведение (персоны нагрузки) — `behavior:`
 
 `enabled`, `activity [0.5,1.5]`, `rest_probability 0.05`, `rest_cycles [1,3]`,
 `action_delay_scale [0.7,1.5]`, `cycle_delay_scale [0.8,1.8]`,
@@ -919,6 +920,28 @@ transfer); реальные адреса подставляются операт
 (выходные активнее: пропуск ×(1−0.3·s)), `day_start`/`day_width` — личное
 окно активности (`hour_window_factor`: внутри ×0.85, снаружи ×1.8);
 учитываются в пропуске цикла (`core/farmer.py`), нейтральный профиль — 1.0.
+
+### 5.4. Сценарии QA-прогонов — как гонять чужой чейн
+
+Мастер в демо-зоне и `/cmd`-визард собирают четыре готовых пакета
+(масштаб задаётся там же; персона — пресетом `behavior`):
+
+- **Smoke** — 5 кошельков, 2 круга, кран вкл: чейн вообще жив? Базовый
+  ответ получают за минуты.
+- **Load** — 200 кошельков, 5 кругов, кран вкл: пропускная способность
+  RPC/мемпула, `health_factor` и `dyn_workers` в отчёте покажут, где чейн
+  просел.
+- **Soak** — 50 кошельков, 20 кругов, кран вкл: долгая стабильность,
+  дрейф latency и накопление ошибок (`by_reason` в PnL-снапшоте).
+- **Chaos** — 100 кошельков, 5 кругов, кран ВЫКЛ: негативный путь —
+  как чейн и отчёт отвечают на заведомо неуспешные действия
+  (`--skip-faucet`; пустые кошельки дают чистый останов с пробой, а не
+  тысячи отказов).
+
+Читать итог: блок «Поле» (health, действия/ошибки, `dropped`) +
+`pnl_report.html` (success rate, `by_type`/`by_reason`, дельты балансов) +
+`/doctor` (сеть, chain_id, деградация). Зелёный прогон Smoke →
+Load → Soak — минимальный знак годности чейна к нагрузке.
 
 ---
 

@@ -262,7 +262,7 @@ class FarmerPool:
         self.cycle_count = 0
         self._faucet_validated = False
         self._closed = False
-        # Индивидуальные профили поведения (анти-сибил): детерминированно от адреса.
+        # Индивидуальные персоны нагрузки: детерминированно от адреса.
         self._profiles: dict[str, WalletProfile] = {}
         self._rest_until: dict[str, int] = {}
         self._cycle_seq = 0

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>harvest v2.4.1 — ферма тестнетов на Python</title>
-<meta name="description" content="harvest — инструмент для практики в EVM-тестнетах: кошельки, краны, транзакции, портал и Telegram-бот. Только тестовые сети, без обещаний дропа. MIT, © 2026 ssrjkk.">
+<title>harvest v2.4.1 — QA-стенд для EVM-тестнетов</title>
+<meta name="description" content="harvest — QA-стенд для чужих EVM-тестнетов: гоняем чейны ботами по сценариям (smoke/load/soak/chaos), меряем здоровье сети и пишем отчёт прогона. Только тестовые сети, без обещаний дропа. MIT, © 2026 ssrjkk.">
 <meta name="theme-color" content="#14110A">
 <meta property="og:type" content="website">
-<meta property="og:title" content="harvest v2.4.1 — ферма тестнетов на Python">
-<meta property="og:description" content="Инструмент для практики в EVM-тестнетах: кошельки, краны, транзакции, портал и Telegram-бот. Только тестовые сети, без обещаний дропа.">
+<meta property="og:title" content="harvest v2.4.1 — QA-стенд для EVM-тестнетов">
+<meta property="og:description" content="QA-стенд для чужих EVM-тестнетов: боты, сценарии, здоровье сети, отчёт прогона. Только тестовые сети, без обещаний дропа.">
 <meta property="og:image" content="https://ssrjkk.github.io/harvest/assets/og.png">
 <meta property="og:url" content="https://ssrjkk.github.io/harvest/">
 <meta name="twitter:card" content="summary_large_image">
@@ -62,19 +62,19 @@ if(map[h])location.replace(map[h]+"#"+h);
 <div class="hero win" data-reveal id="top">
   <div class="titlebar"><span data-i18n="hero_kicker">ТЕСТНЕТЫ · PYTHON 3.12 · MIT</span><span data-i18n="hero_kicker_r">БЕЗ ОБЕЩАНИЙ ДРОПА</span></div>
   <div class="wrap">
-    <h1 data-i18n="h1">Ферма для тестнетов.<br><em>Без обещаний.</em></h1>
-    <p class="lede" data-i18n="lede">harvest — инструмент для практики в EVM-тестнетах: сам создаёт кошельки, берёт тестовые монеты из кранов, делает транзакции и показывает, что получилось. Написан на Python, работает с вашей машины.</p>
+    <h1 data-i18n="h1">Чужие тестнеты — под нагрузкой.<br><em>Ботами, по сценариям.</em></h1>
+    <p class="lede" data-i18n="lede">harvest — QA-стенд для EVM-тестнетов: поднимает флот кошельков с поведенческими персонами, топит чейн транзакциями по сценарию и показывает здоровье сети и отчёт прогона. Написан на Python, работает с вашей машины.</p>
     <div class="hero-cta">
       <a class="btn accent" href="field.html" data-i18n="cta_live">Открыть поле</a>
       <a class="btn" href="demo.html" data-i18n="cta_demo">Попробовать в демо</a>
       <a class="btn" href="https://t.me/harvest_testnet_bot" target="_blank" rel="noopener" data-i18n="cta_bot">Telegram-бот</a>
     </div>
-    <p class="note" data-i18n="hero_note">Только тестовые сети. Демо-ключи остаются в браузере, ферма — на вашем компьютере. Никаких гарантий дропа или прибыли: это инструмент, а не лотерейный билет.</p>
+    <p class="note" data-i18n="hero_note">Только тестовые сети. Демо-ключи остаются в браузере, стенд — на вашем компьютере. Никаких гарантий дропа или прибыли: это инструмент проверки чужих чейнов, а не лотерейный билет.</p>
     <p class="note"><span data-i18n="contacts">Автор:</span> <b>ssrjkk</b> · <a href="https://t.me/ssrjkk_bot" target="_blank" rel="noopener">@ssrjkk_bot</a> · <a href="https://github.com/ssrjkk/harvest" target="_blank" rel="noopener">github.com/ssrjkk/harvest</a></p>
     <div class="hero-grid">
       <div class="stat-table"><table>
         <tr><th colspan="2" data-i18n="hg_t">Что внутри</th></tr>
-        <tr><td data-i18n="hg_nets">Сети</td><td class="num" data-i18n="hg_nets_v">4 тестовые · Robinhood, Flop, Arc, vibe/vibe</td></tr>
+        <tr><td data-i18n="hg_nets">Сети</td><td class="num" data-i18n="hg_nets_v">5 тестовых · Robinhood, Flop, Arc, vibe/vibe, Simple</td></tr>
         <tr><td data-i18n="hg_control">Управление</td><td class="num" data-i18n="hg_control_v">Python CLI · меню · веб-портал · Telegram</td></tr>
         <tr><td data-i18n="hg_themes">Темы / языки</td><td class="num" data-i18n="hg_themes_v">Paper · Ink · Moss · Terminal / RU · EN</td></tr>
         <tr><td data-i18n="hg_license">Лицензия</td><td class="num" data-i18n="hg_license_v">MIT · код можно читать и менять</td></tr>
@@ -101,7 +101,7 @@ python main.py</pre></div>
     <div class="grid3">
       <div class="card"><div class="label" data-i18n="c1_l">Кошельки</div><h3 data-i18n="c1_h">Создать и не потерять</h3><p data-i18n="c1_p">BIP-39 через eth_account, импорт и экспорт CSV/JSON, шифрование сидов AES-256-GCM. Повторный запуск не плодит дубликаты.</p></div>
       <div class="card"><div class="label" data-i18n="c2_l">Кран</div><h3 data-i18n="c2_h">Дождаться топлива</h3><p data-i18n="c2_p">Стратегии chainstack, direct и web, ретраи, лимиты и прокси. Если живого крана нет, ферма честно скажет об этом, а не будет делать вид.</p></div>
-      <div class="card"><div class="label" data-i18n="c3_l">Фарм</div><h3 data-i18n="c3_h">Сделать транзакции</h3><p data-i18n="c3_p">Асинхронный пул, чанки, восстановление после падения по state.json. Профиль поведения привязан к адресу, поэтому перезапуск не меняет рисунок.</p></div>
+      <div class="card"><div class="label" data-i18n="c3_l">Прогоны</div><h3 data-i18n="c3_h">Гонять чейн по сценарию</h3><p data-i18n="c3_p">Асинхронный пул, чанки, восстановление после падения по state.json. Поведенческая персона привязана к адресу, поэтому перезапуск не меняет рисунок нагрузки.</p></div>
     </div>
     <div class="label" style="margin:26px 0 4px" data-i18n="limits_h">Границы, о которых лучше знать сразу</div>
     <ul class="plain-list">

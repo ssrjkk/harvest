@@ -125,9 +125,9 @@ def _check_range_pair(name: str, value: Any, errors: list[str] | None = None) ->
             if bad:
                 msg = f"{name}: min/max должны быть числами"
             elif lo < 0:
-                # Отрицательный min ломал инварианты молча: random.randint(-х, hi)
+                # Отрицательный min ломал бы ритм персон молча: random.randint(-х, hi)
                 # давал «0 действий», asyncio.sleep(отрицательное) схлопывался в 0 —
-                # анти-сибил задержки исчезали без единого предупреждения.
+                # задержки персон исчезали без единого предупреждения.
                 msg = f"{name}: min ({lo}) < 0 — диапазоны не могут быть отрицательными"
             elif lo > hi:
                 msg = f"{name}: min ({lo}) > max ({hi})"

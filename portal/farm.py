@@ -517,6 +517,7 @@ class FarmDaemon:
         return {
             **base,
             "network": self.current,
+            "chain_id": ((self.config or {}).get("network", {}) or {}).get("chain_id", "—"),
             "pool": stats,
             "health_factor": round(health, 2),
             "db": cycle,

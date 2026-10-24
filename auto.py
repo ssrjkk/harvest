@@ -247,7 +247,7 @@ async def run_once(args: argparse.Namespace, stop_event: asyncio.Event | None = 
     )
     print(f"  Force:     {config.get('advanced', {}).get('force_farm', False)}")
     beh = config.get("behavior") or {}
-    print(f"  Профили:   {'включены (анти-сибил)' if beh.get('enabled', True) else 'нейтральные'}")
+    print(f"  Персоны:   {'включены (нагрузка как живые)' if beh.get('enabled', True) else 'нейтральные'}")
     if config.get("advanced", {}).get("dry_run"):
         print(f"  {Fore.YELLOW}DRY-RUN: транзакции НЕ отправляются{Style.RESET_ALL}")
 

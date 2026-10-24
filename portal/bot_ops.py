@@ -135,6 +135,8 @@ def fmt_doctor(data: dict) -> str:
         f"ферма: {_state_mark(bool(data.get('running')))} · "
         f"ядро: {'[ok] подключено' if pool else '[err] НЕ ПОДКЛЮЧЕНО'}",
         f"health: {health:.2f}",
+        f"сеть: <b>{_esc(data.get('network', '—'))}</b> · "
+        f"chain_id: <b>{_esc(data.get('chain_id', '—'))}</b>",
     ]
     if pool:
         lines.append(

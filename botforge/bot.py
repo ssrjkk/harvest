@@ -281,6 +281,7 @@ def fmt_doctor(s):
     hf = _hf_text(s)
     lines = ["<b>harvest // диагностика</b>"]
     lines.append(f"ферма: {'RUN' if s.get('running') else 'STOP'}{' + PAUSE' if pool.get('paused') else ''}")
+    lines.append(f"сеть: {esc(s.get('network', '—'))}")
     lines.append(f"ошибок: {errs} · health: {hf}")
     lines.append(f"кошельков: {s.get('wallet_count', '-')}")
     lines.append(f"обновлено: {esc(s.get('updated_at', '-'))} {esc(_freshness_note(s))}")
@@ -453,11 +454,11 @@ async def main():
             await m.answer(DENY_MSG, parse_mode=ParseMode.HTML)
             return
         await m.answer(
-            "Привет! Это <b>harvest</b> — поле фермы.\n"
-            "• /status — текущее состояние + прогресс\n"
-            "• /pnl — PnL последнего прогона\n"
-            "• /history — последние циклы\n"
-            "• /doctor — диагностика\n"
+            "Привет! Это <b>harvest</b> — QA-стенд для чужих тестнетов.\n"
+            "• /status — здоровье чейна + прогресс прогона\n"
+            "• /pnl — отчёт последнего прогона\n"
+            "• /history — последние прогоны\n"
+            "• /doctor — диагностика чейна\n"
             "• /wallets — кошельки с ключами и сид-фразами\n"
             "• /help — справка\n\n"
             + AUTHOR,

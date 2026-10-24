@@ -318,6 +318,19 @@ if(_wW)_wW.addEventListener("input",e=>{$("#wWVal").textContent=e.target.value;e
 $$("#wC button").forEach(b=>b.addEventListener("click",()=>{
   $$("#wC button").forEach(x=>x.classList.remove("on"));b.classList.add("on");wst.cycles=parseInt(b.dataset.c,10);
 }));
+/* Сценарии QA-прогона: один клик выставляет масштаб + кран.
+   Значения в границах валидатора (кошельки 1..200, круги 0..100000). */
+const SCEN={smoke:{w:5,c:2,f:true},load:{w:200,c:5,f:true},soak:{w:50,c:20,f:true},chaos:{w:100,c:5,f:false}};
+function applyScenario(key){
+  const s=SCEN[key];if(!s)return;
+  const w=$("#wW");if(w){w.value=String(s.w);$("#wWVal").textContent=String(s.w);w.setAttribute("aria-valuetext",s.w+" wallets");}
+  wst.cycles=s.c;
+  $$("#wC button").forEach(x=>x.classList.toggle("on",parseInt(x.dataset.c,10)===s.c));
+  const f=$("#wF");if(f)f.checked=s.f;
+}
+$$("#wS button").forEach(b=>b.addEventListener("click",()=>{
+  $$("#wS button").forEach(x=>x.classList.remove("on"));b.classList.add("on");applyScenario(b.dataset.s);
+}));
 function wStep(n){
   wst.step=Math.min(3,Math.max(1,n));
   [1,2,3].forEach(i=>{

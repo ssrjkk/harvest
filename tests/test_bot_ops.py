@@ -199,10 +199,13 @@ class TestOpsFormat(unittest.TestCase):
 
     def test_stats_doctor_history(self):
         self.assertIn("[RUN]", ops.fmt_stats(self._data()))
-        d = ops.fmt_doctor(self._data())
+        d = ops.fmt_doctor(self._data(network="vibevibe", chain_id=46630))
         self.assertIn("[ok]", d)
+        self.assertIn("vibevibe", d)
+        self.assertIn("46630", d)
         d2 = ops.fmt_doctor({"running": False, "pool": {}, "db": {}})
         self.assertIn("[err]", d2)
+        self.assertIn("chain_id", d2)
         h = ops.fmt_history([{"id": 1, "errors": 0, "started_at": "2026-01-01",
                               "duration_s": 9, "wallets": 3, "actions_ok": 5}])
         self.assertIn("[ok] #1", h)

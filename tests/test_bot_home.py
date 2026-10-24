@@ -315,7 +315,9 @@ class TestHome(unittest.IsolatedAsyncioTestCase):
     async def test_live_loop_autostop(self):
         daemon = HomeDaemon()
         msg = _CMessage()
-        await bt._live_loop(123, msg, daemon, every=0.02, ttl=0.05)
+        # ttl с запасом: every=0.02 даёт ~6 итераций номинально; под нагрузкой
+        # event loop может проспать — нужно минимум 2 правки, а не 6.
+        await bt._live_loop(123, msg, daemon, every=0.02, ttl=0.12)
         self.assertGreaterEqual(len(msg.edits), 2)
         self.assertNotIn(123, bt._live)
 

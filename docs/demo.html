@@ -83,6 +83,9 @@ try{if(!matchMedia("(prefers-reduced-motion: reduce)").matches){document.documen
 
       <div class="wstep" id="w2" hidden>
         <p class="wtitle" data-i18n="w_q2">Какой масштаб?</p>
+        <div class="field"><label data-i18n="sc_h">Сценарий проверки</label>
+          <div class="seg" id="wS"><button data-s="smoke" class="on" type="button" data-i18n="sc_smoke">Smoke — чейн жив?</button><button data-s="load" type="button" data-i18n="sc_load">Load — держит нагрузку?</button><button data-s="soak" type="button" data-i18n="sc_soak">Soak — стабилен долго?</button><button data-s="chaos" type="button" data-i18n="sc_chaos">Chaos — пустой бак</button></div>
+          <p class="note" data-i18n="sc_s">Smoke: 5 кошельков, 2 круга. Load: 200×5. Soak: 50×20. Chaos: 100×5 без крана — негативный путь.</p></div>
         <div class="field"><label for="wW"><span data-i18n="w_wallets">Кошельков</span>: <b class="num" id="wWVal">10</b></label>
           <input type="range" id="wW" min="1" max="200" value="10" step="1" aria-valuetext="10 wallets">
           <p class="note" data-i18n="w_wallets_s">Кошельки создаются сами. Для первой пробы хватит 5–10.</p></div>
@@ -288,7 +291,7 @@ advanced:
             <tr><td class="mono">actions[].type / weight</td><td data-i18n="rd_act_b">тип из набора; weight ≥ 0</td><td data-i18n="rd_aw">transfer, vibevibe_*, flop_*, arc_*. Нулевой вес = действие отключено</td></tr>
             <tr><td class="mono">transfer.target</td><td data-i18n="rd_tt_b">адрес или random_wallet</td><td data-i18n="rd_tt">Обязателен для transfer. Случайный — из пула своих кошельков</td></tr>
             <tr><td class="mono">contract.action contract/method</td><td data-i18n="rd_cm_b">0x-адрес + имя метода; 0x0…0 = заглушка</td><td data-i18n="rd_cm">Заглушка = тихий фолбэк на transfer, buy/sell без signer_key пропускаются адаптивными весами</td></tr>
-            <tr><td class="mono">actions min/max_amount</td><td class="num" data-i18n="rd_amt_b">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений против сибил-фильтров</td></tr>
+            <tr><td class="mono">actions min/max_amount</td><td class="num" data-i18n="rd_amt_b">≥ 0, min ≤ max</td><td data-i18n="rd_amt">Джиттер сумм + odd_amount_prob «неровных» значений: персона не выглядит скриптом</td></tr>
             <tr><td class="mono">farming.actions_per_cycle</td><td data-i18n="rd_apc_b">[min, max], min ≤ max</td><td class="num" data-i18n="rd_apc_d">[3,8] vibe/robinhood · [5,15] flop · [5,12] arc · [2,4] simple</td></tr>
             <tr><td class="mono">farming.delay_between_*</td><td data-i18n="rd_del_b">[min, max] секунд</td><td data-i18n="rd_del">Паузы умножаются на профильные delay_*_scale кошелька</td></tr>
             <tr><td class="mono">farming.skip_cycle_probability</td><td class="num">0..1</td><td class="num" data-i18n="rd_skip_d">0.05 · умножается на activity и время суток (ночь ×~1.5)</td></tr>
