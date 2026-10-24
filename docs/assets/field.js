@@ -94,7 +94,7 @@ function renderLive(s){
     setPill("mut",lang==="en"?"offline":"офлайн");return;
   }
   const la=$("#liveAlert");if(la)la.innerHTML="";
-  // Протухший снимок — не «всё ок»: ферма молчит дольше обычной паузы
+  // Протухший снимок — не «всё ок»: стенд молчит дольше обычной паузы
   // публикации (30 мин + запас). Непарсируемая дата — без баннера.
   const sa=$("#staleAlert");
   if(sa){
@@ -106,8 +106,8 @@ function renderLive(s){
     if(age>15*60*1000){
       sa.hidden=false;
       sa.innerHTML='<div class="alert" role="alert">'+esc(lang==="en"
-        ?"Stale data: snapshot "+(s.updated_at||"—")+" — the farm is silent."
-        :"Данные устарели: снимок "+(s.updated_at||"—")+" — ферма молчит.")+"</div>";
+        ?"Stale data: snapshot "+(s.updated_at||"—")+" — the rig is silent."
+        :"Данные устарели: снимок "+(s.updated_at||"—")+" — стенд молчит.")+"</div>";
     }else{sa.hidden=true;sa.innerHTML="";}
   }
   const pool=s.pool||{},db=s.db||{};
