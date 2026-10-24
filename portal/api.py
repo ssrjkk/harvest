@@ -605,7 +605,7 @@ async def api_networks(request: web.Request) -> web.Response:
 
 
 async def api_network_farm(request: web.Request) -> web.Response:
-    """Переключить сеть и запустить/остановить фарм по ней (одна кнопка)."""
+    """Переключить сеть и запустить/остановить прогон по ней (одна кнопка)."""
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
     slug = request.match_info.get("name", "")

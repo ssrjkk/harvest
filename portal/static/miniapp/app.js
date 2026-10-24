@@ -15,7 +15,7 @@
     cdnFail: { ru: "Не загрузился Telegram SDK (сеть/CDN). Проверь соединение и обнови.", en: "Telegram SDK failed to load (network/CDN). Check connection and retry." },
     expired: { ru: "Сессия устарела — закрой и открой из бота.", en: "Session expired — reopen from the bot." },
     retry: { ru: "Повторить", en: "Retry" },
-    stopped: { ru: "Ферма остановлена. Поле ждёт запуска.", en: "Farm stopped. Field awaits launch." },
+    stopped: { ru: "Стенд остановлен. Поле ждёт запуска.", en: "Rig stopped. Field awaits launch." },
     wallets: { ru: "кошельки", en: "wallets" },
     cycle: { ru: "цикл", en: "cycle" },
     errors: { ru: "ошибки", en: "errors" },
@@ -52,7 +52,7 @@
     dripAsk: { ru: "Долить все кошельки с крана? Квота тратится по-настоящему.", en: "Top up all wallets from the faucet? Quota is spent for real." },
     dripRun: { ru: "Долив запущен фоном", en: "Top-up started in background" },
     dripBusy: { ru: "Долив уже идёт", en: "Top-up already running" },
-    stopAsk: { ru: "Остановить фарм?", en: "Stop farming?" },
+    stopAsk: { ru: "Остановить прогон?", en: "Stop the run?" },
     nextBtn: { ru: "ДАЛЕЕ", en: "NEXT" },
     doneBtn: { ru: "ГОТОВО", en: "DONE" },
     yamlSent: { ru: "YAML отправлен в чат с ботом", en: "YAML sent to the bot chat" },
@@ -73,7 +73,7 @@
     pnlTitle: { ru: "PnL прогона", en: "Run PnL" },
     pnlOk: { ru: "успешных", en: "ok" },
     pnlFail: { ru: "отказов", en: "failed" },
-    pnlFarm: { ru: "Δ фарма", en: "farm Δ" },
+    pnlFarm: { ru: "Δ прогона", en: "run Δ" },
   };
   function tr(key, idx) {
     var e = T[key];

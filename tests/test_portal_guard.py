@@ -105,7 +105,7 @@ class TestWatchdog(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await wd.tick(), [])
         sent = await wd.tick()
         self.assertEqual(len(sent), 1)
-        self.assertIn("Ферма стоит", sent[0])
+        self.assertIn("Прогон стоит", sent[0])
         sent = await wd.tick()
         self.assertEqual(len(sent), 1)
         self.assertIn("Прогресс возобновился", sent[0])
@@ -145,7 +145,7 @@ class TestWatchdog(unittest.IsolatedAsyncioTestCase):
         await wd.tick()
         sent = await wd.tick()
         self.assertEqual(len(sent), 1)
-        self.assertIn("Ферма остановилась", sent[0])
+        self.assertIn("Прогон остановился", sent[0])
         # Уже остановлена — новых уведомлений нет.
         self.assertEqual(await wd.tick(), [])
 

@@ -825,7 +825,7 @@ if HAS_BOT:
             text = bot_telegram._fmt_doctor({"running": False})
             self.assertIn("[STOP]", text)
             self.assertIn("НЕ ПОДКЛЮЧЕНО", text)
-            self.assertIn("ферма не запущена", text)
+            self.assertIn("прогон не запущен", text)
 
         async def test_callback_doctor_degraded(self):
             cfg = _make_cfg()

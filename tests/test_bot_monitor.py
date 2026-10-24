@@ -142,7 +142,7 @@ class TestLiveMonitor(unittest.IsolatedAsyncioTestCase):
         )
         await mon.tick()  # первый: статус
         text = await mon.tick()  # второй: алерт об остановке
-        self.assertIn("Ферма остановилась", text)
+        self.assertIn("Прогон остановился", text)
 
     async def test_send_failure_swallowed(self):
         mon, bot, daemon = self._monitor()

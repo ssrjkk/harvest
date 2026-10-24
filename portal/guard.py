@@ -30,7 +30,7 @@ def _heartbeat_text(data: dict) -> str:
     if pool.get("paused"):
         state += " ⏸"
     return (
-        f"❤️ Пульс: ферма {state}\n"
+        f"❤️ Пульс: прогон {state}\n"
         f"циклы {pool.get('cycles', 0)} · действия {pool.get('actions', 0)} · "
         f"ошибки {pool.get('errors', 0)} · health {data.get('health_factor', 0.0):.2f} · "
         f"циклов в истории {db.get('cycles', 0)}"
@@ -98,7 +98,7 @@ class Watchdog:
         was_running = bool(self._prev["running"])
 
         if was_running and not running:
-            await self._send("⚠️ Ферма остановилась.", sent)
+            await self._send("⚠️ Прогон остановился.", sent)
             self._tripped.add("stopped")
 
         if not was_running and running:
@@ -134,7 +134,7 @@ class Watchdog:
             else:
                 self._streak["stall"] = 0
             if self._streak["stall"] >= self.min_consecutive and "stall" not in self._tripped:
-                await self._send("⚠️ Ферма стоит: прогресс не растёт. /doctor", sent)
+                await self._send("⚠️ Прогон стоит: прогресс не растёт. /doctor", sent)
                 self._tripped.add("stall")
             elif self._streak["stall"] == 0 and "stall" in self._tripped:
                 await self._send("✅ Прогресс возобновился.", sent)

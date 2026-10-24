@@ -244,17 +244,17 @@ class TestFormatting(unittest.TestCase):
         self.assertIn("мин назад", bot._freshness_note({"updated_at": ts(5)}))
         old = bot._freshness_note({"updated_at": ts(180)})
         self.assertIn("ч ", old)
-        self.assertIn("ферма молчит", old)
+        self.assertIn("стенд молчит", old)
         self.assertEqual("", bot._freshness_note({"updated_at": "битое"}))
         self.assertEqual("", bot._freshness_note({}))
         fresh = {"running": True, "wallet_count": 3, "health_factor": 0.9,
                  "pool": {"actions": 1, "errors": 0, "processed": 1, "cycles": 1},
                  "updated_at": ts(5)}
         self.assertIn("мин назад", bot.fmt_status(fresh))
-        self.assertNotIn("ферма молчит", bot.fmt_status(fresh))
+        self.assertNotIn("стенд молчит", bot.fmt_status(fresh))
         stale = dict(fresh, updated_at=ts(180))
-        self.assertIn("ферма молчит", bot.fmt_status(stale))
-        self.assertIn("ферма молчит", bot.fmt_doctor(stale))
+        self.assertIn("стенд молчит", bot.fmt_status(stale))
+        self.assertIn("стенд молчит", bot.fmt_doctor(stale))
 
     def test_nav_kb_buttons(self):
         kb = bot.nav_kb("pnl")
@@ -314,7 +314,7 @@ class TestFormatting(unittest.TestCase):
         # битые значения не ломают вывод
         out2 = bot.fmt_pnl({"pnl": {"actions_ok": 1, "actions_fail": 0,
                                     "farm_delta": "нет", "faucet_delta": None}})
-        self.assertIn("Δ фарма", out2)
+        self.assertIn("Δ прогона", out2)
 
     def test_negative_allow_id_kept(self):
         # "-100..." — валидный ID канала, не должен отбрасываться.

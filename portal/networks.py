@@ -1,7 +1,7 @@
 """Каталог поддерживаемых тестнет-сетей для портала.
 
 Каждая сеть: конфиг фермера, своя БД, chain_id, валюта, кран, активности
-и честное описание. Портал переключает сеть и запускает фарм по кнопке.
+и честное описание. Портал переключает сеть и запускает прогон по кнопке.
 """
 
 # Имя конфига по умолчанию для новой установки.
@@ -27,7 +27,7 @@ NETWORKS = [
         "rewards_en": "Platform rules · no guarantees",
         "guide": [
             "Пополни ETH с крана Robinhood",
-            "Жми «Фармить» — бот торгует и стейкает",
+            "Жми «Запустить» — бот торгует и стейкает",
             "Скачай кошельки с ключами",
         ],
         "activities": [
@@ -59,7 +59,7 @@ NETWORKS = [
         "contract calls (swap/mint), staking.",
         "rewards": "Публичных гарантий нет · сеть для практики",
         "rewards_en": "No public guarantees · practice network",
-        "guide": ["Пополни ETH с крана", "Жми «Фармить»", "Следи за метриками"],
+        "guide": ["Пополни ETH с крана", "Жми «Запустить»", "Следи за метриками"],
         "activities": [
             "Трансферы между кошельками",
             "Торговля на bonding curve (swap/mint)",
@@ -70,7 +70,7 @@ NETWORKS = [
             "Bonding-curve trading (swap/mint)",
             "Staking / reward claims",
         ],
-        "note": "Базовая сеть фермера",
+        "note": "Базовая сеть стенда",
     },
     {
         "slug": "flop",
@@ -89,7 +89,7 @@ NETWORKS = [
         "via contract calls.",
         "rewards": "Заглушка · наград не обещаем",
         "rewards_en": "Stub · no rewards promised",
-        "guide": ["Впиши реальный chain_id и RPC", "Пополни токены", "Жми «Фармить»"],
+        "guide": ["Впиши реальный chain_id и RPC", "Пополни токены", "Жми «Запустить»"],
         "activities": [
             "Compute / validate / stake",
             "Трансферы",
@@ -117,7 +117,7 @@ NETWORKS = [
         "Activities: launch, trade, add_liquidity.",
         "rewards": "Правила платформы · без гарантий",
         "rewards_en": "Platform rules · no guarantees",
-        "guide": ["Пополни ARC", "Жми «Фармить»", "Мониторь метрики"],
+        "guide": ["Пополни ARC", "Жми «Запустить»", "Мониторь метрики"],
         "activities": [
             "Запуск / торговля / добавление ликвидности",
             "Трансферы",

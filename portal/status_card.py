@@ -121,7 +121,7 @@ def render_card(state: dict, cells: str = "", total: int = 0) -> bytes:
         draw.text((pad, 226), f"PnL  успешных {ok} · отказов {fail}", font=f_med, fill=pal["ink"])
         if farm is not None:
             col = pal["ok"] if farm > 0 else (pal["err"] if farm < 0 else pal["muted"])
-            draw.text((pad, 254), f"Δ фарма  {farm:+.6f}", font=f_med, fill=col)
+            draw.text((pad, 254), f"Δ прогона  {farm:+.6f}", font=f_med, fill=col)
 
     glyphs = {"i": ("·", pal["muted"]), "w": ("■", pal["gold"]), "o": ("▣", pal["ok"]),
               "e": ("x", pal["err"]), "r": ("~", pal["warn"])}

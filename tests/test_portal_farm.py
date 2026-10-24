@@ -171,7 +171,7 @@ class TestFarmDaemonAlerts(unittest.TestCase):
         daemon.pool = _RaisingPool()  # type: ignore[assignment]
         pool = daemon.pool
         self._run_until_done(daemon)
-        self.assertTrue(any("Ферма упала" in s and "rpc exploded" in s for s in seen))
+        self.assertTrue(any("Прогон упал" in s and "rpc exploded" in s for s in seen))
         self.assertTrue(pool._closed)
         self.assertIsNone(daemon.pool)
 

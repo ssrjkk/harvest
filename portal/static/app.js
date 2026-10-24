@@ -107,11 +107,11 @@ function netMeta(n) {
 
 function netCard(n) {
   const tag = n.running
-    ? '<span class="badge badge-running">фармит</span>'
+    ? '<span class="badge badge-running">в работе</span>'
     : n.current ? '<span class="badge badge-current">текущая</span>' : "";
   const btn = n.running
     ? `<button class="btn btn-danger btn-sm" data-net-stop="${n.slug}"><i class="ti ti-player-stop"></i> Стоп</button>`
-    : `<button class="btn btn-primary btn-sm" data-net-start="${n.slug}"><i class="ti ti-player-play"></i> Фармить</button>`;
+    : `<button class="btn btn-primary btn-sm" data-net-start="${n.slug}"><i class="ti ti-player-play"></i> Запустить</button>`;
   const acts = (n.activities || []).map(a =>
     `<li><i class="ti ti-check"></i>${esc(a)}</li>`).join("");
   return `<div class="net-card">

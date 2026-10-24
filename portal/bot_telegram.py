@@ -500,9 +500,9 @@ async def setup_bot_commands(bot: Bot) -> None:
         except Exception:  # noqa: BLE001
             logger.warning("setMyCommands не удался", exc_info=True)
         for text, method in (
-            ("harvest PORTAL — живое поле фермы: фарм, конструкторы, экспорт.",
+            ("harvest PORTAL — живой стенд: прогоны, конструкторы, экспорт.",
              "set_my_description"),
-            ("Поле фермы, конструкторы команд, безопасный экспорт.",
+            ("Стенд: поле, конструкторы команд, безопасный экспорт.",
              "set_my_short_description"),
         ):
             try:
@@ -614,7 +614,7 @@ class LiveMonitor:
             self._was_running = running
         elif self._was_running and not running:
             self._was_running = False
-            text = "[АЛЕРТ] Ферма остановилась.\n/status — детали"
+            text = "[АЛЕРТ] Прогон остановился.\n/status — детали"
             await self._send(text)
             return text
         text = _fmt_status(data)
@@ -661,8 +661,8 @@ async def _auto_delete_file(bot: Bot, chat_id: int, message_id: int, delay_s: fl
 
 
 _HOME_TEXT = (
-    "Это <b>harvest PORTAL</b> — живое поле фермы.\n"
-    "Фарм, поле, конструкторы команд и конфигов — всё здесь.\n\n"
+    "Это <b>harvest PORTAL</b> — живой стенд.\n"
+    "Прогоны, поле, конструкторы команд и конфигов — всё здесь.\n\n"
     + _FOOT
 )
 
@@ -1994,7 +1994,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             try:
                 bals = await daemon.wallet_balances()
             except RuntimeError:
-                await message.answer("[err] Ферма не запущена.")
+                await message.answer("[err] Прогон не запущен.")
                 return
             except Exception:  # noqa: BLE001
                 await message.answer("[err] Не удалось прочитать балансы.")
@@ -2005,13 +2005,13 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             await message.answer(_fmt_balances(bals), parse_mode=ParseMode.HTML)
         elif text == "/pause":
             ok = await daemon.pause()
-            await message.answer("[ПАУЗА] Фарм на паузе." if ok else "[err] Нечего ставить на паузу.")
+            await message.answer("[ПАУЗА] Прогон на паузе." if ok else "[err] Нечего ставить на паузу.")
         elif text == "/resume":
             ok = await daemon.resume()
-            await message.answer("[ОК] Фарм продолжен." if ok else "[err] Нечего продолжать.")
+            await message.answer("[ОК] Прогон продолжен." if ok else "[err] Нечего продолжать.")
         elif text == "/stop":
             ok = await daemon.stop()
-            await message.answer("[СТОП] Фарм остановлен." if ok else "[err] Ферма не запущена.")
+            await message.answer("[СТОП] Прогон остановлен." if ok else "[err] Прогон не запущен.")
         elif text == "/faucet":
             ok, wait = _flood_ok(message.from_user.id if message.from_user else None, "faucet")
             if not ok:
@@ -2024,7 +2024,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             live = sum(1 for p in report if isinstance(p, dict) and p.get("alive"))
             lines = ["<b>harvest // КРАН</b>"]
             if not report:
-                lines.append("проба не удалась — смотри логи фарма.")
+                lines.append("проба не удалась — смотри логи прогона.")
             for p in report[:6]:
                 mark = "[ok]" if p.get("alive") else "[err]"
                 lines.append(
@@ -2035,7 +2035,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             else:
                 lines.append(
                     "Итого: 0 живых — задай CHAINSTACK_API_KEY в окружении "
-                    "фарм-машины и перезапусти задачу."
+                    "машины прогона и перезапусти задачу."
                 )
             await message.answer("\n".join(lines), parse_mode=ParseMode.HTML)
         elif text == "/rpc":
@@ -2424,7 +2424,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                     return
                 ok = await daemon.start()
                 await call.message.answer(
-                    f"[{'ok' if ok else 'err'}] Фарм {_esc(slug)}: {'запущен' if ok else 'не запустился'}"
+                    f"[{'ok' if ok else 'err'}] Прогон {_esc(slug)}: {'запущен' if ok else 'не запустился'}"
                 )
                 answer, kb = _networks_view(daemon)
                 await call.message.edit_text(
@@ -2437,7 +2437,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
 
             if data == "network:stop":
                 ok = await daemon.stop()
-                await call.message.answer("[ok] Ферма остановлена." if ok else "[err] Остановить не удалось.")
+                await call.message.answer("[ok] Прогон остановлен." if ok else "[err] Остановить не удалось.")
                 answer, kb = _networks_view(daemon)
                 await call.message.edit_text(
                     answer,
@@ -2456,7 +2456,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             if data in actions:
                 ok = await actions[data]()
                 label = data.split(":")[1]
-                done = "выполнено" if ok else "уже в этой позиции / ферма недоступна"
+                done = "выполнено" if ok else "уже в этой позиции / стенд недоступен"
                 await call.message.answer(f"[{'ok' if ok else 'err'}] {label}: {done}")
                 return
 

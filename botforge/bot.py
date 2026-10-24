@@ -226,7 +226,7 @@ def _snapshot_age_min(updated_at) -> float | None:
 def _freshness_note(s) -> str:
     """Свежесть снимка для статусов: «5 мин назад» + флаг протухания.
 
-    Порог тот же, что на сайте и у витрины (15 мин): старше — честное «ферма молчит»,
+    Порог тот же, что на сайте и у витрины (15 мин): старше — честное «стенд молчит»,
     а не вид живой витрины.
     """
     age = _snapshot_age_min(s.get("updated_at"))
@@ -238,7 +238,7 @@ def _freshness_note(s) -> str:
         ago = f"{int(age)} мин назад"
     else:
         ago = f"{int(age // 60)} ч {int(age % 60):02d} мин назад"
-    stale = " · ⚠️ снимок старый, ферма молчит" if age > 15 else ""
+    stale = " · ⚠️ снимок старый, стенд молчит" if age > 15 else ""
     return f"({ago}{stale})"
 
 
@@ -250,7 +250,7 @@ def fmt_status(s):
     hf = _hf_text(s)
     return (
         "📊 <b>harvest — статус</b>\n\n"
-        f"Ферма: <b>{state}</b>\n"
+        f"Стенд: <b>{state}</b>\n"
         f"• Действий: <b>{pool.get('actions', 0)}</b> · ошибок: <b>{pool.get('errors', 0)}</b>\n"
         f"• Обработано: <b>{pool.get('processed', 0)}</b> · циклов: <b>{pool.get('cycles', 0)}</b>\n"
         f"• Кошельков: <b>{s.get('wallet_count', '-')}</b> · health: <b>{hf}</b>\n"
@@ -280,7 +280,7 @@ def fmt_doctor(s):
     errs = pool.get("errors", 0)
     hf = _hf_text(s)
     lines = ["<b>harvest // диагностика</b>"]
-    lines.append(f"ферма: {'RUN' if s.get('running') else 'STOP'}{' + PAUSE' if pool.get('paused') else ''}")
+    lines.append(f"стенд: {'RUN' if s.get('running') else 'STOP'}{' + PAUSE' if pool.get('paused') else ''}")
     lines.append(f"сеть: {esc(s.get('network', '—'))}")
     lines.append(f"ошибок: {errs} · health: {hf}")
     lines.append(f"кошельков: {s.get('wallet_count', '-')}")
@@ -315,7 +315,7 @@ def fmt_pnl(s):
     faucet = _num(p.get("faucet_delta"))
     lines = ["<b>harvest // PnL прогона</b>"]
     lines.append(f"• Успешных действий: <b>{esc(ok)}</b> · отказов: <b>{esc(fail)}</b> ({rate:.1f}%)")
-    lines.append(f"• Δ фарма: <b>{farm:+.6f}</b>" if farm is not None else "• Δ фарма: <b>—</b>")
+    lines.append(f"• Δ прогона: <b>{farm:+.6f}</b>" if farm is not None else "• Δ прогона: <b>—</b>")
     lines.append(f"• Δ крана: <b>{faucet:+.6f}</b>" if faucet is not None else "• Δ крана: <b>—</b>")
     lines.append(f"• Выборка: {esc(p.get('measured', 0))}/{esc(p.get('total_wallets', 0))} кошельков")
     reasons = p.get("by_reason") or []
@@ -333,7 +333,7 @@ def fmt_pnl(s):
 
 HELP_TEXT = (
     "Возможности:\n"
-    "• /status — состояние фермы + прогресс\n"
+    "• /status — состояние стенда + прогресс\n"
     "• /pnl — PnL последнего прогона\n"
     "• /history — последние циклы\n"
     "• /doctor — диагностика\n"
@@ -400,7 +400,7 @@ def fmt_wallets_page(wallets, page=1, built_at=None):
         head += f" · <i>данные на {esc(str(built_at)[:16].replace('T', ' '))}</i>"
     lines = [head, ""]
     if not chunk:
-        lines.append("Кошельков пока нет — запусти фарм.")
+        lines.append("Кошельков пока нет — запусти прогон.")
     for i, w in enumerate(chunk, start + 1):
         addr = esc(w.get("address", ""))
         acts = esc(w.get("total_actions", 0))

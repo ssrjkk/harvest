@@ -313,7 +313,7 @@ def render_stop_confirm(state: dict, lang: str = "ru") -> str:
     net = esc(state.get("network", "—"))
     return ensure_limit(
         "<b>harvest // СТОП</b>\n"
-        f"Остановить фарм ({net})?\n"
+        f"Остановить прогон ({net})?\n"
         "Текущий цикл прервётся, состояние сохранится."
     )
 

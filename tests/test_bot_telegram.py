@@ -246,7 +246,7 @@ class TestNetworkCallbacks(unittest.IsolatedAsyncioTestCase):
         call = _C(uid=123, data="network:stop")
         await dp.callback_query.handlers[0].callback(call)
         self.assertEqual(daemon.stopped, 1)
-        self.assertTrue(any("остановлена" in a[0][0] for a in call.message.answers))
+        self.assertTrue(any("остановлен" in a[0][0] for a in call.message.answers))
 
     async def test_denied(self):
         dp = build_dispatcher(_cfg(), _NetDaemon())
@@ -713,7 +713,7 @@ class TestBalanceCommand(unittest.IsolatedAsyncioTestCase):
         dp = build_dispatcher(_cfg(), _BalDead())
         msg = _M(uid=123, text="/balance")
         await dp.message.handlers[1].callback(msg)
-        self.assertTrue(any("не запущена" in a[0][0] for a in msg.answers))
+        self.assertTrue(any("не запущен" in a[0][0] for a in msg.answers))
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")

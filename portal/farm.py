@@ -158,9 +158,9 @@ class FarmDaemon:
         return out
 
     async def switch_to(self, slug: str) -> bool:
-        """Переключает активную сеть (останавливает фарм, меняет конфиг/БД).
+        """Переключает активную сеть (останавливает прогон, меняет конфиг/БД).
 
-        Новую сеть фармить можно через start() — данные каждой сети в своей БД.
+        Новую сеть можно прогонять через start() — данные каждой сети в своей БД.
         """
         n = network_by_slug(slug)
         if n is None:
@@ -212,7 +212,7 @@ class FarmDaemon:
                     "Другой экземпляр фармера уже работает на этой БД (%s) — фарм не запущен",
                     self.db_path,
                 )
-                await self._alert("⚠️ Ферма не запустилась: другой экземпляр уже работает на этой БД.")
+                await self._alert("⚠️ Прогон не запустился: другой экземпляр уже работает на этой БД.")
                 return False
             self._guard = guard
             self._stop = asyncio.Event()
@@ -233,7 +233,7 @@ class FarmDaemon:
         except Exception as exc:  # noqa: BLE001
             logger.exception("Демон фермы упал — закрываю пул")
             await self._alert(
-                f"⚠️ Ферма упала: {type(exc).__name__}: {str(exc)[:200]}\n/doctor — диагностика"
+                f"⚠️ Прогон упал: {type(exc).__name__}: {str(exc)[:200]}\n/doctor — диагностика"
             )
             await self._shutdown_pool()
         else:
@@ -853,7 +853,7 @@ class FarmDaemon:
     async def wallet_balances(self, limit: int = 20) -> list[dict]:
         """Балансы первых N кошельков (для /balance). Ошибка RPC — balance None."""
         if self.db is None or self.pool is None:
-            raise RuntimeError("Ферма не запущена")
+            raise RuntimeError("Прогон не запущен")
         addrs = await self._addrs_for_balances(max(1, min(int(limit), MAX_BALANCES_PER_REQUEST)))
         # _addrs_for_balances(limit) уже усекает; на всякий случай режем ещё раз.
         addrs = addrs[: max(1, min(int(limit), MAX_BALANCES_PER_REQUEST))]

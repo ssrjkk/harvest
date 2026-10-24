@@ -120,7 +120,7 @@ def fmt_doctor(data: dict) -> str:
     health = float(data.get("health_factor", 0.0) or 0.0)
     problems: list[str] = []
     if not data.get("running"):
-        problems.append("ферма не запущена")
+        problems.append("прогон не запущен")
     if not pool:
         problems.append("ядро фермы не подключено")
     if pool:
@@ -132,7 +132,7 @@ def fmt_doctor(data: dict) -> str:
             problems.append("накоплено много ошибок")
     lines = [
         "<b>harvest // ДОКТОР</b>",
-        f"ферма: {_state_mark(bool(data.get('running')))} · "
+        f"стенд: {_state_mark(bool(data.get('running')))} · "
         f"ядро: {'[ok] подключено' if pool else '[err] НЕ ПОДКЛЮЧЕНО'}",
         f"health: {health:.2f}",
         f"сеть: <b>{_esc(data.get('network', '—'))}</b> · "
@@ -194,7 +194,7 @@ def fmt_pnl(snap: dict | None) -> str:
         except (TypeError, ValueError):
             return "—"
 
-    lines.append(f"Δ фарма: {_esc(_delta(snap.get('farm_delta')))}")
+    lines.append(f"Δ прогона: {_esc(_delta(snap.get('farm_delta')))}")
     lines.append(f"Δ крана: {_esc(_delta(snap.get('faucet_delta')))}")
     lines.append(
         f"Выборка: {_esc(snap.get('measured'))}/{_esc(snap.get('total_wallets'))} кошельков · "
@@ -249,7 +249,7 @@ def fmt_networks(networks: list[dict]) -> str:
         tagline = _esc(n.get("tagline") or "")
         line = f"{mark} <b>{name}</b> — {tagline}" if tagline else f"{mark} <b>{name}</b>"
         lines.append(line)
-    lines += ["", "Кнопка под сетью — переключить и запустить фарм.", _FOOT]
+    lines += ["", "Кнопка под сетью — переключить и запустить прогон.", _FOOT]
     return "\n".join(lines)
 
 
