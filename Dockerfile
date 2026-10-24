@@ -19,6 +19,10 @@ WORKDIR /app
 # Зависимости отдельным слоем (кэшируется при правках кода).
 COPY requirements.txt requirements-portal.txt ./
 RUN pip install --no-cache-dir -r requirements.txt -r requirements-portal.txt
+# Шрифты для PNG-карточки статуса (DejaVu: кириллица в карточке) —
+# как в deploy/Dockerfile, иначе на HF Spaces карточка с «тофу».
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
 
 # Код портала + ядро + ABI + шаблоны конфигов.
 COPY core/ core/

@@ -164,9 +164,9 @@ Mini App (дашборд в Telegram) открывается по `PORTAL_BASE_U
    - `PORTAL_BASE_URL` — `https://ВАШ_НИК-harvest.hf.space` (для Mini App).
 4. Открыть `https://ВАШ_НИК-harvest.hf.space` (HTTPS уже есть).
 
-**Держать активным:** Space засыпает после ~48 ч без запросов. Workflow
-[`.github/workflows/keepalive.yml`](../.github/workflows/keepalive.yml) пингует
-`/healthz` каждые 6 ч (замените URL на свой). Первый запрос после сна — 30–60 с.
+**Держать активным:** Space засыпает после ~48 ч без запросов. Штатного
+keepalive-воркфлоу в репозитории нет — для пинга `/healthz` раз в несколько
+часов используйте внешний cron/UptimeRobot. Первый запрос после сна — 30–60 с.
 
 > Кошельки: HF-контейнер их не генерирует. Создайте их локально в ту же
 > PostgreSQL (запустите портал с тем же `PORTAL_DB`) или через `auto.py`.

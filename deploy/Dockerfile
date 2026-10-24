@@ -1,7 +1,7 @@
 # harvest PORTAL — контейнер для Linux VPS.
 # Сборка: docker build -f deploy/Dockerfile -t harvest-portal:latest .
-# Python зафиксирован на 3.12 (код и ruff-target — py312; Dependabot-обновления
-# мажора только после проверки зависимостей).
+# Python зафиксирован на 3.14 (код и ruff-target — py314, как в CI;
+# Dependabot-обновления мажора только после проверки зависимостей).
 FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \

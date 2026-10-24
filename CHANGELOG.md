@@ -151,6 +151,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - i18n научился переводить `placeholder` через `data-i18n-ph`
 
 ### Changed
+- **Виртуализация (Docker/Compose) приведена в порядок.** Корневой `Dockerfile`
+  (HF Spaces) ставит `fonts-dejavu-core`, как `deploy/Dockerfile`, — иначе
+  PNG-карточка статуса рисовала «тофу» вместо кириллицы; застарелый комментарий
+  про «Python 3.12» исправлен на 3.14 (как `FROM` и CI). Healthcheck в
+  `docker-compose.yml` читает `PORTAL_PORT` из окружения вместо захардкоженных
+  `8080`. `.env.example` больше не врёт про смену сети правкой compose-файла:
+  сеть задаётся `FARM_CONFIG` в `.env`. Из `deploy/README` и HF-памятки убрана
+  ссылка на несуществующий `keepalive.yml` — честно написано, что пинговать
+  `/healthz` надо внешним кроном. `.dockerignore` закрыт `**/`-дублями, чтобы
+  секреты из подкаталогов не утекали в контекст сборки
 - Сайт разбит с одной ленты на 4 страницы: `index.html` (главная: обзор, сети,
   быстрый старт), `field.html` (Поле, кран, бот), `demo.html` (демо-зона),
   `docs.html` (факты, архитектура, портал, безопасность, тесты, лицензия)

@@ -11,17 +11,26 @@ dist/
 
 # Секреты и локальные данные (не попадают в образ)
 .env
+**/.env
 *.db
+**/*.db
 *.db-wal
+**/*.db-wal
 *.db-shm
+**/*.db-shm
 master.key
 master*.key
+**/master*.key
 *.license_cache
 portal_secret.key
+**/portal_secret.key
 state.json
+**/state.json
 revoked_sessions.json
+**/revoked_sessions.json
 license.json
 wallets.json
+**/wallets.json
 wallets_export*
 pytest_*.txt
 
