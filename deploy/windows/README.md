@@ -41,3 +41,23 @@ Register-ScheduledTask -TaskName "HarvestDashPublish" `
 - `Get-ScheduledTask HarvestDashPublish` — задача есть, `LastTaskResult` — `0`;
 - `publish-dash.log` — строки `publish exit=0`;
 - сайт: пилюля в шапке свежая, баннера протухания нет.
+
+## Запуск портала (веб + Telegram-бот)
+
+`portal-run.ps1` поднимает `python -m portal` (aiohttp на `127.0.0.1:8080` +
+бот в long-polling) с кодом из git-клона и боевыми данными рядом:
+
+```powershell
+# копия скрипта кладётся в дата-каталог (рядом с farming_*.db и master.key),
+# либо данные передаются явно:
+powershell -ExecutionPolicy Bypass -File deploy\windows\portal-run.ps1 -DataDir D:\harvest
+```
+
+- Секреты — только User-env: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOW_IDS`;
+  `PORTAL_SECRET` создаётся сам (`portal_secret.key` в дата-каталоге).
+- Повторный запуск не плодит второй инстанс (guard по pid в `portal.pid`) —
+  защита от `409 Conflict` двух ботов.
+- Логи: `portal.log` (`PORTAL_LOG_FILE`, ротация 5×1 МБ) и `portal.err.log`
+  (stderr: трейсбеки стартапа).
+- Смена токена бота: обновить `TELEGRAM_BOT_TOKEN` в User-env, затем
+  `Stop-Process -Id (Get-Content <данные>\portal.pid)` и запустить скрипт снова.

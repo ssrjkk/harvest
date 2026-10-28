@@ -30,7 +30,7 @@ applyTheme();
 /* ---------- i18n ---------- */
 const EN={
 skip:"Skip to content",copy:"Copy",nav_home:"Home",nav_field:"Field",nav_demo:"Demo",nav_docs:"Docs",ft_map:"Map",
-h1:'Alien testnets under load.<br><em>By bots, by scenario.</em>',
+h1:'Alien testnets under load.',h1e:'By bots, by scenario.',
 lede:"harvest is a QA rig for third-party EVM testnets: it raises a fleet of wallets with behavioral personas, hammers the chain with transactions per scenario, and reports chain health plus a run report. Written in Python, runs on your machine.",
 th_fact:"Fact",th_val:"Value",f_net:"Networks bundled",f_net_cfg:"Network",f_tests:"Tests",f_tests_v:"pytest · contract scenarios · CI",f_wallet:"Generation",f_wallet_v:"BIP-39 · ~60 wallets/sec · AES-256-GCM",f_rpc:"RPC layer",f_rpc_v:"multi-RPC · EMA · circuit breaker · TTL caches",f_rpc_cfg:"RPC URL",f_portal:"Control",f_portal_v:"CLI auto.py · Rich menu main.py · portal + Telegram bot",f_dist:"Distribution",f_dist_v:"PyInstaller exe · Docker + compose",
 cta_live:"Open the field",cta_demo:"Try the demo",cta_bot:"Telegram bot",
@@ -42,7 +42,7 @@ net_vibe_note:"— launchpad on Robinhood",net_vibe_act:"transfer · buy/sell �
 code_menu:"# menu: network → farm",code_dry:"# dry run, no transactions",code_portal:"# aiohttp + API + bot",code_tests:"# local check",code_publish:"# state.json → gh-pages → site field",
 sl_h:"The field — what's happening now",sl_sub:"The farm publishes a snapshot here: metrics, history and the wallet grid. The site re-reads state.json once a minute; a publish usually happens every 30 minutes. If there's no snapshot yet, the page will be empty — that's normal, not a broken site.",
 t_net:"network",k_act:"Actions",k_proc:"Processed",k_err:"Errors",k_cyc:"Cycles",k_wal:"Wallets",
-fe_t:"No data yet. When the farm publishes its first snapshot, the field will come alive. You can start it by hand:",fe_pub:"then <code>python publish_dash.py</code>.",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
+fe_t:"No data yet. When the farm publishes its first snapshot, the field will come alive. You can start it by hand:",fe_pub:"then",lg_i:"idle",lg_w:"working",lg_o:"ok",lg_e:"error",lg_r:"rest",
 ch1:"Actions / errors over history",ch2:"Wallets processed",aria_ch1:"Actions and errors chart",aria_ch2:"Wallets processed chart",tw:"Top wallets",ch:"Cycle history",nets_h:"Networks",
 pnl_h:"PnL of the last run",pnl_ok:"Successful actions",pnl_farm:"Farm Δ",pnl_faucet:"Faucet Δ",pnl_fail:"Failures",
 pnl_types:"By action type",pnl_type:"Action",pnl_fail_short:"failed",pnl_reasons:"Failure reasons",pnl_reason:"Reason",pnl_cnt:"cases",
@@ -103,7 +103,7 @@ b1_h:"Encryption",b1_p:"Seeds: AES-256-GCM (12B nonce, AAD wallet-seed). Export 
 b2_p:"RPC URLs are redacted everywhere: credentials before @ and query tokens stripped. Logs, cycle history, CLI output.",
 b3_p:"No master key with encrypted seeds → refuse. Portal default-deny, single-instance DB lock, restricted file permissions, login limits 5/10min per IP.",
 sec_rep:"If you find a vulnerability, don't open a public issue. Use GitHub private vulnerability reporting or contact the maintainer directly. Only the latest release is supported; I try to reply within 48 hours.",
-s8_h:"Checks & questions",t1:"wait_for_receipt: EMA poll budget, failover on error streaks, degraded poll rate, None on budget without nonce rollback, secondary-node cross-check.",t2:"Lint: ruff · flake8 · black (120) · mypy · bandit. CI runs the same checks you can run locally; core/portal coverage is a CI gate, not a number to brag about on the site.",t3:"The load test is opt-in: <code class=\"inline\">$env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q</code>.",
+s8_h:"Checks & questions",t1:"wait_for_receipt: EMA poll budget, failover on error streaks, degraded poll rate, None on budget without nonce rollback, secondary-node cross-check.",t2:"Lint: ruff · flake8 · black (120) · mypy · bandit. CI runs the same checks you can run locally; core/portal coverage is a CI gate, not a number to brag about on the site.",t3:"The load test is opt-in:",
 q1:"Is this for mainnet?",a_q1:"No. Testnets and practice activity only. Don't use real funds or real keys in the site demo.",
 q2:"Where are my demo keys?",a_q2:"Only in this tab's memory. The site is static, nothing is uploaded — close the tab or press Clear and the keys are gone. For permanent storage use the Python-side export and encryption.",
 q3:"What about 0x0 contracts in config?",a_q3:"Stubs by design: the validator passes them with a remark, runtime falls back to transfer. Fill in real addresses from the Tier-2 docs when ready.",
@@ -171,8 +171,8 @@ window.hv.lang=()=>lang;
 const _langSubs=[];
 window.hv.onLang=f=>{try{_langSubs.push(f);}catch(e){}};
 const RU={};
-function snapRU(){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(!(k in RU))RU[k]=el.innerHTML;});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(!(k in RU))RU[k]=el.placeholder;});$$("[data-i18n-aria]").forEach(el=>{const k=el.dataset.i18nAria;if(!(k in RU))RU[k]=el.getAttribute("aria-label")||"";});}
-function applyLangStrings(){const D=lang==="en"?EN:RU;$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(D[k]!==undefined)el.innerHTML=D[k];});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(D[k]!==undefined)el.placeholder=D[k];});$$("[data-i18n-aria]").forEach(el=>{const k=el.dataset.i18nAria;if(D[k]!==undefined)el.setAttribute("aria-label",D[k]);});}
+function snapRU(){$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(!(k in RU))RU[k]=el.textContent||"";});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(!(k in RU))RU[k]=el.placeholder;});$$("[data-i18n-aria]").forEach(el=>{const k=el.dataset.i18nAria;if(!(k in RU))RU[k]=el.getAttribute("aria-label")||"";});}
+function applyLangStrings(){const D=lang==="en"?EN:RU;$$("[data-i18n]").forEach(el=>{const k=el.dataset.i18n;if(D[k]!==undefined)el.textContent=D[k];});$$("[data-i18n-ph]").forEach(el=>{const k=el.dataset.i18nPh;if(D[k]!==undefined)el.placeholder=D[k];});$$("[data-i18n-aria]").forEach(el=>{const k=el.dataset.i18nAria;if(D[k]!==undefined)el.setAttribute("aria-label",D[k]);});}
 function applyLang(){
   document.documentElement.lang=lang==="ru"?"ru":"en";
   const lr=$("#langRu"),le=$("#langEn");

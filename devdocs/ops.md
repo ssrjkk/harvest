@@ -114,6 +114,11 @@ pandas, pytest и пр.; `upx=False` (ложные срабатывания AV/E
 - **Быстрый старт**: `[1]` кошельки → `[5]` кран → `[3]` live-фарм.
 - **Автомат**: `python auto.py --wallets 200 --cycles 5`; по расписанию:
   `--schedule 6`.
+- **Передеплой портала (Windows)**: `deploy/windows/portal-run.ps1` —
+  веб + бот из git-клона одним вызовом; секреты только из User-env
+  (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOW_IDS`), pid-guard против второго
+  инстанса (антагонист `409 Conflict`), логи — `portal.log` с ротацией.
+  Проверка живости: `GET /healthz` → `{"status": "ok", "ready": true}`.
 - **Диагностика**: `--doctor` (конфиг/ключ/БД/RPC/кран/лицензия), меню `9`
   (зонды нод, circuit breaker), `--history 20`.
 - **Smoke-проверка exe**: рабочий каталог — отдельная папка, в конфиге
