@@ -488,6 +488,18 @@ class TestAntiflood(unittest.IsolatedAsyncioTestCase):
             self.assertFalse(ok)
             self.assertGreater(wait, 0)
 
+    def test_expired_entry_allowed_again(self):
+        # Запись есть, но интервал истёк — снова разрешено (ветка
+        # wait <= 0 при существующей записи).
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+        bt._flood_last[(888002, "export")] = 0.0
+        with mock.patch.object(bt.time, "monotonic", return_value=100000.0):
+            ok, wait = bt._flood_ok(888002, "export")
+            self.assertTrue(ok)
+            self.assertEqual(wait, 0)
+
     async def test_export_command_flooded(self):
         import time
 
