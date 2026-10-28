@@ -297,6 +297,61 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(out, {"title": "Наши ссылки", "items": []})
 
 
+class TestSetupLogging(unittest.TestCase):
+    """_setup_logging: stderr всегда, файл с ротацией — только по PORTAL_LOG_FILE."""
+
+    def _set_env(self, key: str, value) -> None:
+        prev = os.environ.get(key)
+        self.addCleanup(lambda: os.environ.__setitem__(key, prev) if prev is not None
+                        else os.environ.pop(key, None))
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
+    def test_file_handler_writes_and_rotates(self):
+        import logging as _logging
+
+        with tempfile.TemporaryDirectory() as td:
+            path = str(Path(td) / "portal.log")
+            self._set_env("PORTAL_LOG_FILE", path)
+            pm._setup_logging()
+            try:
+                _logging.getLogger("portal.test").warning("проба %d", 1)
+                for h in _logging.getLogger().handlers:
+                    try:
+                        h.flush()
+                    except Exception:  # noqa: BLE001
+                        pass
+                self.assertTrue(Path(path).exists())
+                self.assertIn("проба 1", Path(path).read_text(encoding="utf-8"))
+            finally:
+                _logging.basicConfig(force=True)
+
+    def test_bad_path_falls_back_to_stderr(self):
+        import logging as _logging
+
+        with tempfile.TemporaryDirectory() as td:
+            self._set_env("PORTAL_LOG_FILE", td)  # каталог, не файл
+            pm._setup_logging()  # не должно упасть
+            try:
+                kinds = {type(h).__name__ for h in _logging.getLogger().handlers}
+                self.assertIn("StreamHandler", kinds)
+            finally:
+                _logging.basicConfig(force=True)
+
+    def test_no_file_by_default(self):
+        import logging as _logging
+
+        self._set_env("PORTAL_LOG_FILE", None)
+        pm._setup_logging()
+        try:
+            kinds = {type(h).__name__ for h in _logging.getLogger().handlers}
+            self.assertNotIn("RotatingFileHandler", kinds)
+        finally:
+            _logging.basicConfig(force=True)
+
+
 class TestMain(unittest.IsolatedAsyncioTestCase):
     def _cfg(self, **kw) -> mock.Mock:
         cfg = mock.Mock()

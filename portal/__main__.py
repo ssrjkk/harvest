@@ -84,13 +84,36 @@ async def _graceful_shutdown(
     logger.info("Портал остановлен")
 
 
-async def main() -> None:
-    # basicConfig ДО первых logger-вызовов: предупреждения о конфигурации
-    # (public_base_url, open_access, HTTP-пароль...) обязаны попасть в журнал.
+def _setup_logging() -> None:
+    """basicConfig + опциональный файл с ротацией (PORTAL_LOG_FILE).
+
+    По умолчанию — только stderr (как раньше): редирект в файл делает
+    вызывающая сторона. Если задан PORTAL_LOG_FILE — пишем и туда, срез
+    5 × 1 МБ, чтобы portal.err.log не рос бесконечно на долгоживущем
+    процессе (спам 409 и т.п.).
+    """
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    log_file = os.environ.get("PORTAL_LOG_FILE", "").strip()
+    if log_file:
+        try:
+            from logging.handlers import RotatingFileHandler
+
+            handlers.append(RotatingFileHandler(
+                log_file, maxBytes=1_000_000, backupCount=5, encoding="utf-8"))
+        except OSError:
+            pass  # файл недоступен — остаёмся на stderr, портал стартует
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=handlers,
+        force=True,
     )
+
+
+async def main() -> None:
+    # basicConfig ДО первых logger-вызовов: предупреждения о конфигурации
+    # (public_base_url, open_access, HTTP-пароль...) обязаны попасть в журнал.
+    _setup_logging()
     cfg = PortalConfig()
     if not cfg.ready:
         raise SystemExit("PORTAL_SECRET не задан — без него портал не стартует.")

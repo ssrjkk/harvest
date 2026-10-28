@@ -45,6 +45,87 @@ DB = os.environ.get("PORTAL_DB", "farming_vibevibe.db")
 _CELLS_MAX = 400  # максимум клеток сетки; остальные — подписью «+N»
 _METRICS_STALE_S = 15 * 60  # снимок метрик старше — «неизвестно», а не цифра
 
+# Счётчик подряд идущих провалов паблиша (файл рядом со скриптом, не в git).
+# После _ALERT_AFTER_FAILS подряд — один алерт владельцу в Telegram, дальше
+# тихо до первого успеха (сброс счётчика). Иначе дохлый токен виден только
+# в publish-dash.log, который никто не читает.
+_FAILS_NAME = ".dash-publish-fails"
+_ALERT_AFTER_FAILS = 3
+_GIT_TIMEOUT_S = 30
+_ALERT_TIMEOUT_S = 15
+
+
+def _fails_path() -> Path:
+    return ROOT / _FAILS_NAME
+
+
+def _read_fails() -> int:
+    try:
+        return max(0, int(_fails_path().read_text(encoding="utf-8").strip() or 0))
+    except (OSError, ValueError):
+        return 0
+
+
+def _bump_fails() -> int:
+    n = _read_fails() + 1
+    try:
+        _fails_path().write_text(str(n), encoding="utf-8")
+    except OSError:
+        pass
+    return n
+
+
+def _reset_fails() -> None:
+    try:
+        _fails_path().unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _remote_reachable() -> bool:
+    """GitHub доступен (сеть + авторизация) до тяжёлого collect()."""
+    try:
+        subprocess.run(
+            ["git", "ls-remote", "origin", "HEAD"],
+            cwd=ROOT, capture_output=True, text=True,
+            timeout=_GIT_TIMEOUT_S, check=True,
+        )
+        return True
+    except Exception:  # noqa: BLE001 — сеть/токен/нет origin: дальше скажет main()
+        return False
+
+
+async def _alert_owner(text: str) -> None:
+    """Телеграм-алерт владельцу напрямую через Bot API (без portal-зависимостей).
+
+    Никогда не роняет паблиш: любые ошибки гаснут в print. Секретов в тексте нет.
+    """
+    token = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+    chat = os.environ.get("TELEGRAM_OWNER_ID", "").strip()
+    if not chat:
+        try:
+            from portal.config import DEFAULT_OWNER_ID
+        except Exception:  # noqa: BLE001
+            DEFAULT_OWNER_ID = 397602448
+        chat = str(DEFAULT_OWNER_ID)
+    if not token or not chat:
+        print("алерт владельцу пропущен: нет TELEGRAM_BOT_TOKEN")
+        return
+    import json as _json
+    import urllib.request as _urlreq
+
+    body = _json.dumps({"chat_id": chat, "text": text}).encode("utf-8")
+    req = _urlreq.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=body, headers={"Content-Type": "application/json"},
+    )
+    try:
+        with _urlreq.urlopen(req, timeout=_ALERT_TIMEOUT_S) as resp:
+            if resp.status != 200:
+                print(f"алерт владельцу не доставлен: HTTP {resp.status}")
+    except Exception as exc:  # noqa: BLE001 — сеть/токен: паблиш важнее
+        print(f"алерт владельцу не доставлен: {exc}")
+
 
 def _farm_running(db_path: str) -> bool:
     """Жива ли ферма на этой БД: проба через тот же single-instance лок.
@@ -486,6 +567,15 @@ async def main() -> int:
     if not Path(DB).exists():
         print(f"БД не найдена: {DB} (путь к БД через PORTAL_DB или дефолт farming_vibevibe.db)")
         return 1
+    # Fail-fast до тяжёлого collect(): нет сети/авторизации — нечего собирать.
+    if not _remote_reachable():
+        print("GitHub недоступен (сеть или токен) — пропускаю паблиш до следующего запуска")
+        if _bump_fails() == _ALERT_AFTER_FAILS:
+            await _alert_owner(
+                "harvest publish: GitHub недоступен 3 раза подряд "
+                "(сеть или токен). Витрина протухает — проверь доступ."
+            )
+        return 1
     try:
         state = await collect()
     except Exception as e:  # noqa: BLE001 — нет таблиц/БД locked: понятный exit, а не трейс
@@ -525,7 +615,13 @@ async def main() -> int:
     except Exception as e:  # noqa: BLE001
         # Подробности (в т.ч. про отозванный токен) уже напечатаны выше.
         print(f"публикация не удалась: {e}")
+        if _bump_fails() == _ALERT_AFTER_FAILS:
+            await _alert_owner(
+                "harvest publish: 3 провала подряд. Витрина протухает — "
+                "смотри publish-dash.log (сеть, токен, права на gh-pages)."
+            )
         return 1
+    _reset_fails()
     if blob is None:
         print(f"опубликовано в GitHub Pages: {DASH_BRANCH} (без свежего блоба кошельков)")
         return 2

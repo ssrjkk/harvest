@@ -541,5 +541,99 @@ class TestWalletsBlob(unittest.TestCase):
             self.assertEqual(rows[0]["private_key"], "0xkey")
 
 
+class TestFailStreakAndAlert(unittest.TestCase):
+    """Счётчик провалов и алерт владельцу: молчаливый дохлый токен виден сразу."""
+
+    def _isolate_root(self, td):
+        old = publish_dash.ROOT
+        publish_dash.ROOT = Path(td)
+        self.addCleanup(setattr, publish_dash, "ROOT", old)
+
+    def test_streak_roundtrip(self):
+        with tempfile.TemporaryDirectory() as td:
+            self._isolate_root(td)
+            self.assertEqual(publish_dash._read_fails(), 0)
+            self.assertEqual(publish_dash._bump_fails(), 1)
+            self.assertEqual(publish_dash._bump_fails(), 2)
+            self.assertEqual(publish_dash._read_fails(), 2)
+            publish_dash._reset_fails()
+            self.assertEqual(publish_dash._read_fails(), 0)
+            publish_dash._reset_fails()  # идемпотентно
+
+    def test_streak_bad_file_tolerated(self):
+        with tempfile.TemporaryDirectory() as td:
+            self._isolate_root(td)
+            Path(td, publish_dash._FAILS_NAME).write_text("мусор", encoding="utf-8")
+            self.assertEqual(publish_dash._read_fails(), 0)
+            self.assertEqual(publish_dash._bump_fails(), 1)
+
+    def test_alert_without_token_is_quiet(self):
+        old = os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+        try:
+            asyncio.run(publish_dash._alert_owner("тест"))  # не должно упасть
+        finally:
+            if old is not None:
+                os.environ["TELEGRAM_BOT_TOKEN"] = old
+
+    def test_alert_posts_and_swallows_errors(self):
+        import urllib.error
+        from unittest import mock
+
+        seen = {}
+
+        class _Resp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+        def _fake_open(req, timeout=None):
+            seen["url"] = req.full_url
+            seen["body"] = req.data.decode("utf-8")
+            return _Resp()
+
+        old_token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        old_owner = os.environ.get("TELEGRAM_OWNER_ID")
+        os.environ["TELEGRAM_BOT_TOKEN"] = "123:ABC"
+        os.environ["TELEGRAM_OWNER_ID"] = "999"
+        try:
+            with mock.patch("urllib.request.urlopen", side_effect=_fake_open):
+                asyncio.run(publish_dash._alert_owner("тест"))
+            self.assertIn("api.telegram.org/bot123:ABC/sendMessage", seen["url"])
+            body = json.loads(seen["body"])
+            self.assertEqual(body["chat_id"], "999")
+            self.assertIn("тест", body["text"])
+            # Ошибка сети глушится, паблиш не роняется.
+            with mock.patch(
+                "urllib.request.urlopen",
+                side_effect=urllib.error.URLError("down"),
+            ):
+                asyncio.run(publish_dash._alert_owner("тест"))
+        finally:
+            if old_token is None:
+                os.environ.pop("TELEGRAM_BOT_TOKEN", None)
+            else:
+                os.environ["TELEGRAM_BOT_TOKEN"] = old_token
+            if old_owner is None:
+                os.environ.pop("TELEGRAM_OWNER_ID", None)
+            else:
+                os.environ["TELEGRAM_OWNER_ID"] = old_owner
+
+    def test_remote_reachable_true_and_false(self):
+        from unittest import mock
+
+        with mock.patch("publish_dash.subprocess.run") as run:
+            self.assertTrue(publish_dash._remote_reachable())
+            run.assert_called_once()
+        with mock.patch(
+            "publish_dash.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("git", 30),
+        ):
+            self.assertFalse(publish_dash._remote_reachable())
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
