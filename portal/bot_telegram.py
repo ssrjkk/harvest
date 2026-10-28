@@ -716,6 +716,39 @@ def _menu_kb(cfg: PortalConfig, monitor_on: bool = False) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def _admin_kb() -> InlineKeyboardMarkup:
+    """Кнопки панели владельца (/admin — только OWNER_ID)."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="[СТАТУС]", callback_data="admin:full"),
+            InlineKeyboardButton(text="[ДОСТУП]", callback_data="admin:allow"),
+        ],
+        [InlineKeyboardButton(text="[ТЕСТ АЛЕРТА]", callback_data="admin:ping")],
+        [InlineKeyboardButton(text="[ДОМОЙ]", callback_data="menu:home")],
+    ])
+
+
+async def _admin_home_text(cfg: PortalConfig, daemon: FarmDaemon) -> str:
+    """Панель владельца: только безопасные флаги, никаких секретов и ключей."""
+    from core.version import VERSION
+
+    st = await daemon.statistics()
+    run = "[RUN]" if st.get("running") else "[STOP]"
+    ids = ", ".join(f"<code>{i}</code>" for i in cfg.telegram_allow_ids) or "—"
+    return "\n".join([
+        "<b>harvest // АДМИН</b>",
+        f"версия: <b>{_esc(VERSION)}</b> · стенд: {run} · "
+        f"сеть: <b>{_esc(st.get('network', '—'))}</b>",
+        f"владелец: <code>{cfg.telegram_owner_id}</code> · в доступе: <b>{len(cfg.telegram_allow_ids)}</b>",
+        f"токен: {'задан' if cfg.telegram_token else '—'} · "
+        f"мастер-ключ: {'задан' if cfg.master_key else '—'} · "
+        f"google: {'вкл' if cfg.google_enabled() else '—'}",
+        f"open_access: <b>{'ВКЛ!' if cfg.open_access else 'выкл'}</b> · "
+        f"bot: {bot_conflict_status()}",
+        f"allowlist: {ids}",
+    ])
+
+
 _HELP_TEXT = (
     "<b>harvest PORTAL</b> — QA-стенд: гоняем чужой тестнет ботами по сценариям.\n\n"
     "Поле и диагностика:\n"
@@ -732,7 +765,8 @@ _HELP_TEXT = (
     "• /pause — пауза, /resume — продолжить\n"
     "• /stop — остановить прогон\n"
     "• /scheduler — планировщик (или /schedule)\n"
-    "• /alerts — мониторинг балансов\n\n"
+    "• /alerts — мониторинг балансов\n"
+    "• /admin — панель владельца (только владелец)\n\n"
     "Конструкторы (как вкладки Про на сайте):\n"
     "• /cmd сеть [кошельки] [циклы] [nofaucet] — готовая команда\n"
     "• Кнопка [CMD] — мастер: сеть → кошельки → циклы → кран\n"
@@ -2106,6 +2140,15 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             await message.answer(_bot_ops_check(text), parse_mode=ParseMode.HTML)
         elif text == "/ref":
             await message.answer(_bot_ops.REF_TEXT, parse_mode=ParseMode.HTML)
+        elif text == "/admin":
+            # Панель владельца: остальным — тишина (default-deny, как _allowed).
+            if not cfg.is_owner(message.from_user.id if message.from_user else None):
+                return
+            await message.answer(
+                await _admin_home_text(cfg, daemon),
+                parse_mode=ParseMode.HTML,
+                reply_markup=_admin_kb(),
+            )
         elif text.startswith("/"):
             await message.answer("Неизвестная команда. /help — список возможностей.")
 
@@ -2443,6 +2486,46 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                     answer,
                     parse_mode=ParseMode.HTML,
                     reply_markup=kb,
+                    link_preview_options=_NO_PREVIEW,
+                )
+                return
+
+            if data == "admin:home" or data.startswith("admin:"):
+                # Панель владельца: чужим — отказ без деталей (default-deny).
+                uid = call.from_user.id if call.from_user else None
+                if not cfg.is_owner(uid):
+                    await call.answer("⛔ Нет доступа.", show_alert=True)
+                    return
+                if data == "admin:ping":
+                    ok, wait = _flood_ok(uid, "admin")
+                    if not ok:
+                        await call.message.answer(f"[жди {wait}с] Админ — антифлуд.")
+                        return
+                    try:
+                        await notify_owner(cfg, "Тест алерта из /admin: стенд на связи.")
+                    except Exception:  # noqa: BLE001
+                        await call.message.answer("[err] Не удалось отправить алерт.")
+                        return
+                    await call.message.answer("[ok] Тестовый алерт отправлен.")
+                    return
+                if data == "admin:allow":
+                    ids = ", ".join(f"<code>{i}</code>" for i in cfg.telegram_allow_ids) or "—"
+                    await call.message.edit_text(
+                        f"<b>harvest // АДМИН · доступ</b>\n"
+                        f"владелец: <code>{cfg.telegram_owner_id}</code>\n"
+                        f"allowlist: {ids}",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=_admin_kb(),
+                        link_preview_options=_NO_PREVIEW,
+                    )
+                    return
+                text = await _admin_home_text(cfg, daemon)
+                if data == "admin:full":
+                    text += "\n\n" + _fmt_doctor(await daemon.statistics())
+                await call.message.edit_text(
+                    text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=_admin_kb(),
                     link_preview_options=_NO_PREVIEW,
                 )
                 return

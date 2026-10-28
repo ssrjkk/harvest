@@ -11,6 +11,7 @@
     GOOGLE_ALLOW_EMAILS     — разрешённые email (default-deny; только эти)
     TELEGRAM_BOT_TOKEN      — токен бота (BotFather)
     TELEGRAM_ALLOW_IDS      — разрешённые Telegram user_id (default-deny)
+    TELEGRAM_OWNER_ID       — user_id владельца (панель /admin), default 397602448
     FARMER_MASTER_KEY       — мастер-ключ фармера (пароль для веба)
     PORTAL_OPEN_ACCESS=1    — сознательно разрешить любой Google-аккаунт/Telegram
     PORTAL_PASSWORD_LOGIN=1 — разрешить вход по мастер-ключу (default 1)
@@ -28,6 +29,21 @@ from typing import Any
 from urllib.parse import urlencode
 
 import yaml
+
+# Владелец бота: только ему доступна расширенная панель /admin.
+# Telegram user_id — не секрет (виден в allowlist и логах), поэтому
+# дефолт захардкожен; меняется через TELEGRAM_OWNER_ID.
+DEFAULT_OWNER_ID = 397602448
+
+
+def _parse_owner_id(raw: str) -> int:
+    """TELEGRAM_OWNER_ID в int; пустое/битое → дефолт (владелец всегда задан)."""
+    s = (raw or "").strip().lstrip("+")
+    try:
+        return int(s) if s else DEFAULT_OWNER_ID
+    except (TypeError, ValueError):
+        return DEFAULT_OWNER_ID
+
 
 # Мастер-ключ фармера — строго 64 hex (как в core/database.py:resolve).
 # Если в FARMER_MASTER_KEY задан что-то иное — напечатать warning, чтобы
@@ -122,6 +138,9 @@ class PortalConfig:
         self.google_redirect_uri: str = os.environ.get("GOOGLE_REDIRECT_URI", "").strip()
 
         self.telegram_token: str = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+        # Владелец: расширенная панель /admin только для него. В allowlist
+        # тоже должен быть (default-deny един для всех — без исключений).
+        self.telegram_owner_id: int = _parse_owner_id(os.environ.get("TELEGRAM_OWNER_ID", ""))
         # default-deny: бот отвечает только перечисленным Telegram user_id.
         # Поддерживаем отрицательные ID (каналы/группы -100...).
         self.telegram_allow_ids: list[int] = []
@@ -189,6 +208,10 @@ class PortalConfig:
         if self.open_access:
             return True
         return False
+
+    def is_owner(self, tg_id: int | None) -> bool:
+        """Владелец ли: только ему доступна панель /admin (silent-deny остальным)."""
+        return tg_id is not None and tg_id == self.telegram_owner_id
 
     def google_auth_url(self, state: str, code_challenge: str = "", nonce: str = "") -> str:
         redirect = self.google_redirect_uri or f"{self.public_base_url}/auth/google/callback"

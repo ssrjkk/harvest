@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Админ-панель в Telegram-боте (`/admin`, только владелец).**
+  `TELEGRAM_OWNER_ID` (default `397602448`) + метод `PortalConfig.is_owner()`.
+  Панель показывает версию, allowlist, флаги входов (токен/мастер-ключ/Google/
+  open_access), статус polling-конфликта 409 и живой статус стенда; кнопки:
+  [СТАТУС] (полный `/doctor`), [ДОСТУП], [ТЕСТ АЛЕРТА] (с антифлудом),
+  остальным — тишина (default-deny). Ни токен, ни ключи, ни секреты
+  в панель не выводятся — только флаги наличия
 - **CONTRIBUTING и SECURITY по-человечески.** Убраны `amazing-feature`,
   пустые сроки «ответим за 48 часов» и капс-пафос. Коротко, по-русски,
   с живым контактом автора

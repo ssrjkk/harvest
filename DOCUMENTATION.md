@@ -697,6 +697,7 @@ db/farm_config/links):
 | `GOOGLE_ALLOW_EMAILS` | default-deny список email |
 | `TELEGRAM_BOT_TOKEN` | токен бота (BotFather) |
 | `TELEGRAM_ALLOW_IDS` | default-deny список user_id |
+| `TELEGRAM_OWNER_ID` | user_id владельца, панель `/admin` (default `397602448`; в allowlist тоже должен быть) |
 | `FARMER_MASTER_KEY` | мастер-ключ БД / PIN веб-входа |
 | `WALLETS_KEY` | 64-hex ключ шифрованного блоба `wallets.enc.json` (publish_dash → gh-pages → BotForge-бот); генерация: `python -c "import secrets;print(secrets.token_hex(32))"`; без него с обеих сторон — штатный пропуск кошельков |
 | `PORTAL_OPEN_ACCESS=1` | сознательно открыть доступ любому Google/TG-аккаунту |
@@ -849,7 +850,9 @@ uniform-401: неверная подпись и чужой allowlist нераз�
   следующими строками — проверка `validate_config` (вход не цитируется,
   секреты вычищаются); `/ref` — сжатый справочник параметров;
   `/pause` / `/resume` / `/stop` — управление фармом; `/rpc`,
-  `/faucet` — диагностика; `/help` — эта справка.
+  `/faucet` — диагностика; `/admin` — панель владельца (`TELEGRAM_OWNER_ID`:
+  версия, allowlist, флаги входов, статус 409, тест алерта; остальным — тишина);
+  `/help` — эта справка.
 - Мастера (aiogram FSM, `CmdWizard`/`CfgWizard` в `bot_telegram.py`):
   кнопки `[CMD]`/`[CFG]` ведут по шагам (сеть → кошельки → циклы → кран),
   свободный ввод чисел — прямо в чат, `/cancel` и кнопка `[ОТМЕНА]` закрывают

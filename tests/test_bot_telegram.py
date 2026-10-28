@@ -1105,5 +1105,116 @@ class TestLegacyGaps(unittest.IsolatedAsyncioTestCase):
             bt._conflict.resolve()
 
 
+@unittest.skipUnless(HAS_BOT, "aiogram не установлен")
+class TestAdminPanel(unittest.IsolatedAsyncioTestCase):
+    """Панель владельца /admin: default-deny, только OWNER_ID."""
+
+    def _owner_cfg(self, uid):
+        cfg = _cfg()
+        cfg.telegram_allow_ids = [uid]
+        cfg.telegram_owner_id = uid
+        return cfg
+
+    def _stranger_cfg(self):
+        cfg = _cfg()
+        cfg.telegram_allow_ids = [123]
+        cfg.telegram_owner_id = 397602448
+        return cfg
+
+    async def test_admin_denied_for_stranger(self):
+        dp = build_dispatcher(self._stranger_cfg(), _NetDaemon())
+        msg = _M(uid=999, text="/admin")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(msg.answers, [])
+
+    async def test_admin_silent_for_non_owner(self):
+        dp = build_dispatcher(self._stranger_cfg(), _NetDaemon())
+        msg = _M(uid=123, text="/admin")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(msg.answers, [])
+
+    async def test_admin_home_owner(self):
+        dp = build_dispatcher(self._owner_cfg(123), _NetDaemon())
+        msg = _M(uid=123, text="/admin")
+        await dp.message.handlers[1].callback(msg)
+        self.assertEqual(len(msg.answers), 1)
+        text = msg.answers[0][0][0]
+        self.assertIn("АДМИН", text)
+        self.assertIn("2.4.1", text)
+        self.assertIn("<code>123</code>", text)
+        kb = msg.answers[0][1]["reply_markup"]
+        payloads = [b.callback_data for row in kb.inline_keyboard for b in row]
+        self.assertIn("admin:full", payloads)
+        self.assertIn("admin:allow", payloads)
+        self.assertIn("admin:ping", payloads)
+
+    async def test_admin_home_no_secrets(self):
+        cfg = self._owner_cfg(123)
+        cfg.telegram_token = "123456:ABC-SECRET"
+        cfg.master_key = "k" * 64
+        dp = build_dispatcher(cfg, _NetDaemon())
+        msg = _M(uid=123, text="/admin")
+        await dp.message.handlers[1].callback(msg)
+        text = msg.answers[0][0][0]
+        self.assertNotIn("ABC-SECRET", text)
+        self.assertNotIn("k" * 64, text)
+        self.assertIn("задан", text)
+
+    async def test_admin_callback_denied(self):
+        dp = build_dispatcher(self._stranger_cfg(), _NetDaemon())
+        call = _C(uid=123, data="admin:home")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(call.message.edits, [])
+        self.assertTrue(any(a[0] and "Нет доступа" in a[0][0] for a in call.answered))
+
+    async def test_admin_home_callback(self):
+        dp = build_dispatcher(self._owner_cfg(123), _NetDaemon())
+        call = _C(uid=123, data="admin:home")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(len(call.message.edits), 1)
+        self.assertIn("АДМИН", call.message.edits[0][0][0])
+
+    async def test_admin_full_callback(self):
+        dp = build_dispatcher(self._owner_cfg(123), _NetDaemon())
+        call = _C(uid=123, data="admin:full")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(len(call.message.edits), 1)
+        self.assertIn("АДМИН", call.message.edits[0][0][0])
+        self.assertIn("ДОКТОР", call.message.edits[0][0][0])
+
+    async def test_admin_allow_callback(self):
+        dp = build_dispatcher(self._owner_cfg(123), _NetDaemon())
+        call = _C(uid=123, data="admin:allow")
+        await dp.callback_query.handlers[0].callback(call)
+        self.assertEqual(len(call.message.edits), 1)
+        self.assertIn("доступ", call.message.edits[0][0][0])
+        self.assertIn("<code>123</code>", call.message.edits[0][0][0])
+
+    async def test_admin_ping_ok_and_flood(self):
+        import portal.bot_telegram as bt
+
+        dp = build_dispatcher(self._owner_cfg(200), _NetDaemon())
+        with mock.patch.object(bt, "notify_owner", new=mock.AsyncMock()) as ping:
+            call = _C(uid=200, data="admin:ping")
+            await dp.callback_query.handlers[0].callback(call)
+            self.assertTrue(any("Тестовый алерт" in a[0][0] for a in call.message.answers))
+            ping.assert_awaited_once()
+            call2 = _C(uid=200, data="admin:ping")
+            await dp.callback_query.handlers[0].callback(call2)
+            self.assertTrue(any("жди" in a[0][0] for a in call2.message.answers))
+
+    async def test_admin_ping_fail(self):
+        import portal.bot_telegram as bt
+
+        async def _boom(*a, **k):
+            raise RuntimeError("tg down")
+
+        dp = build_dispatcher(self._owner_cfg(201), _NetDaemon())
+        with mock.patch.object(bt, "notify_owner", new=_boom):
+            call = _C(uid=201, data="admin:ping")
+            await dp.callback_query.handlers[0].callback(call)
+            self.assertTrue(any("[err]" in a[0][0] for a in call.message.answers))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

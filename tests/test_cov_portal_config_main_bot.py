@@ -135,6 +135,24 @@ class TestConfig(unittest.TestCase):
             cfg = config.PortalConfig()
             self.assertEqual(cfg.telegram_allow_ids, [123, 456])
 
+    def test_owner_id_default_and_override(self):
+        with _env(TELEGRAM_OWNER_ID=None):
+            cfg = config.PortalConfig()
+            self.assertEqual(cfg.telegram_owner_id, 397602448)
+        with _env(TELEGRAM_OWNER_ID="  +123 "):
+            cfg = config.PortalConfig()
+            self.assertEqual(cfg.telegram_owner_id, 123)
+        with _env(TELEGRAM_OWNER_ID="junk"):
+            cfg = config.PortalConfig()
+            self.assertEqual(cfg.telegram_owner_id, 397602448)
+
+    def test_is_owner(self):
+        with _env(TELEGRAM_OWNER_ID="123"):
+            cfg = config.PortalConfig()
+            self.assertTrue(cfg.is_owner(123))
+            self.assertFalse(cfg.is_owner(124))
+            self.assertFalse(cfg.is_owner(None))
+
     def test_resolve_secret_prefers_existing_file(self):
         content = "this-is-a-long-enough-secret-value"
         with tempfile.TemporaryDirectory() as d:
