@@ -1226,6 +1226,8 @@ class TestAdminPanel(unittest.IsolatedAsyncioTestCase):
             await dp.callback_query.handlers[0].callback(call)
             self.assertTrue(any("Тестовый алерт" in a[0][0] for a in call.message.answers))
             ping.assert_awaited_once()
+            # Тест идёт только запросившему, а не всему allowlist.
+            self.assertEqual(ping.await_args.kwargs.get("only"), 200)
             call2 = _C(uid=200, data="admin:ping")
             await dp.callback_query.handlers[0].callback(call2)
             self.assertTrue(any("жди" in a[0][0] for a in call2.message.answers))

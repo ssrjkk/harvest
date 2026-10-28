@@ -101,3 +101,4 @@ pnl_report*.html
 
 docs/screenshots/matrix/
 coverage.xml
+.dash-publish-fails

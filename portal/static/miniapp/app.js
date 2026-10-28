@@ -54,6 +54,8 @@
     dripBusy: { ru: "Долив уже идёт", en: "Top-up already running" },
     stopAsk: { ru: "Остановить прогон?", en: "Stop the run?" },
     nextBtn: { ru: "ДАЛЕЕ", en: "NEXT" },
+    yesBtn: { ru: "Да", en: "Yes" },
+    noBtn: { ru: "Отмена", en: "Cancel" },
     doneBtn: { ru: "ГОТОВО", en: "DONE" },
     yamlSent: { ru: "YAML отправлен в чат с ботом", en: "YAML sent to the bot chat" },
     copyBtn: { ru: "Скопировать", en: "Copy" },
@@ -269,14 +271,48 @@
       el.textContent = bad ? bad + " err / " + nodes.length : "ok " + nodes.length;
     }).catch(function () { var el = $("tmaRpc"); if (el) el.textContent = "—"; });
   }
+  /* ---------- встроенный диалог (confirm/prompt без нативных попапов) ---------- */
+  function tmaDialog(text, inputDef) {
+    return new Promise(function (res) {
+      var box = $("dlg"), t = $("dlgT"), wrap = $("dlgIn"),
+          v = $("dlgV"), ok = $("dlgOk"), no = $("dlgNo");
+      if (!box || !t || !ok || !no) { res(inputDef ? null : false); return; }
+      t.textContent = text;
+      var useInput = !!inputDef;
+      if (wrap) wrap.hidden = !useInput;
+      if (useInput && v) { v.value = inputDef.value || ""; v.placeholder = inputDef.ph || ""; }
+      ok.textContent = useInput ? tr("doneBtn") : tr("yesBtn");
+      no.textContent = tr("noBtn");
+      function onKey(e) { if (e && e.key === "Escape") close(inputDef ? null : false); }
+      function close(val) {
+        box.hidden = true;
+        ok.onclick = null; no.onclick = null;
+        try { document.removeEventListener("keydown", onKey); } catch (e) {}
+        res(val);
+      }
+      ok.onclick = function () { close(useInput && v ? v.value : true); };
+      no.onclick = function () { close(inputDef ? null : false); };
+      document.addEventListener("keydown", onKey);
+      box.hidden = false;
+      try { (useInput && v ? v : ok).focus(); } catch (e) {}
+    });
+  }
+  function tmaConfirm(text) {
+    if (tg && tg.showConfirm) {
+      return new Promise(function (res) {
+        try { tg.showConfirm(text, res); } catch (e) { res(false); }
+      });
+    }
+    return tmaDialog(text, null);
+  }
+  function tmaPrompt(text, def) {
+    return tmaDialog(text, { value: def || "" });
+  }
   async function farm(action) {
     if (action === "stop") {
       var ok = false;
       try {
-        if (tg && tg.showConfirm) ok = await new Promise(function (res) {
-          tg.showConfirm(tr("stopAsk"), res);
-        });
-        else ok = window.confirm(tr("stopAsk"));
+        ok = await tmaConfirm(tr("stopAsk"));
       } catch (e) { ok = false; }
       if (!ok) return;
     }
@@ -415,16 +451,13 @@
   async function doExport(fmt) {
     var confirmed = false;
     try {
-      if (tg && tg.showConfirm) confirmed = await new Promise(function (res) {
-        tg.showConfirm(tr("keysAsk"), res);
-      });
-      else confirmed = window.confirm(tr("keysAsk"));
+      confirmed = await tmaConfirm(tr("keysAsk"));
     } catch (e) { confirmed = false; }
     if (!confirmed) return;
     var password = null;
     if (fmt.indexOf("enc-") === 0) {
       try {
-        password = window.prompt(tr("encPass"), "");
+        password = await tmaPrompt(tr("encPass"), "");
       } catch (e) { password = null; }
       if (!password || password.length < 4) { toast(tr("badPass")); return; }
     }
@@ -556,10 +589,7 @@
       (async function () {
         var ok = false;
         try {
-          if (tg && tg.showConfirm) ok = await new Promise(function (res) {
-            tg.showConfirm(tr("dripAsk"), res);
-          });
-          else ok = window.confirm(tr("dripAsk"));
+          ok = await tmaConfirm(tr("dripAsk"));
         } catch (e) { ok = false; }
         if (!ok) return;
         setProgress(true);

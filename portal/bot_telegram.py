@@ -442,13 +442,16 @@ class _ConflictLogFilter(logging.Filter):
         return True
 
 
-async def notify_owner(cfg: PortalConfig, text: str) -> None:
+async def notify_owner(cfg: PortalConfig, text: str, only: int | None = None) -> None:
     """Пуш-алерт владельцу (Telegram). Без токена/разрешённых — тихий no-op.
 
     Рендер через bot_render (п.7 ТЗ), токен вычищен (п.8 ТЗ).
+    only — проверить путь на одном получателе (тест алерта из /admin),
+    не будя весь allowlist.
     """
     if not cfg.telegram_token or not cfg.telegram_allow_ids:
         return
+    targets = [only] if only is not None else list(cfg.telegram_allow_ids)
     try:
         from portal.bot_render import render_alert
     except Exception:  # noqa: BLE001
@@ -456,7 +459,7 @@ async def notify_owner(cfg: PortalConfig, text: str) -> None:
     body = render_alert(text) if render_alert is not None else text
     bot = Bot(token=cfg.telegram_token, default=_BOT_DEFAULTS)
     async with bot:
-        for tg_id in cfg.telegram_allow_ids:
+        for tg_id in targets:
             try:
                 # Алерты слаем plain-text: там могут быть символы типа &, которые
                 # HTML-парсер Telegram не примет.
@@ -2522,12 +2525,12 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                         await call.message.answer(f"[жди {wait}с] Админ — антифлуд.")
                         return
                     try:
-                        await notify_owner(cfg, "Тест алерта из /admin: стенд на связи.")
+                        await notify_owner(cfg, "Тест алерта из /admin: стенд на связи.", only=uid)
                     except Exception:  # noqa: BLE001
                         await call.message.answer("[err] Не удалось отправить алерт.")
                         return
                     logger.info("[AUDIT] admin user=%s action=ping", uid)
-                    await call.message.answer("[ok] Тестовый алерт отправлен.")
+                    await call.message.answer("[ok] Тестовый алерт отправлен (только тебе).")
                     return
                 if data == "admin:allow":
                     ids = ", ".join(f"<code>{i}</code>" for i in cfg.telegram_allow_ids) or "—"

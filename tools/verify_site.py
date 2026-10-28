@@ -138,6 +138,16 @@ def main() -> int:
         check("miniapp: no inline scripts",
               not re.search(r"<script(?![^>]*src=)", mh), "")
 
+    # Нативных диалогов нет нигде в портале: вместо них uiDialog (веб)
+    # и встроенная модалка (мини-апп). window.confirm/prompt/alert —
+    # чужеродный UX, а в Telegram WebView ещё и непредсказуемый.
+    for rel in ("portal/static/app.js", "portal/static/miniapp/app.js"):
+        p = os.path.join(ROOT, *rel.split("/"))
+        if os.path.exists(p):
+            txt = open(p, encoding="utf-8").read()
+            bad = sorted(set(re.findall(r"window\.(?:confirm|prompt|alert)\s*\(", txt)))
+            check(f"no native dialogs in {rel}", not bad, str(bad))
+
     # Шапка/навигация одинаковы везде: те же 4 ссылки, ровно один aria-current.
     navs = {}
     navs_norm = {}

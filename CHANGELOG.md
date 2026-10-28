@@ -16,7 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   остальным — тишина (default-deny). Ни токен, ни ключи, ни секреты
   в панель не выводятся — только флаги наличия. Команда `/admin` видна
   только владельцу (персональный `BotCommandScopeChat`), действия панели
-  пишутся в аудит-лог (`[AUDIT] admin ...`)
+  пишутся в аудит-лог (`[AUDIT] admin ...`), тест алерта летит только
+  запросившему, а не всему allowlist
+- **Мини-апп без нативных диалогов.** `window.confirm`/`prompt` заменены
+  встроенной модалкой (`alertdialog`, Esc, фокус, RU/EN); `verify_site`
+  теперь запрещает нативные попапы и в веб-портале, и в мини-аппе
 - **`verify_site` следит за доками.** Проверка `devdocs: hub indexes all files`
   и `devdocs: README/hub links resolve` — разбитая на `devdocs/` документация
   не сможет тихо сгнить от битой ссылки; плюс `i18n EN has no orphans`

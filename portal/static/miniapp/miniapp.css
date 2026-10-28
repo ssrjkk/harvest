@@ -111,6 +111,24 @@
   * { transition: none !important; }
 }
 .tma-gate { padding: 24px 0; text-align: center; color: var(--y2k-dim); }
+.tma-ovl {
+  position: fixed; inset: 0; z-index: 60;
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px; background: rgba(0, 0, 0, 0.6);
+}
+.tma-ovl[hidden] { display: none; }
+.tma-dlg {
+  width: min(92vw, 340px);
+  background: var(--y2k-panel); color: var(--y2k-ink);
+  border: 2px solid var(--y2k-acid); box-shadow: 4px 4px 0 #000;
+  padding: 14px;
+}
+.tma-dlg p { margin: 0 0 12px; font-size: 13px; }
+.tma-dlg input {
+  width: 100%; box-sizing: border-box; margin-bottom: 12px;
+  background: var(--y2k-inset); color: var(--y2k-ink);
+  border: 2px solid var(--y2k-edge); padding: 8px; font: inherit;
+}
 .tma-toast {
   position: fixed;
   bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
