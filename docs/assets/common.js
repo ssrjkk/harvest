@@ -93,7 +93,7 @@ a4:"ABI, EIP-712 TradeIntent, default gas 300000",
 a5:"wallets/actions_log/nonces/cycle_history, VACUUM, backups",
 a6:"Config → key → DB → RPC → faucet → license, exit code",
 a7:"Local FastAPI pulpit: buttons, WebSocket log, top and history (main.py → G, 127.0.0.1:8080)",
-a_n:"Per-layer detail: §3 of DOCUMENTATION.md in the repo (entry points, portal, configs, Tier-2 for real RPCs/contracts).",
+a_n:"Per-layer detail: devdocs/ in the repo (core, portal, configs, Tier-2 for real RPCs/contracts).",
 s6_h:"Portal & Telegram",s6_sub:"python -m portal brings up aiohttp (web + API) and, if a token is set, the Telegram bot. Secrets come only from env. If the portal is exposed beyond loopback and there's no way to log in, it refuses to start.",
 po_d:"Purpose",po1:"Session signing, min 16 chars",po2:"BotFather token",po3:"Default-deny user_id list",po7:"Owner user_id, /admin panel",po4:"DB master key / web-login PIN",po6:"Farmer DB path / farmer config",
 tg_p:"Start/stop/pause, field and stats, links, CSV/JSON export, buttons under messages, commands: /start, /menu, /status, /monitor, /doctor, /diag, /history, /pnl, /balance, /wallets, /profiles, /export, /network, /pause, /resume, /stop, /faucet, /rpc, /scheduler, /alerts, /admin (owner only), /cmd, /cfg, /check, /ref, /cancel, /help — plus /cmd (ready command), /cfg (ready YAML as file), /check (YAML validation), /ref (reference). Same style as this site: harvest // X sections, [RUN]/[STOP]/[ok] marks, status emoji on the home screen. Values escaped, generic error replies.",
@@ -164,7 +164,7 @@ aria_menu:"Menu",aria_filters:"Field filters",aria_f_all:"All wallets",
 aria_f_i:"Sleeping",aria_f_w:"Working",aria_f_o:"Successful",aria_f_e:"With errors",aria_f_r:"Resting",
 aria_q:"Wallet number",aria_grid:"Wallet grid",aria_mode:"Mode",aria_protabs:"Pro tabs",
 aria_vtext:"Config YAML to validate",
-r_src:"Source of truth — DOCUMENTATION.md (§2–§6) and core/ code. Portal env vars are in 'Portal & Telegram' above."
+r_src:"Source of truth — devdocs/ (§3–§10) and core/ code. Portal env vars are in 'Portal & Telegram' above."
 };
 let lang=_store.get("hv-lang","ru");
 window.hv.lang=()=>lang;

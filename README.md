@@ -128,7 +128,7 @@ health, количество кошельков), старт/стоп/пауза
 
 Секреты — только через env (`PORTAL_SECRET`, `GOOGLE_CLIENT_ID/SECRET`,
 `TELEGRAM_BOT_TOKEN`, `FARMER_MASTER_KEY`, `WALLETS_KEY` и др.) — та же таблица env в
-[§4.1 DOCUMENTATION.md](DOCUMENTATION.md).
+[§4.1 devdocs/portal.md](devdocs/portal.md).
 
 ### Сборка exe
 
@@ -159,13 +159,13 @@ harvest.spec   — спецификация PyInstaller (сборка: build.bat
 publish_dash.py — публикация state.json + шифрованного wallets.enc.json поля в ветку gh-pages
 ```
 
-Архитектура каждого модуля — [§3 DOCUMENTATION.md](DOCUMENTATION.md).
+Архитектура каждого модуля — [§3 devdocs/core.md](devdocs/core.md).
 
 ## Безопасность
 
 Секреты шифруются (AES-256-GCM), запись seed-данных без master-ключа
 запрещена (fail-closed), краснение RPC-URL, license-hub гейт,
-portal default-deny + fail-closed. Подробно — [§6 DOCUMENTATION.md](DOCUMENTATION.md).
+portal default-deny + fail-closed. Подробно — [§6–§10 devdocs/ops.md](devdocs/ops.md).
 
 ## Тесты
 

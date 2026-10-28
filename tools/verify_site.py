@@ -228,6 +228,13 @@ def main() -> int:
         html_keys |= set(re.findall(r'data-i18n(?:-ph|-aria)?="([a-z0-9_]+)"', html))
     missing_en = sorted(html_keys - en_keys)
     check("i18n keys covered by EN", not missing_en, str(missing_en))
+    # Обратная сторона: EN-ключи без data-i18n в HTML — мёртвый словарь,
+    # копипаста и риск рассинхрона RU/EN. Ключ считается ключом только
+    # со строковым значением (двоеточие + кавычка): иначе слова вида
+    # "commands: /start" внутри текстов дают ложных сирот.
+    en_strict = set(re.findall(r"(?:[{,]\s*)([a-z][a-z0-9_]*):[\"']", "{" + m.group(1))) if m else set()
+    orphan_en = sorted(en_strict - html_keys)
+    check("i18n EN has no orphans", not orphan_en, str(orphan_en))
     check("terminal theme wired",
           '"terminal"' in js["common.js"] and "terminal.css" in pages["index.html"]
           and 'data-theme="terminal"' in pages["index.html"], "")

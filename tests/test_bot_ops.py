@@ -17,10 +17,13 @@ class TestParseHelpers(unittest.TestCase):
         """Границы в /ref, на сайте и в доке — одни и те же цифры.
 
         Три витрины одного набора ограничений: разъехались — правим все три.
+        Дока разбита: DOCUMENTATION.md — хаб (§1–2), остальное — devdocs/*.md.
         """
         root = Path(__file__).resolve().parent.parent
         demo = (root / "docs" / "demo.html").read_text(encoding="utf-8")
         doc = (root / "DOCUMENTATION.md").read_text(encoding="utf-8")
+        for part in sorted((root / "devdocs").glob("*.md")):
+            doc += "\n" + part.read_text(encoding="utf-8")
         for token in ("50000", "0.05", "1..1000", "99999", "7 дней"):
             with self.subTest(token=token):
                 self.assertIn(token, ops.REF_TEXT)
