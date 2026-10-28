@@ -496,10 +496,10 @@ BOT_COMMANDS_RU: list[tuple[str, str]] = [
 ]
 
 
-async def setup_bot_commands(bot: Bot) -> None:
+async def setup_bot_commands(bot: Bot, cfg: PortalConfig | None = None) -> None:
     """setMyCommands + описание (п.7 ТЗ). Best-effort, без падения старта."""
     try:
-        from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats
+        from aiogram.types import BotCommand, BotCommandScopeAllPrivateChats, BotCommandScopeChat
 
         from portal.bot_render import redact_token
 
@@ -508,6 +508,15 @@ async def setup_bot_commands(bot: Bot) -> None:
             await bot.set_my_commands(commands, scope=BotCommandScopeAllPrivateChats())
         except Exception:  # noqa: BLE001
             logger.warning("setMyCommands не удался", exc_info=True)
+        # /admin — только владельцу, персональным скопом (остальные команду
+        # не видят даже в списке). Без владельца — молча пропускаем.
+        owner_id = getattr(cfg, "telegram_owner_id", 0) if cfg is not None else 0
+        if owner_id:
+            owner_cmds = commands + [BotCommand(command="admin", description="Панель владельца")]
+            try:
+                await bot.set_my_commands(owner_cmds, scope=BotCommandScopeChat(chat_id=owner_id))
+            except Exception:  # noqa: BLE001
+                logger.warning("setMyCommands для владельца не удался", exc_info=True)
         for text, method in (
             ("harvest PORTAL — живой стенд: прогоны, конструкторы, экспорт.",
              "set_my_description"),
@@ -2151,8 +2160,10 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
             await message.answer(_bot_ops.REF_TEXT, parse_mode=ParseMode.HTML)
         elif text == "/admin":
             # Панель владельца: остальным — тишина (default-deny, как _allowed).
-            if not cfg.is_owner(message.from_user.id if message.from_user else None):
+            uid = message.from_user.id if message.from_user else None
+            if not cfg.is_owner(uid):
                 return
+            logger.info("[AUDIT] admin user=%s action=open", uid)
             await message.answer(
                 await _admin_home_text(cfg, daemon),
                 parse_mode=ParseMode.HTML,
@@ -2515,6 +2526,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                     except Exception:  # noqa: BLE001
                         await call.message.answer("[err] Не удалось отправить алерт.")
                         return
+                    logger.info("[AUDIT] admin user=%s action=ping", uid)
                     await call.message.answer("[ok] Тестовый алерт отправлен.")
                     return
                 if data == "admin:allow":
@@ -2576,7 +2588,7 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
     monitor = LiveMonitor(bot, default_tg, daemon)
     dp = build_dispatcher(cfg, daemon, monitor)
     logger.info("Telegram-бот запущен (long-polling)")
-    await setup_bot_commands(bot)
+    await setup_bot_commands(bot, cfg)
     # При каждом запуске шлём владельцу актуальный адрес портала,
     # чтобы смена адреса туннеля не терялась.
     if cfg.public_base_url:

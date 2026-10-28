@@ -18,17 +18,24 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt -r requirements-portal.txt -r requirements-dev.txt
+
+      - name: Lockfile freshness
+        run: python tools/make_lock.py --check
 
       - name: Linter
         run: python -m ruff check --select=E,F,W --target-version=py314 --line-length=120 .
@@ -45,15 +52,17 @@ jobs:
         # PYSEC-2026-3552/-3553).
         run: python -m pip_audit --strict -r requirements.txt -r requirements-portal.txt
 
-      - name: Tests (full suite + 100% portal coverage)
+      # Один полный прогон, два строгих гейта по отчёту (раньше сьют
+      # гонялся дважды целиком). Источник измерения — тот же .coveragerc.
+      - name: Tests (full suite)
         run: >
           python -m pytest -q
-          --cov=portal --cov-report=term
+          --cov=portal --cov=core
+          --cov-report=xml
           --cov-config=.coveragerc
-          --cov-fail-under=100
 
-      - name: Core coverage (100%)
-        run: >
-          python -m pytest -q
-          --cov=core --cov-report=term-missing
-          --cov-fail-under=100
+      - name: Portal coverage gate (100%)
+        run: python -m coverage report --include="portal/*" --fail-under=100
+
+      - name: Core coverage gate (100%)
+        run: python -m coverage report --include="core/*" --fail-under=100

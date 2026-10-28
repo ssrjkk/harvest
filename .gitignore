@@ -100,3 +100,4 @@ pnl_report*.html
 *_pnl.html
 
 docs/screenshots/matrix/
+coverage.xml

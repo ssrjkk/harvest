@@ -1242,6 +1242,53 @@ class TestAdminPanel(unittest.IsolatedAsyncioTestCase):
             await dp.callback_query.handlers[0].callback(call)
             self.assertTrue(any("[err]" in a[0][0] for a in call.message.answers))
 
+    async def test_admin_audit_logged(self):
+        dp = build_dispatcher(self._owner_cfg(202), _NetDaemon())
+        msg = _M(uid=202, text="/admin")
+        with self.assertLogs("portal.bot_telegram", level="INFO") as cm:
+            await dp.message.handlers[1].callback(msg)
+        self.assertTrue(any("[AUDIT] admin user=202 action=open" in line for line in cm.output))
+
+    async def test_setup_owner_scope(self):
+        import portal.bot_telegram as bt
+        from aiogram.types import BotCommandScopeChat
+
+        cfg = _cfg()
+        cfg.telegram_owner_id = 123
+        bot = mock.Mock()
+        bot.set_my_commands = mock.AsyncMock()
+        bot.set_my_description = mock.AsyncMock()
+        bot.set_my_short_description = mock.AsyncMock()
+        await bt.setup_bot_commands(bot, cfg)
+        self.assertEqual(bot.set_my_commands.await_count, 2)
+        _args, kwargs = bot.set_my_commands.await_args_list[1]
+        self.assertIsInstance(kwargs["scope"], BotCommandScopeChat)
+        self.assertEqual(kwargs["scope"].chat_id, 123)
+        cmds = kwargs["commands"] if "commands" in kwargs else bot.set_my_commands.await_args_list[1][0][0]
+        self.assertIn("admin", [c.command for c in cmds])
+
+    async def test_setup_no_owner_single_scope(self):
+        import portal.bot_telegram as bt
+
+        bot = mock.Mock()
+        bot.set_my_commands = mock.AsyncMock()
+        bot.set_my_description = mock.AsyncMock()
+        bot.set_my_short_description = mock.AsyncMock()
+        await bt.setup_bot_commands(bot, None)
+        self.assertEqual(bot.set_my_commands.await_count, 1)
+
+    async def test_setup_owner_scope_failure_swallowed(self):
+        import portal.bot_telegram as bt
+
+        cfg = _cfg()
+        cfg.telegram_owner_id = 123
+        bot = mock.Mock()
+        bot.set_my_commands = mock.AsyncMock(side_effect=[None, RuntimeError("x")])
+        bot.set_my_description = mock.AsyncMock()
+        bot.set_my_short_description = mock.AsyncMock()
+        await bt.setup_bot_commands(bot, cfg)  # не падает
+        self.assertEqual(bot.set_my_commands.await_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
