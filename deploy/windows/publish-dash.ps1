@@ -5,7 +5,10 @@
   Расписание — Windows Task Scheduler, задача HarvestDashPublish, каждые
   30 минут (регистрация — в README.md рядом). Руками: powershell -ExecutionPolicy Bypass -File deploy\windows\publish-dash.ps1
 
-  Требуется GITHUB_TOKEN в окружении (ghp_* с записью в репозиторий).
+  Требуется GITHUB_TOKEN в окружении (ghp_* с записью в репозиторий):
+  это страховочный ключ — сам push идёт через обычный git-доступ к origin
+  (credential helper / gh auth / User-переменная GH_TOKEN). Если ключа нет,
+  задача падает сразу с понятной ошибкой, а не с cryptic-128 от git.
   Лог дописывается в publish-dash.log рядом с publish_dash.py (в .gitignore).
 #>
 $ErrorActionPreference = "Stop"

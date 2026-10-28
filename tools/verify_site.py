@@ -170,6 +170,18 @@ def main() -> int:
                 broken.append(r)
         check(f"{name}: internal links resolve", not broken, str(broken))
 
+    # devdocs/: хаб ссылается на всё, README — на существующие файлы.
+    # Иначе разбитая документация тихо гниёт (файл есть, а из оглавления
+    # на него не попасть, или ссылка ведёт в никуда).
+    dev_dir = os.path.join(ROOT, "devdocs")
+    dev_files = sorted(f for f in os.listdir(dev_dir) if f.endswith(".md")) if os.path.isdir(dev_dir) else []
+    hub = open(os.path.join(ROOT, "DOCUMENTATION.md"), encoding="utf-8").read()
+    missing_hub = [f for f in dev_files if f"devdocs/{f}" not in hub]
+    check("devdocs: hub indexes all files", not missing_hub, str(missing_hub))
+    readme = open(os.path.join(ROOT, "README.md"), encoding="utf-8").read()
+    bad_refs = [m for m in set(re.findall(r"devdocs/([A-Za-z0-9_.-]+\.md)", readme + hub)) if m not in dev_files]
+    check("devdocs: README/hub links resolve", not bad_refs, str(bad_refs))
+
     # Старые якоря ленты редиректятся на существующие страницы.
     m = re.search(r"var map=\{.*?\};", pages["index.html"], re.S)
     targets = re.findall(r'"([a-z]+\.html)"', m.group(0)) if m else []

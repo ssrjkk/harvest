@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   в панель не выводятся — только флаги наличия. Команда `/admin` видна
   только владельцу (персональный `BotCommandScopeChat`), действия панели
   пишутся в аудит-лог (`[AUDIT] admin ...`)
+- **`verify_site` следит за доками.** Проверка `devdocs: hub indexes all files`
+  и `devdocs: README/hub links resolve` — разбитая на `devdocs/` документация
+  не сможет тихо сгнить от битой ссылки; плюс `i18n EN has no orphans`
+  против мёртвых ключей локализации
 - **Паблиш витрины сам жалуется.** `publish_dash`: fail-fast проверка
   `git ls-remote` до тяжёлого `collect()`, счётчик подряд идущих провалов
   (`.dash-publish-fails`, в `.gitignore`) и один телеграм-алерт владельцу

@@ -8,7 +8,9 @@ state.json в изолированной ветке gh-pages, где лежит 
 
 Запуск по расписанию (Windows Task Scheduler, задача HarvestDashPublish) каждые 30 минут:
     python publish_dash.py
-Для push нужен токен: set GITHUB_TOKEN=ghp_...
+Для push используется обычный git-доступ к origin (credential helper /
+gh auth): подойдёт gh auth login либо User-переменная GH_TOKEN.
+Быстрая проверка доступа: git ls-remote origin HEAD.
 
 exit 0 — опубликовано со свежим блобом кошельков; 2 — опубликовано без него
 (нет WALLETS_KEY, sync не удался или кошельков 0), старый wallets.enc.json
