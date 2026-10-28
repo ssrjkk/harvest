@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Мини-апп без нативных диалогов.** `window.confirm`/`prompt` заменены
   встроенной модалкой (`alertdialog`, Esc, фокус, RU/EN); `verify_site`
   теперь запрещает нативные попапы и в веб-портале, и в мини-аппе
+- **Передеплой портала одной командой.** `deploy/windows/portal-run.ps1`:
+  веб + бот из git-клона, секреты только из User-env (в файлы/репо — never),
+  pid-guard против второго инстанса (антагонист `409 Conflict`), логи
+  `portal.log` с ротацией; дока — `deploy/windows/README.md` и `devdocs/ops.md`
 - **`verify_site` следит за доками.** Проверка `devdocs: hub indexes all files`
   и `devdocs: README/hub links resolve` — разбитая на `devdocs/` документация
   не сможет тихо сгнить от битой ссылки; плюс `i18n EN has no orphans`
@@ -546,6 +550,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   висит и на root-логгере; `botforge` на `DefaultBotProperties`
 - Свободный ввод (группы, задачи планировщика) через `shield.sanitize`
   → 400; `tg/init` uniform-401; OAuth-куки стираются с `secure`
+- **XSS через i18n-рендер (`docs/assets/common.js`).** 3 ключа (`h1`, `fe_pub`,
+  `t3`) содержали HTML-разметку, которая вливалась через `innerHTML` → CodeQL
+  `js/xss-through-dom` high. Разметка вынесена в статичный HTML (разделённые
+  `<span data-i18n>` + `<code>` / `<br>` / `<em>`), рендер переведён на
+  `textContent`, CodeQL-алерт #54 закрыт
 
 ## [2.3.0] - 2026-10-16
 
