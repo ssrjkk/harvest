@@ -473,6 +473,21 @@ class TestAntiflood(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(bt._flood_ok(777001, "wallets")[0])
         self.assertTrue(bt._flood_ok(777002, "export")[0])
 
+    def test_first_call_allowed_on_fresh_boot(self):
+        # Регрессия флапающего CI-гейта: на машине с аптаймом меньше
+        # интервала (свежий раннер, monotonic() ~ секунды) первый вызов
+        # душился: now - 0.0 < interval давал wait > 0. Теперь нет
+        # записи — всегда разрешено, повтор сразу после — запрет.
+        import portal.bot_telegram as bt
+
+        bt._flood_last.clear()
+        with mock.patch.object(bt.time, "monotonic", return_value=5.0):
+            ok, _ = bt._flood_ok(888001, "export")
+            self.assertTrue(ok)
+            ok, wait = bt._flood_ok(888001, "export")
+            self.assertFalse(ok)
+            self.assertGreater(wait, 0)
+
     async def test_export_command_flooded(self):
         import time
 

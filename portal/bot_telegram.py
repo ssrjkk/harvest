@@ -305,10 +305,19 @@ def _flood_interval(op: str) -> float:
 
 
 def _flood_ok(tg_id: int | None, op: str) -> tuple[bool, int]:
-    """True + 0, если операцию можно выполнять, иначе False + секунды ожидания."""
+    """True + 0, если операцию можно выполнять, иначе False + секунды ожидания.
+
+    Нет записи — первый вызов всегда разрешён. Иначе на машине с аптаймом
+    меньше интервала (свежий CI-раннер: monotonic() < 60) душился бы вообще
+    любой первый вызов: now - 0.0 < interval давал wait > 0.
+    """
     now = time.monotonic()
     key = (tg_id or 0, op)
-    wait = int(_flood_interval(op) - (now - _flood_last.get(key, 0.0)))
+    last = _flood_last.get(key)
+    if last is None:
+        _flood_last[key] = now
+        return True, 0
+    wait = int(_flood_interval(op) - (now - last))
     if wait > 0:
         return False, wait
     _flood_last[key] = now
