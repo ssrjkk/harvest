@@ -255,6 +255,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   где успевала пройти одна; семантика автостопа не изменилась
 
 ### Fixed
+- **Паблиш дашборда: User-env и алерты.** `publish_dash.py` сам подтягивает
+  `WALLETS_KEY`/`FARMER_MASTER_KEY`/`TELEGRAM_*` из User-env (Task Scheduler
+  не всегда их отдаёт) и шлёт алерт владельцу на каждой 3-й неудаче подряд,
+  а не только на первой — витрина больше не протухает молча. Пуш на боевой
+  машине переведён на SSH deploy key (PAT не нужен)
 - **Аудит UX/дизайн: доступность без редизайна.** Нативные `prompt`/`confirm`
   заменены своей модалкой (`uiDialog`: labelled input, Esc/scrim = отмена,
   Enter = OK, фокус-трап, возврат фокуса; 9 мест: задачи/группы/долив);

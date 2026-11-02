@@ -8,8 +8,9 @@ state.json в изолированной ветке gh-pages, где лежит 
 
 Запуск по расписанию (Windows Task Scheduler, задача HarvestDashPublish) каждые 30 минут:
     python publish_dash.py
-Для push используется обычный git-доступ к origin (credential helper /
-gh auth): подойдёт gh auth login либо User-переменная GH_TOKEN.
+Push идёт через origin: на боевой машине — SSH deploy key (алиас
+`github-harvest` в ~/.ssh/config, доступ только к этому репозиторию),
+либо обычные git-креды (gh auth login / User-переменная GH_TOKEN).
 Быстрая проверка доступа: git ls-remote origin HEAD.
 
 exit 0 — опубликовано со свежим блобом кошельков; 2 — опубликовано без него
