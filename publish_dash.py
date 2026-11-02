@@ -84,6 +84,36 @@ def _reset_fails() -> None:
         pass
 
 
+def _should_alert(fails: int) -> bool:
+    """Алерт на каждой третьей неудаче подряд, а не только на первой.
+
+    Иначе единственный алерт (например, при недоступном Telegram) теряется
+    навсегда, и витрина протухает молча.
+    """
+    return fails >= _ALERT_AFTER_FAILS and fails % _ALERT_AFTER_FAILS == 0
+
+
+def _load_user_env(names: tuple[str, ...]) -> None:
+    """Дотянуть User-env (setx) в окружение: Task Scheduler его не всегда отдаёт."""
+    if os.name != "nt":
+        return
+    try:
+        import winreg
+
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+            for name in names:
+                if os.environ.get(name):
+                    continue
+                try:
+                    value, _ = winreg.QueryValueEx(key, name)
+                except OSError:
+                    continue
+                if value:
+                    os.environ[name] = str(value)
+    except OSError:
+        pass
+
+
 def _remote_reachable() -> bool:
     """GitHub доступен (сеть + авторизация) до тяжёлого collect()."""
     try:
@@ -566,13 +596,14 @@ def _blob_from_sync(res: object) -> tuple[dict | None, int]:
 
 
 async def main() -> int:
+    _load_user_env(("WALLETS_KEY", "FARMER_MASTER_KEY", "TELEGRAM_BOT_TOKEN", "TELEGRAM_OWNER_ID"))
     if not Path(DB).exists():
         print(f"БД не найдена: {DB} (путь к БД через PORTAL_DB или дефолт farming_vibevibe.db)")
         return 1
     # Fail-fast до тяжёлого collect(): нет сети/авторизации — нечего собирать.
     if not _remote_reachable():
         print("GitHub недоступен (сеть или токен) — пропускаю паблиш до следующего запуска")
-        if _bump_fails() == _ALERT_AFTER_FAILS:
+        if _should_alert(_bump_fails()):
             await _alert_owner(
                 "harvest publish: GitHub недоступен 3 раза подряд "
                 "(сеть или токен). Витрина протухает — проверь доступ."
@@ -617,7 +648,7 @@ async def main() -> int:
     except Exception as e:  # noqa: BLE001
         # Подробности (в т.ч. про отозванный токен) уже напечатаны выше.
         print(f"публикация не удалась: {e}")
-        if _bump_fails() == _ALERT_AFTER_FAILS:
+        if _should_alert(_bump_fails()):
             await _alert_owner(
                 "harvest publish: 3 провала подряд. Витрина протухает — "
                 "смотри publish-dash.log (сеть, токен, права на gh-pages)."

@@ -622,6 +622,13 @@ class TestFailStreakAndAlert(unittest.TestCase):
             else:
                 os.environ["TELEGRAM_OWNER_ID"] = old_owner
 
+    def test_should_alert_every_third_failure(self):
+        self.assertFalse(publish_dash._should_alert(1))
+        self.assertFalse(publish_dash._should_alert(2))
+        self.assertTrue(publish_dash._should_alert(3))
+        self.assertFalse(publish_dash._should_alert(4))
+        self.assertTrue(publish_dash._should_alert(6))
+
     def test_remote_reachable_true_and_false(self):
         from unittest import mock
 
