@@ -564,12 +564,12 @@ def _report_push_failure(exc: subprocess.CalledProcessError) -> None:
     """
     err = (getattr(exc, "stderr", "") or "").lower()
     detail = (getattr(exc, "stderr", "") or "")[:200].replace("\n", " ")
-    if "authentication failed" in err or "invalid username or token" in err or "403" in err:
+    if "authentication failed" in err or "invalid username or token" in err or "403" in err or "permission denied" in err or "publickey" in err:
         print(
-            "ОТКАЗ АВТОРИЗАЦИИ GitHub: токен недействителен или отозван. "
+            "ОТКАЗ АВТОРИЗАЦИИ GitHub (SSH/deploy key). "
+            "Проверь доступ: ssh -T git@github-harvest (или ssh -T git@github.com). "
+            "Убедись, что SSH-ключ добавлен с правами Read/write в Settings → Deploy keys. "
             "Публикация невозможна, пока не восстановлен доступ. "
-            "Проверь: 'gh auth status' (или 'D:\\gh.exe auth status'), "
-            "затем 'gh auth login -h github.com'. "
             f"Ответ сервера: {detail}"
         )
     else:
@@ -603,11 +603,11 @@ async def main() -> int:
         return 1
     # Fail-fast до тяжёлого collect(): нет сети/авторизации — нечего собирать.
     if not _remote_reachable():
-        print("GitHub недоступен (сеть или токен) — пропускаю паблиш до следующего запуска")
+        print("GitHub недоступен (сеть/SSH) — пропускаю паблиш до следующего запуска")
         if _should_alert(_bump_fails()):
             await _alert_owner(
                 "harvest publish: GitHub недоступен 3 раза подряд "
-                "(сеть или токен). Витрина протухает — проверь доступ."
+                "(сеть/SSH). Витрина протухает — проверь доступ к репозиторию."
             )
         return 1
     try:
@@ -647,12 +647,12 @@ async def main() -> int:
     try:
         publish(state, blob)
     except Exception as e:  # noqa: BLE001
-        # Подробности (в т.ч. про отозванный токен) уже напечатаны выше.
+        # Подробности об ошибке авторизации уже напечатаны выше.
         print(f"публикация не удалась: {e}")
         if _should_alert(_bump_fails()):
             await _alert_owner(
                 "harvest publish: 3 провала подряд. Витрина протухает — "
-                "смотри publish-dash.log (сеть, токен, права на gh-pages)."
+                "смотри publish-dash.log (сеть, SSH/deploy-key, права на gh-pages)."
             )
         return 1
     _reset_fails()

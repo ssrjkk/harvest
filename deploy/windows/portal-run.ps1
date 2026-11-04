@@ -22,15 +22,31 @@ $ErrorActionPreference = "Stop"
 
 $Dir = if ($DataDir) { $DataDir } else { Split-Path -Parent $MyInvocation.MyCommand.Path }
 
+# межпроцессный лок старта во избежание гонки с Watchdog
+$startLockPath = Join-Path $Dir ".portal.start.lock"
+$lockStream = $null
+try {
+    $lockStream = [System.IO.File]::Open($startLockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+} catch {
+    Write-Output "Портал уже запускается или уже работает (start-lock)"
+    exit 0
+}
+try { if (Test-Path $startLockPath) { Remove-Item $startLockPath -Force -ErrorAction SilentlyContinue } } catch {}
+
 # повторный запуск: если прошлый процесс ещё жив - не плодить второй инстанс
 # (второй polling ловит 409 Conflict и глушит оба)
 $pidFile = Join-Path $Dir "portal.pid"
 if (Test-Path $pidFile) {
     $old = 0
     [void][int]::TryParse([string](Get-Content $pidFile -ErrorAction SilentlyContinue), [ref]$old)
-    if ($old -and (Get-Process -Id $old -ErrorAction SilentlyContinue)) {
-        Write-Output "Портал уже работает: pid=$old"
-        exit 0
+    if ($old) {
+        $pold = Get-Process -Id $old -ErrorAction SilentlyContinue
+        if ($pold -and $pold.ProcessName -eq "python") {
+            Write-Output "Портал уже работает: pid=$old"
+            try { if ($lockStream) { $lockStream.Close() } } catch {}
+            exit 0
+        }
+        # stale PID-файл — игнорируем, запустим новый инстанс
     }
 }
 
@@ -56,6 +72,12 @@ $psi = @{
     RedirectStandardOutput = (Join-Path $Dir "portal.out.log")
     PassThru               = $true
 }
-$p = Start-Process @psi
-Set-Content -Path $pidFile -Value $p.Id -Encoding ascii
-Write-Output ("Портал запущен: pid=" + $p.Id)
+try {
+    $p = Start-Process @psi
+    Set-Content -Path $pidFile -Value $p.Id -Encoding ascii
+    Write-Output ("Портал запущен: pid=" + $p.Id)
+}
+finally {
+    try { if ($lockStream) { $lockStream.Close() } } catch {}
+    try { if (Test-Path $startLockPath) { Remove-Item $startLockPath -Force -ErrorAction SilentlyContinue } } catch {}
+}

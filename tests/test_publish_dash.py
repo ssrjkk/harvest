@@ -351,8 +351,8 @@ class TestPushFailureDiagnosis(unittest.TestCase):
                 self._exc("remote: Invalid username or token.\nfatal: Authentication failed")
             )
         out = buf.getvalue()
-        self.assertIn("ОТКАЗ АВТОРИЗАЦИИ", out)
-        self.assertIn("gh auth login", out)
+        self.assertIn("SSH/deploy key", out)
+        self.assertIn("git@github-harvest", out)
 
     def test_other_failure_plain(self):
         import contextlib

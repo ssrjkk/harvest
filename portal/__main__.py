@@ -179,10 +179,18 @@ async def main() -> None:
 
     app = create_app(cfg, daemon)
     runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, cfg.host, cfg.port)
-    await site.start()
-    logger.info("Веб/API: http://%s:%s", cfg.host, cfg.port)
+    try:
+        await runner.setup()
+        site = web.TCPSite(runner, cfg.host, cfg.port)
+        await site.start()
+        logger.info("Веб/API: http://%s:%s", cfg.host, cfg.port)
+    except OSError as exc:
+        logger.exception("Не удалось занять порт %s:%s", cfg.host, cfg.port)
+        raise SystemExit(
+            f"Порт {cfg.host}:{cfg.port} занят. "
+            "Возможно запущен другой экземпляр портала или core/web_gui.py (оба используют 8080). "
+            f"Проверь процессы. Ошибка: {exc}"
+        ) from None
 
     bot_task: asyncio.Task | None = None
     guard_task: asyncio.Task | None = None
