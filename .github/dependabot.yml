@@ -6,6 +6,10 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    # aiogram 3.31.0 жёстко капает pydantic<2.14 (см. requirements.txt) —
+    # любые бампы pydantic неразрешимы, пока aiogram не поднимет кап.
+    ignore:
+      - dependency-name: "pydantic"
     open-pull-requests-limit: 3
     labels:
       - "dependencies"
