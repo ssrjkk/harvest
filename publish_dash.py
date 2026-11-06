@@ -564,7 +564,13 @@ def _report_push_failure(exc: subprocess.CalledProcessError) -> None:
     """
     err = (getattr(exc, "stderr", "") or "").lower()
     detail = (getattr(exc, "stderr", "") or "")[:200].replace("\n", " ")
-    if "authentication failed" in err or "invalid username or token" in err or "403" in err or "permission denied" in err or "publickey" in err:
+    if (
+        "authentication failed" in err
+        or "invalid username or token" in err
+        or "403" in err
+        or "permission denied" in err
+        or "publickey" in err
+    ):
         print(
             "ОТКАЗ АВТОРИЗАЦИИ GitHub (SSH/deploy key). "
             "Проверь доступ: ssh -T git@github-harvest (или ssh -T git@github.com). "
