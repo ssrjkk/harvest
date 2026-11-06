@@ -8,9 +8,9 @@ aiosqlite>=0.22.1,<1
 cryptography>=50.0.2,<51
 rich>=15.0.0,<16
 # PostgreSQL backend (опционально): используйте при database.path = postgres://... 
-asyncpg>=0.30.0,<1
+asyncpg>=0.32.0,<1
 # Веб-GUI фермы (core/web_gui.py: FastAPI + uvicorn)
-fastapi>=0.110.0,<1
+fastapi>=0.162.0,<1
 uvicorn>=0.30.0,<1
 # pydantic < 2.14 — кап aiogram 3.31.0 (поднимем, когда aiogram разрешит)
 pydantic>=2.4.1,<2.14
