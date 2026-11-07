@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DEFAULT = ROOT / "docs" / "screenshots"
@@ -161,9 +162,23 @@ def _matrix(browser, args, out: Path) -> int:
                     page.screenshot(path=str(mdir / name))
                 for pg in SITE_PAGES:
                     errors.clear()
+                    fixture_field = pg == "field.html" and urlsplit(args.url).hostname in ("localhost", "127.0.0.1")
+                    if fixture_field:
+                        page.route("**/state.json?*",  lambda route: route.fulfill(json={
+                            "wallet_count": 40, "wallet_cells": {"n": 40, "cells": "i" * 40}, "running": False,
+                        }))
                     page.goto(_url(args.url, pg), wait_until=WAIT_UNTIL)
                     page.wait_for_selector(PAGE_READY, timeout=READY_TIMEOUT)
                     page.wait_for_timeout(250)
+                    if fixture_field:
+                        page.wait_for_selector("#fieldGrid .cell", timeout=READY_TIMEOUT)
+                        for _ in range(2):
+                            page.locator("#fxZoom").click()
+                            field_metrics = page.evaluate(METRICS)
+                            if field_metrics["scrollW"] > field_metrics["innerW"] + 1:
+                                fails += 1
+                                print(f"FAIL: {name} field zoom scroll={field_metrics['scrollW']}/{field_metrics['innerW']}")
+                        page.unroute("**/state.json?*")
                     metrics = page.evaluate(METRICS)
                     ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
                     ok_burger = (metrics["burger"] != "none") if width <= 900 else True
