@@ -177,7 +177,10 @@ def _matrix(browser, args, out: Path) -> int:
                             field_metrics = page.evaluate(METRICS)
                             if field_metrics["scrollW"] > field_metrics["innerW"] + 1:
                                 fails += 1
-                                print(f"FAIL: {name} field zoom scroll={field_metrics['scrollW']}/{field_metrics['innerW']}")
+                                print(
+                                    f"FAIL: {name} field zoom "
+                                    f"scroll={field_metrics['scrollW']}/{field_metrics['innerW']}"
+                                )
                         page.unroute("**/state.json?*")
                     metrics = page.evaluate(METRICS)
                     ok_scroll = metrics["scrollW"] <= metrics["innerW"] + 1
