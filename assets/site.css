@@ -255,6 +255,7 @@ input[type=range]{width:100%;accent-color:var(--gold);height:28px}
 
 /* field grid (wallet cells) */
 .field-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(16px,1fr));gap:3px;margin:14px 0 8px;max-width:900px}
+.field-grid.zoom{grid-template-columns:repeat(auto-fill,minmax(36px,1fr))}
 .field-grid.zoom .cell{min-width:36px;min-height:24px;aspect-ratio:auto;font-size:10px;font-weight:900;color:#000;display:flex;align-items:center;justify-content:center}
 .cell{aspect-ratio:1;background:var(--line);border:1px solid var(--line2);min-width:14px;cursor:pointer}
 .cell.c-i{background:var(--line)}
