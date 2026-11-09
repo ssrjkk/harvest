@@ -1,6 +1,6 @@
 # harvest — зависимости для разработки и CI (тесты, линтер).
 # Установка: pip install -r requirements-dev.txt
-pytest>=8.0,<9
+pytest>=9.2.0,<10
 pytest-cov>=7.1.0,<8
 pytest-asyncio>=1.4.1.post1,<2
 httpx>=0.28.1,<1
