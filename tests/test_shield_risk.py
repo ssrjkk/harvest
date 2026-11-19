@@ -2,7 +2,9 @@
 
 import asyncio
 import sys
+import time
 import unittest
+from collections import deque
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -53,6 +55,16 @@ class TestRiskMath(unittest.IsolatedAsyncioTestCase):
             v, _rs = await eng.observe("m", Observation(payload_hash="same"))
         self.assertEqual(v.level, HIGH)
         self.assertTrue(v.shadowban)
+
+    async def test_metronome_signal_does_not_depend_on_load(self):
+        # cv меряется по реальным интервалам: в тесте их задаём сами, иначе
+        # ветка то срабатывает, то нет (загруженная машина съедает 100% coverage).
+        eng = RiskEngine(_cfg())
+        st = eng._state("metro")
+        st.intervals = deque([1000.0] * eng.cfg.variance_window, maxlen=32)
+        st.last_ts = time.monotonic() - 1000.0
+        _v, reasons = await eng.observe("metro")
+        self.assertTrue(any(r.startswith("low_variance") for r in reasons), reasons)
 
     async def test_shadowban_can_be_disabled(self):
         eng = RiskEngine(_cfg(shadowban_enabled=False))

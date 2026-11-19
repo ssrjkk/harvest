@@ -14,7 +14,7 @@ from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 from yarl import URL
 
-from portal import api, auth
+from portal import api, auth, bot_health
 from portal.api import create_app
 from portal.config import PortalConfig
 from portal.farm import FarmDaemon
@@ -263,6 +263,25 @@ class TestAuthFlow(PortalApiTest, unittest.IsolatedAsyncioTestCase):
             body = await stats.json()
             self.assertTrue(body["running"])
             self.assertEqual(body["pool"]["actions"], 7)
+
+    async def test_stats_exposes_bot_liveness(self):
+        # /doctor читает глухой бот сам, поэтому живость должна быть доступна снаружи.
+        bot_health.reset()
+        self.addCleanup(bot_health.reset)
+        bot_health.note_start()
+        bot_health.note_poll()
+        bot_health.note_poll()
+        client, _app = await self._client()
+        async with client:
+            login = await client.post("/api/login/password", json={"password": "k" * 64})
+            self.assertEqual(login.status, 200)
+            body = await (await client.get("/api/stats")).json()
+            self.assertTrue(body["bot"]["polling_alive"])
+            self.assertEqual(body["bot"]["polls"], 2)
+            self.assertIsNone(body["bot"]["fatal"])
+            self.assertIn("last_poll_age_s", body["bot"])
+            # Прошёл только бот-ключ, ферма осталась как есть.
+            self.assertTrue(body["running"])
 
     async def test_farm_action_requires_auth(self):
         client, _app = await self._client()

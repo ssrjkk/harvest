@@ -497,6 +497,26 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(created)
         self.assertTrue(any("Нет ни Google, ни пароля" in m for m in cm.output))
 
+    async def test_main_bots_are_supervised_and_warded(self):
+        # Сбой сети на старте поллинга иначе убивает бота молча: супервизор + сторож.
+        self._set_env("PORTAL_SECRET", "s" * 32)
+        cfg = self._cfg(telegram_token="tk-secret", telegram_enabled=True, master_key="", google_enabled=False)
+        started: list[str] = []
+        _orig_create = asyncio.create_task
+
+        async def _spy_run_bot(cfg_, daemon_):
+            pass
+
+        def _spy_create(coro, *args, **kwargs):
+            started.append(getattr(coro, "__qualname__", repr(coro)))
+            coro.close()
+            return _orig_create(_async_result()(), *args, **kwargs)
+
+        with self._patch_main(cfg, run_bot=_spy_run_bot, create_task=_spy_create):
+            await portal_main()
+        self.assertTrue(any("supervise" in s for s in started), started)
+        self.assertTrue(any("monitor" in s for s in started), started)
+
     async def test_main_signal_handler_sets_keep_alive(self):
         self._set_env("PORTAL_SECRET", "s" * 32)
         cfg = self._cfg(master_key="k" * 64, telegram_enabled=False)
@@ -553,6 +573,20 @@ class TestMain(unittest.IsolatedAsyncioTestCase):
         await _graceful_shutdown(runner, daemon, bot_task, guard_task)
         self.assertTrue(bot_task.cancelled())
         self.assertTrue(guard_task.cancelled())
+        runner.cleanup.assert_awaited_once()
+        daemon.close.assert_awaited_once()
+
+    async def test_graceful_shutdown_cancels_monitor_task(self):
+        runner = mock.Mock()
+        runner.cleanup = mock.AsyncMock()
+        daemon = mock.Mock()
+        daemon.close = mock.AsyncMock()
+        bot_task = asyncio.create_task(asyncio.sleep(60))
+        monitor_task = asyncio.create_task(asyncio.sleep(60))
+        await asyncio.sleep(0)
+        await _graceful_shutdown(runner, daemon, bot_task, None, monitor_task)
+        self.assertTrue(bot_task.cancelled())
+        self.assertTrue(monitor_task.cancelled())
         runner.cleanup.assert_awaited_once()
         daemon.close.assert_awaited_once()
 

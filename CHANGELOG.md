@@ -255,6 +255,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   где успевала пройти одна; семантика автостопа не изменилась
 
 ### Fixed
+- **Глухой бот больше не живёт молча.** Сетевой сбой ровно на старте поллинга
+  выносило из `dp.start_polling`: aiogram делает `await bot.me()` до входа в
+  собственный retry-цикл (`aiogram/dispatcher/dispatcher.py:378`), задача бота
+  умирала, портал продолжал отвечать, а `/doctor` — команда того же мёртвого
+  бота. Новый `portal/bot_health.py`: супервизор `supervise()` перепускает бота
+  с экспоненциальным backoff и джиттером (ретраи прекращает только отказ токена),
+  `observe_polling()` засчитывает живость по успешным `getUpdates` (отправка
+  сообщений работает и при мёртвом поллинге), `monitor()` будит владельца одним
+  алертом после `PORTAL_BOT_SILENT_AFTER_S` молчания и вторым — на возврат.
+  Честный статус виден снаружи: `bot` в `/api/stats` и строка `bot:` в `/doctor`
+  (`bot_status_line()`). Тюнеры: `PORTAL_BOT_BACKOFF_BASE_S`/`_CAP_S`,
+  `PORTAL_BOT_FRESH_S`, `PORTAL_BOT_SILENT_AFTER_S`
 - **Паблиш витрины: git находится сам, отказы различаются.** Задача
   `HarvestDashPublish` стартовала с PATH, где остался мёртвый `D:\Git\cmd`,
   поэтому `git` не находилось вовсе, а `publish_dash.py` глотал

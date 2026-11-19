@@ -32,6 +32,11 @@ db/farm_config/links):
 | `PORTAL_ALLOW_PASSWORD_HTTP=1` | пароль по HTTP (только dev) |
 | `PORTAL_COOKIE_SECURE` | Secure-кука (авто при https base_url) |
 | `PORTAL_TRUST_PROXY=1` | доверять X-Forwarded-For/Proto |
+| `PORTAL_WATCH_INTERVAL_S` | тик сторожа фермы (`guard.Watchdog`), default 300 |
+| `PORTAL_HEARTBEAT_HOURS` | период «пульса» владельцу от того же сторожа (default 0 — выключен) |
+| `PORTAL_BOT_BACKOFF_BASE_S` / `PORTAL_BOT_BACKOFF_CAP_S` | пауза перезапуска бота: ступень exponential backoff и потолок уже после джиттера (default 2 / 300 с) |
+| `PORTAL_BOT_FRESH_S` | после какого возраста `getUpdates` поллинг считается мёртвым (default 120 с при long-poll ~30 с) |
+| `PORTAL_BOT_SILENT_AFTER_S` | молчание, после которого сторож будит владельца одним алертом (default 900 с) |
 
 Fail-closed при старте: bind не на loopback без единого способа входа
 (Google/пароль/Telegram) → отказ запуска. `validate_master_key` —
@@ -173,7 +178,17 @@ uniform-401: неверная подпись и чужой allowlist нераз�
   текстом — с подтверждением, protect, удаление 60с, кулдаун 1/мин, аудит),
   адреса без ключей — сокращённые. Токен чистится из логов
   (`bot<id>:<secret>` → `bot<TOKEN>`), 409 — backoff + одно уведомление,
-  `bot: CONFLICT|ok` в /doctor, setMyCommands RU.
+  `bot: CONFLICT|ok · <живость поллинга>` в /doctor (`bot_status_line()`),
+  setMyCommands RU.
+- Живость бота (`portal/bot_health.py`): aiogram ретраит только свой внутренний
+  цикл, а отказ сети на `await bot.me()` (`dispatcher.py:378`, до входа в retry)
+  выносит исключение из `start_polling` — задача бота умирала, пока портал
+  делал вид, что всё в порядке. Поэтому супервизор `supervise()` перепускает
+  бота с backoff (прекращает только отказ токена), `observe_polling()` считает
+  живость по успешным `getUpdates` (отправка сообщений работает и при глухом
+  поллинге), `monitor()` шлёт владельцу один алерт о молчании и один о
+  возврате, а срез живости доступен снаружи: `bot` в `/api/stats` и строка
+  в `/doctor` — сам мёртвый бот на `/doctor` отвечать не может.
 - Команды: `/start` — главное меню, `/menu` — все разделы, `/status` — живое поле,
   `/monitor` — мониторинг с алертом остановки, `/doctor` (+ `/diag` подробно),
   `/history`, `/balance`, `/pnl`, `/network`, `/profiles`, `/scheduler`,

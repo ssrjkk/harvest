@@ -20,7 +20,7 @@ from pathlib import Path
 from aiohttp import web
 
 from core.logger import logsafe
-from portal import auth
+from portal import auth, bot_health
 from portal.config import PortalConfig, load_links
 from portal.farm import FarmDaemon
 from portal.shield import Shield, idempotent, shield_middleware
@@ -548,9 +548,11 @@ async def api_links(request: web.Request) -> web.Response:
 
 
 async def api_stats(request: web.Request) -> web.Response:
+    """Живой срез фермы плюс честный ответ про Telegram-бота."""
     _require_user(request)
     daemon: FarmDaemon = request.app[KEY_DAEMON]
-    return _json(await daemon.statistics())
+    data = await daemon.statistics()
+    return _json({**data, "bot": bot_health.status()})
 
 
 async def api_farm_action(request: web.Request) -> web.Response:

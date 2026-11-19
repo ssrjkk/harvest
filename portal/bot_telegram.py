@@ -40,6 +40,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
+from portal import bot_health
 from portal import bot_ops as _bot_ops
 from portal.bot_ops import (
     _FOOT,
@@ -90,7 +91,7 @@ __all__ = [
     "build_dispatcher", "run_bot", "notify_owner", "send_wallets_file",
     "LiveMonitor", "CmdWizard", "CfgWizard",
     "BOT_COMMANDS_RU", "setup_bot_commands",
-    "ConflictTracker", "bot_conflict_status", "install_token_redaction",
+    "ConflictTracker", "bot_conflict_status", "bot_status_line", "install_token_redaction",
 ]
 
 
@@ -419,6 +420,11 @@ _conflict = ConflictTracker()
 def bot_conflict_status() -> str:
     """Строка для /doctor: bot: CONFLICT|ok (п.7 ТЗ)."""
     return _conflict.status()
+
+
+def bot_status_line(now: float | None = None) -> str:
+    """bot: для doctor/мониторов — конфликт и живость поллинга в одной строке."""
+    return f"{bot_conflict_status()} · {bot_health.doctor_suffix(now)}"
 
 
 class _ConflictLogFilter(logging.Filter):
@@ -765,7 +771,7 @@ async def _admin_home_text(cfg: PortalConfig, daemon: FarmDaemon) -> str:
         f"мастер-ключ: {'задан' if cfg.master_key else '—'} · "
         f"google: {'вкл' if cfg.google_enabled() else '—'}",
         f"open_access: <b>{'ВКЛ!' if cfg.open_access else 'выкл'}</b> · "
-        f"bot: {bot_conflict_status()}",
+        f"bot: {bot_status_line()}",
         f"allowlist: {ids}",
     ])
 
@@ -1530,7 +1536,7 @@ async def _handle_v1(call: CallbackQuery, state: FSMContext | None, cfg: PortalC
             reply_markup=_nav_kb("v1:home:show", lang), link_preview_options=_NO_PREVIEW)
         return True
     if screen == "diag" and action == "show":
-        answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}"
+        answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_status_line()}"
         await call.message.edit_text(
             answer, parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
@@ -1951,7 +1957,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 await message.answer(f"[жди {wait}с] Диагностика — антифлуд 5с.")
                 return
             await message.answer(
-                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
+                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_status_line()}",
                 parse_mode=ParseMode.HTML,
                 reply_markup=_menu(),
             )
@@ -1961,7 +1967,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 await message.answer(f"[жди {wait}с] Диагностика — антифлуд 5с.")
                 return
             await message.answer(
-                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}",
+                _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_status_line()}",
                 parse_mode=ParseMode.HTML,
             )
         elif text == "/pnl":
@@ -2390,7 +2396,7 @@ def build_dispatcher(cfg: PortalConfig, daemon: FarmDaemon, monitor: LiveMonitor
                 return
 
             if data == "doctor":
-                answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_conflict_status()}"
+                answer = _fmt_doctor(await daemon.statistics()) + f"\nbot: {bot_status_line()}"
                 kb = _refresh_home_kb("doctor")
                 await call.message.edit_text(
                     answer,
@@ -2586,6 +2592,9 @@ async def run_bot(cfg: PortalConfig, daemon: FarmDaemon) -> None:
     if not any(isinstance(f, _ConflictLogFilter) for f in dlg.filters):
         dlg.addFilter(_ConflictLogFilter())
     bot = Bot(token=cfg.telegram_token, default=_BOT_DEFAULTS)
+    # Живость считаем по успешным getUpdates этого бота: без них портал может
+    # выглядеть живым, пока бот глухой.
+    bot_health.observe_polling(bot)
     # Первый разрешённый владелец — получатель живого мониторинга по умолчанию.
     default_tg = cfg.telegram_allow_ids[0] if cfg.telegram_allow_ids else 0
     monitor = LiveMonitor(bot, default_tg, daemon)

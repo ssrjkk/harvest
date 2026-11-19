@@ -12,6 +12,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from portal import bot_health as H
 from portal import bot_render as R
 from portal.wallet_cells import build_cells, cell_state, render_grid
 
@@ -261,6 +262,38 @@ class TestConflict(unittest.TestCase):
         t.resolve()
         self.assertEqual(t.status(), "ok")
         self.assertEqual(bt.bot_conflict_status(), "ok")  # глобальный чист после resolve
+
+
+class TestBotStatusLine(unittest.TestCase):
+    """bot_status_line: конфликт (п.7 ТЗ) и живость поллинга в одной строке /doctor."""
+
+    def setUp(self):
+        H.reset()
+        bt._conflict.resolve()
+        self.addCleanup(H.reset)
+        self.addCleanup(bt._conflict.resolve)
+
+    def test_conflict_then_alive(self):
+        H.note_start(now=100.0)
+        H.note_poll(now=150.0)
+        self.assertEqual(bt.bot_status_line(now=160.0), "ok · поллинг жив, опрос 10с назад")
+        bt._conflict.hit()
+        self.assertEqual(bt.bot_status_line(now=160.0), "CONFLICT · поллинг жив, опрос 10с назад")
+
+    def test_silence_is_shown_as_is(self):
+        H.note_start(now=1000.0)
+        H.note_failure(ConnectionError("net down"), 8.0, 3, now=1000.0)
+        self.assertEqual(
+            bt.bot_status_line(now=2000.0),
+            "ok · поллинг молчит 1000с, попытка 3, рестарт через 0с · сбой: ConnectionError: net down",
+        )
+
+    def test_fatal_token_never_leaks_into_line(self):
+        token = "123456789:" + "A" * 35
+        H.note_fatal(ValueError(f"Unauthorized: bot{token}"))
+        line = bt.bot_status_line(now=10.0)
+        self.assertIn("поллинг убит отказом токена", line)
+        self.assertNotIn(token, line)
 
 
 @unittest.skipUnless(HAS_BOT, "aiogram не установлен")

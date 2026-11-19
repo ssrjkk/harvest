@@ -72,9 +72,10 @@ async def _graceful_shutdown(
     daemon: FarmDaemon,
     bot_task: asyncio.Task | None,
     guard_task: asyncio.Task | None = None,
+    monitor_task: asyncio.Task | None = None,
 ) -> None:
     logger.info("Останавливаю портал…")
-    tasks = [t for t in (bot_task, guard_task) if t is not None]
+    tasks = [t for t in (bot_task, guard_task, monitor_task) if t is not None]
     for task in tasks:
         task.cancel()
     if tasks:
@@ -193,13 +194,19 @@ async def main() -> None:
         ) from None
 
     bot_task: asyncio.Task | None = None
+    monitor_task: asyncio.Task | None = None
     guard_task: asyncio.Task | None = None
     if cfg.telegram_enabled():
+        from portal import bot_health
         from portal.bot_telegram import run_bot
         from portal.guard import Watchdog
 
-        bot_task = asyncio.create_task(run_bot(cfg, daemon))
+        # aiogram ретраит только свой внутренний цикл: отказ на старте (bot.me())
+        # выносит задачу наружу, и портал живёт с глухим ботом. Супервизор перепускает
+        # бота с backoff, монитор будит владельца, когда поллинг замолчал.
+        bot_task = asyncio.create_task(bot_health.supervise(cfg, daemon, run=run_bot))
         bot_task.add_done_callback(lambda t: _log_bot_crash(t, cfg))
+        monitor_task = asyncio.create_task(bot_health.monitor(functools.partial(_acute_alert, cfg)))
         guard_interval = float(os.environ.get("PORTAL_WATCH_INTERVAL_S", "300"))
         guard_heartbeat = float(os.environ.get("PORTAL_HEARTBEAT_HOURS", "0"))
         guard_task = asyncio.create_task(
@@ -225,7 +232,7 @@ async def main() -> None:
             pass
 
     await keep_alive.wait()
-    await _graceful_shutdown(runner, daemon, bot_task, guard_task)
+    await _graceful_shutdown(runner, daemon, bot_task, guard_task, monitor_task)
 
 
 if __name__ == "__main__":
