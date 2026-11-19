@@ -124,8 +124,18 @@ def _remote_reachable() -> bool:
             timeout=_GIT_TIMEOUT_S, check=True,
         )
         return True
-    except Exception:  # noqa: BLE001 — сеть/токен/нет origin: дальше скажет main()
-        return False
+    except FileNotFoundError:
+        print("Git не найден: проверь PATH задачи публикации (git.exe)")
+    except subprocess.TimeoutExpired:
+        print(f"Проверка git/origin превысила {_GIT_TIMEOUT_S} секунд")
+    except subprocess.CalledProcessError as exc:
+        err = (exc.stderr or "").lower()
+        denied = any(word in err for word in ("publickey", "permission denied", "authentication", "403"))
+        reason = "отказ SSH/авторизации" if denied else "ошибка сети или origin"
+        print(f"Проверка git/origin: {reason}, код {exc.returncode}")
+    except OSError as exc:
+        print(f"Git не удалось запустить ({type(exc).__name__})")
+    return False
 
 
 async def _alert_owner(text: str) -> None:
@@ -609,11 +619,11 @@ async def main() -> int:
         return 1
     # Fail-fast до тяжёлого collect(): нет сети/авторизации — нечего собирать.
     if not _remote_reachable():
-        print("GitHub недоступен (сеть/SSH) — пропускаю паблиш до следующего запуска")
+        print("Проверка git/origin не пройдена — пропускаю паблиш до следующего запуска")
         if _should_alert(_bump_fails()):
             await _alert_owner(
-                "harvest publish: GitHub недоступен 3 раза подряд "
-                "(сеть/SSH). Витрина протухает — проверь доступ к репозиторию."
+                "harvest publish: 3 проверки git/origin подряд не пройдены. "
+                "Витрина протухает — проверь Git/PATH задачи, сеть и SSH-доступ."
             )
         return 1
     try:

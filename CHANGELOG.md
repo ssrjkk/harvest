@@ -255,6 +255,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   где успевала пройти одна; семантика автостопа не изменилась
 
 ### Fixed
+- **Паблиш витрины: git находится сам, отказы различаются.** Задача
+  `HarvestDashPublish` стартовала с PATH, где остался мёртвый `D:\Git\cmd`,
+  поэтому `git` не находилось вовсе, а `publish_dash.py` глотал
+  `FileNotFoundError` и врал «GitHub недоступен (сеть/SSH)». Ланчер
+  `deploy/windows/publish-dash.ps1` сам разрешает `git.exe` (PATH →
+  `%USERPROFILE%\.qoder\bin\git\cmd`), жёстко падает без него и пробрасывает код
+  возврата наружу (раньше `LastTaskResult` всегда был 0); `_remote_reachable()`
+  различает «git не найден», таймаут, отказ авторизации и сетевую ошибку,
+  stderr чужих команд наружу не печатается
 - **Паблиш дашборда: User-env и алерты.** `publish_dash.py` сам подтягивает
   `WALLETS_KEY`/`FARMER_MASTER_KEY`/`TELEGRAM_*` из User-env (Task Scheduler
   не всегда их отдаёт) и шлёт алерт владельцу на каждой 3-й неудаче подряд,

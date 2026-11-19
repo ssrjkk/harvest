@@ -642,5 +642,40 @@ class TestFailStreakAndAlert(unittest.TestCase):
             self.assertFalse(publish_dash._remote_reachable())
 
 
+class TestPublishPreflightDiagnostics(unittest.TestCase):
+    def test_failures_are_distinguished_without_exposing_stderr(self):
+        import contextlib
+        import io
+        from unittest import mock
+
+        cases = [
+            (FileNotFoundError("sensitive-test-data"), "Git не найден"),
+            (subprocess.TimeoutExpired("git", 30), "превысила 30 секунд"),
+            (subprocess.CalledProcessError(128, "git", stderr="Permission denied (publickey): sensitive-test-data"),
+             "отказ SSH/авторизации"),
+            (subprocess.CalledProcessError(128, "git", stderr="network: sensitive-test-data"),
+             "ошибка сети или origin"),
+            (OSError("sensitive-test-data"), "Git не удалось запустить"),
+        ]
+        for error, expected in cases:
+            with self.subTest(error=type(error).__name__, expected=expected):
+                output = io.StringIO()
+                with mock.patch("publish_dash.subprocess.run", side_effect=error), contextlib.redirect_stdout(output):
+                    self.assertFalse(publish_dash._remote_reachable())
+                self.assertIn(expected, output.getvalue())
+                self.assertNotIn("sensitive-test-data", output.getvalue())
+
+    def test_preflight_uses_the_publisher_repository_and_timeout(self):
+        from unittest import mock
+
+        with mock.patch("publish_dash.subprocess.run") as run:
+            self.assertTrue(publish_dash._remote_reachable())
+        run.assert_called_once_with(
+            ["git", "ls-remote", "origin", "HEAD"],
+            cwd=publish_dash.ROOT, capture_output=True, text=True,
+            timeout=publish_dash._GIT_TIMEOUT_S, check=True,
+        )
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

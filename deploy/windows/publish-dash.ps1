@@ -1,30 +1,34 @@
 #Requires -Version 5.1
-<#
-  Публикация поля harvest в gh-pages (разовый прогон).
-
-  Расписание — Windows Task Scheduler, задача HarvestDashPublish, каждые
-  30 минут (регистрация — в README.md рядом). Руками: powershell -ExecutionPolicy Bypass -File deploy\windows\publish-dash.ps1
-
-  Требуется GITHUB_TOKEN в окружении (ghp_* с записью в репозиторий):
-  это страховочный ключ — сам push идёт через обычный git-доступ к origin
-  (credential helper / gh auth / User-переменная GH_TOKEN). Если ключа нет,
-  задача падает сразу с понятной ошибкой, а не с cryptic-128 от git.
-  Лог дописывается в publish-dash.log рядом с publish_dash.py (в .gitignore).
-#>
-$ErrorActionPreference = "Stop"
-
+$ErrorActionPreference = "Continue"
+$env:PYTHONIOENCODING = "utf-8"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $Root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$Log = Join-Path $Root "publish-dash.log"
 $Stamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-"[$Stamp] publish start" | Out-File (Join-Path $Root "publish-dash.log") -Append -Encoding utf8
+$Code = 1
+"[$Stamp] publish start" | Out-File $Log -Append -Encoding utf8
 
 try {
-    if (-not $env:GITHUB_TOKEN) { throw "GITHUB_TOKEN не задан в окружении задачи" }
-    & python (Join-Path $Root "publish_dash.py")
-    $Code = $LASTEXITCODE
-    "[$Stamp] publish exit=$Code" | Out-File (Join-Path $Root "publish-dash.log") -Append -Encoding utf8
-    exit $Code
+    $GitCommand = Get-Command git -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $GitPath = if ($GitCommand) { $GitCommand.Source } else { Join-Path $env:USERPROFILE ".qoder\bin\git\cmd\git.exe" }
+    if (-not (Test-Path -LiteralPath $GitPath -PathType Leaf)) {
+        throw "git.exe not found in task PATH or Qoder Git"
+    }
+    $env:PATH = (Split-Path -Parent $GitPath) + ";" + $env:PATH
+    $Python = Get-Command python -CommandType Application -ErrorAction Stop | Select-Object -First 1
+    Push-Location $Root -ErrorAction Stop
+    try {
+        & $Python.Source (Join-Path $Root "publish_dash.py") 2>&1 |
+            ForEach-Object { $_.ToString() } |
+            Out-File $Log -Append -Encoding utf8
+        if ($null -ne $LASTEXITCODE) { $Code = $LASTEXITCODE }
+    }
+    finally {
+        Pop-Location
+    }
 }
 catch {
-    "[$Stamp] publish FAILED: $($_.Exception.Message)" | Out-File (Join-Path $Root "publish-dash.log") -Append -Encoding utf8
-    throw
+    "[$Stamp] publish FAILED: $($_.Exception.Message)" | Out-File $Log -Append -Encoding utf8
 }
+"[$Stamp] publish exit=$Code" | Out-File $Log -Append -Encoding utf8
+exit $Code
