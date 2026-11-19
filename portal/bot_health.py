@@ -241,12 +241,18 @@ async def supervise(
             return
 
 
-async def _alert(notify: Callable[[str], Awaitable[None]], text: str) -> None:
-    """Алерт владельцу; чужой сбой доставки не должен ронять сторожа."""
+async def _alert(notify: Callable[[str], Awaitable[None]], text: str) -> bool:
+    """Алерт владельцу; чужой сбой доставки не должен ронять сторожа.
+
+    False — не доставлено: сторож не считает аварию «озвученной» и пробует
+    снова в следующем тике (в сбое 19.11 первая отправка как раз упала).
+    """
     try:
         await notify(text)
     except Exception:  # noqa: BLE001
         logger.warning("Сторож бота: алерт не отправлен", exc_info=True)
+        return False
+    return True
 
 
 async def monitor(
@@ -263,6 +269,8 @@ async def monitor(
     иначе первая же проверка совпала бы с самим порогом и заметила аварию
     только через два порога. Алерт идёт через `notify` (sendMessage), который
     жив и при мёртвом `getUpdates`, — глухой бот всё-таки сам о себе сообщает.
+    Флаг «озвучено» ставится только при успешной доставке: сбой сети, из-за
+    которого бот и оглох, роняет и первую отправку алерта.
     """
     if silent_after_s is None:
         silent_after_s = _env_float("PORTAL_BOT_SILENT_AFTER_S", SILENT_ALERT_AFTER_S)
@@ -275,11 +283,9 @@ async def monitor(
             # Канал, которым шлём алерты, отвергнут вместе с токеном — будить нечем.
             continue
         if st["polling_alive"]:
-            if tripped:
+            if tripped and await _alert(notify, RECOVERED_ALERT):
                 tripped = False
-                await _alert(notify, RECOVERED_ALERT)
             continue
         age = silent_for_s(now)
         if age is not None and age >= silent_after_s and not tripped:
-            tripped = True
-            await _alert(notify, SILENT_ALERT.format(age=age))
+            tripped = await _alert(notify, SILENT_ALERT.format(age=age))

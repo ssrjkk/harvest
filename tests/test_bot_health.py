@@ -75,14 +75,22 @@ class _Stepper:
 
 
 class _Notifier:
-    """Получатель алертов: копит тексты и по запросу падает на доставке."""
+    """Получатель алертов: копит тексты и по запросу падает на доставке.
 
-    def __init__(self, error: Exception | None = None) -> None:
+    `fails` — сколько первых доставок валятся (проверка, что недоставленный
+    алерт повторяется, а не считается озвученным).
+    """
+
+    def __init__(self, error: Exception | None = None, fails: int = 0) -> None:
         self.sent: list[str] = []
         self.error = error
+        self.fails = int(fails)
 
     async def __call__(self, text: str) -> None:
         self.sent.append(text)
+        if self.fails > 0:
+            self.fails -= 1
+            raise self.error or ConnectionError("telegram unavailable")
         if self.error is not None:
             raise self.error
 
@@ -590,7 +598,66 @@ class TestSilenceMonitor(BotHealthCase):
                 )
             )
         self.assertIn("алерт не отправлен", "\n".join(cm.output))
-        self.assertEqual(len(notifier.sent), 1)  # дедуп не сломался из-за сбоя доставки
+        self.assertEqual(len(notifier.sent), 3)  # сторож жив и долбит молчание, а не заснул
+        self.assertEqual(stepper.slept, [60.0, 60.0, 60.0])
+
+    async def test_undelivered_alarm_is_retried_until_it_lands(self):
+        # Сбой 19.11: сеть легла вместе с поллингом, и первая отправка алерта
+        # упала по той же причине. Если ставить флаг по факту попытки, владелец
+        # так и не узнает про аварию — повтор должен быть до доставки.
+        bot_health.note_start(now=1000.0)
+        notifier = _Notifier(fails=1)
+        stepper = _Stepper([(2000.0, None), (2100.0, None), (2200.0, None)])
+        with self.assertLogs("portal.bot_health", level="WARNING"):
+            await _drain(
+                bot_health.monitor(
+                    notifier,
+                    silent_after_s=900.0,
+                    interval_s=60.0,
+                    sleep=stepper.sleep,
+                    monotonic=stepper.monotonic,
+                )
+            )
+        self.assertEqual(len(notifier.sent), 2)  # 1-я упала, 2-я доставлена, дальше тишина
+        self.assertEqual(stepper.slept, [60.0, 60.0, 60.0])
+
+    async def test_undelivered_recovery_is_retried_until_it_lands(self):
+        bot_health.note_start(now=1000.0)
+        sent: list[str] = []
+        attempts = {"n": 0}
+
+        async def _flaky(text: str) -> None:
+            attempts["n"] += 1
+            sent.append(text)
+            if attempts["n"] == 2:  # recovery-сообщение пролетает мимо один раз
+                raise ConnectionError("telegram unavailable")
+
+        stepper = _Stepper(
+            [
+                (2000.0, None),
+                (2010.0, lambda: self._mark_live(2010.0)),
+                (2020.0, None),
+                (2030.0, None),
+            ]
+        )
+        with self.assertLogs("portal.bot_health", level="WARNING"):
+            await _drain(
+                bot_health.monitor(
+                    _flaky,
+                    silent_after_s=900.0,
+                    interval_s=60.0,
+                    sleep=stepper.sleep,
+                    monotonic=stepper.monotonic,
+                )
+            )
+        self.assertEqual(
+            sent,
+            [
+                "⚠️ Telegram-бот молчит 1000с: поллинг не отвечает. Смотри PORTAL_LOG_FILE.",
+                "✅ Telegram-бот снова отвечает.",
+                "✅ Telegram-бот снова отвечает.",
+            ],
+        )
 
 
 if __name__ == "__main__":
