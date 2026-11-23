@@ -200,3 +200,9 @@ $env:HARVEST_LOAD=1; python -m pytest tests/test_load_opt.py -q
 - Репозиторий: [github.com/ssrjkk/harvest](https://github.com/ssrjkk/harvest)
 
 Лицензия — [MIT](LICENSE), Copyright © 2026 ssrjkk.
+
+## Документация
+
+- [Changelog](CHANGELOG.md)
+- [Demo](https://ssrjkk.github.io/harvest/demo.html)
+- [Docs](https://ssrjkk.github.io/harvest/docs.html)
