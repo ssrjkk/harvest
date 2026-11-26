@@ -1,8 +1,5 @@
 ﻿# harvest v2.4.1
 
-[![CI](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml/badge.svg)](https://github.com/ssrjkk/harvest/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-
 **Автор:** [ssrjkk](https://t.me/ssrjkk_bot) · © 2026 ssrjkk
 
 harvest — QA-стенд для чужих EVM-тестнетов: поднимает флот кошельков
@@ -16,8 +13,6 @@ harvest — QA-стенд для чужих EVM-тестнетов: подним
 
 Python 3.12 · Windows/PowerShell (первичная цель — exe-дистрибутив через
 PyInstaller) · [полная документация](DOCUMENTATION.md)
-
-
 
 ## Сайт
 
