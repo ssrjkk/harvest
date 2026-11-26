@@ -6,7 +6,13 @@ QA stand for EVM testnets: wallet fleets with behavioral profiles, transaction
 scenarios, network health metrics and run reports. It includes a web portal and a
 Telegram bot. The full Russian documentation is in [README.ru.md](README.ru.md).
 
-**Site:** https://ssrjkk.github.io/harvest/
+**Site:** https://ssrjkk.github.io/harvest/  
+**Bot:** https://t.me/harvest_testnet_bot  
+**Source:** https://github.com/ssrjkk/harvest
+
+## Screenshot
+
+![Harvest](docs/screenshots/shot-hero.png)
 
 Testnets only. The project does not promise airdrops, points or profit; networks can
 close and activity may not be counted.
